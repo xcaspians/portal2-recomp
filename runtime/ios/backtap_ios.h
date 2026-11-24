@@ -11,6 +11,8 @@ void rt_ios_backtap_start(void);
 int rt_ios_backtap_available(void);
 // Capteurs en marche ou arrêtés (thread principal) ; mêmes réglages à la reprise.
 void rt_ios_backtap_run(int on);
+// Thresholds and side swap read again from P2_BACKTAP_* (settings changed in game).
+void rt_ios_backtap_reload(void);
 // Orientation de l'écran (+1 : axe y de l'appareil vers la droite, -1, 0) et
 // « en partie » (surcouche affichée, pas de menu), lus par la file des capteurs.
 void rt_ios_backtap_set_state(int orient, int playing);

@@ -72,6 +72,14 @@ void rt_touch_place(const rt_touch_button *b, double x, double y, double w, doub
     *cy = y + h * b->ay + b->oy;
 }
 
+static double clamp(double v, double lo, double hi) { return v < lo ? lo : v > hi ? hi : v; }
+void rt_touch_place_scaled(const rt_touch_button *b, double scale, double x, double y, double w, double h,
+                           double *cx, double *cy) {
+    double r = b->size * scale / 2;
+    *cx = clamp(x + w * b->ax + b->ox * scale, x + r, x + w - r);
+    *cy = clamp(y + h * b->ay + b->oy * scale, y + r, y + h - r);
+}
+
 void rt_touch_overlay_update(rt_overlay_state *s, rt_overlay_event event, int pad, int keyboard,
                              int pad_active, const char *mode) {
     int always = mode && *mode == '1';

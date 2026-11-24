@@ -228,6 +228,20 @@ void rt_ios_backtap_start(void) {
     rt_ios_backtap_run(1);
 }
 int rt_ios_backtap_available(void) { return backtap_motion != nil; }
+void rt_ios_backtap_reload(void) {
+    if (!backtap_motion) return;
+    rt_backtap_params p;
+    rt_backtap_params_from_env(&p);
+    // Samples are judged under backtap_lock: the new thresholds apply from the next one.
+    os_unfair_lock_lock(&backtap_lock);
+    backtap_detector.p = p;
+    if (backtap_dataset_on) {
+        backtap_wide.p = p;
+        backtap_wide.p.onset_factor = rt_ios_env_float("P2_BACKTAP_WIDE", RT_BTDS_WIDE_ONSET, 0.01f);
+    }
+    os_unfair_lock_unlock(&backtap_lock);
+    fprintf(stderr, "[ios] tapes au dos : seuils %.3g g, %.3g g/s, inversé %d\n", p.accel_min, p.jerk_min, p.invert);
+}
 
 // Capteurs en marche ou arrêtés (thread principal) : 200 Hz demandés en
 // permanence coûtent de l'énergie pour rien en menu ou avec une manette, où
