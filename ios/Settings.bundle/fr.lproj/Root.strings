@@ -45,10 +45,11 @@
 "Back taps" = "Tapes au dos";
 "Vibrate when firing" = "Vibrer au tir";
 "Tap sensitivity" = "Sensibilité des tapes";
-"Low" = "Faible";
-"High" = "Élevée";
 "Swap left and right" = "Inverser gauche et droite";
 "Portal buttons" = "Boutons de portail";
 "Diagnostics" = "Diagnostic";
 "Writes the game log to Documents/game.log (visible in the Files app)." = "Écrit le journal du jeu dans Documents/game.log (visible dans l'app Fichiers).";
 "Log" = "Journal";
+"Button opacity" = "Opacité des boutons";
+"Button size" = "Taille des boutons";
+"From 0.5 (only firm taps) to 3 (light taps); 1 is the original. Also in the game: pause menu, gear button." = "De 0,5 (tapes fermes seulement) à 3 (tapes légères) ; 1 est la valeur d’origine. Aussi dans le jeu : menu pause, bouton engrenage.";

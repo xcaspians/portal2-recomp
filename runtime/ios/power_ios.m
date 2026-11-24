@@ -42,6 +42,7 @@ static int update(int launch) {
     return value;
 }
 
+void rt_ios_power_reload(void) { update(0); }
 int rt_ios_max_fps(void) {
     int value = atomic_load(&cap);
     return value ? value : update(1);

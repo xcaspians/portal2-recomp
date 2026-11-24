@@ -24,7 +24,9 @@ static _Atomic int gyro_orient;
 static rt_gyro_params gyro_params;
 static int gyro_running;
 
+static int gyro_default = -1;   // the game's default, from the first start
 void rt_ios_gyro_start(int on_by_default) {
+    gyro_default = on_by_default;
     if (gyro_motion || !rt_gyro_enabled(on_by_default)) return;
     CMMotionManager *motion = [CMMotionManager new];
     if (!motion.deviceMotionAvailable) { fprintf(stderr, "[ios] gyroscope : pas de capteur (simulateur ?)\n"); return; }
@@ -39,6 +41,21 @@ void rt_ios_gyro_start(int on_by_default) {
             gyro_params.counts_per_rad, gyro_params.tighten);
 }
 int rt_ios_gyro_available(void) { return gyro_motion != nil; }
+void rt_ios_gyro_reload(void) {
+    if (gyro_default < 0) return;   // overlay not started yet: its start reads the settings
+    if (!rt_gyro_enabled(gyro_default)) {
+        if (!gyro_motion) return;
+        rt_ios_gyro_run(0);
+        gyro_motion = nil;   // a later start makes a new manager
+        fprintf(stderr, "[ios] gyroscope : visée coupée\n");
+        return;
+    }
+    if (!gyro_motion) { rt_ios_gyro_start(gyro_default); return; }   // the overlay runs it when playing
+    rt_gyro_params p;
+    rt_gyro_params_from_env(&p);
+    [gyro_queue addOperationWithBlock:^{ gyro_params = p; }];   // read on this queue only
+    fprintf(stderr, "[ios] gyroscope : %.0f comptes/rad\n", p.counts_per_rad);
+}
 void rt_ios_gyro_set_orient(int orient) { atomic_store(&gyro_orient, orient); }
 
 void rt_ios_gyro_run(int on) {

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../runtime/ios/settings.c"
+#include "../runtime/ios/settings_menu.c"
 
 typedef struct { const char *key, *value; } Pref;
 static int fake_get(void *ctx, const char *key, char *out, size_t size) {
@@ -159,4 +160,85 @@ RT_CHECK(ios_fps_auto_follows_the_screen) {
     assert(rt_ios_fps_choice("40", 120) == 40 && rt_ios_fps_choice("120", 60) == 120);
     assert(rt_ios_fps_choice(NULL, 120) == 60 && rt_ios_fps_choice("", 120) == 60);
     assert(rt_ios_fps_choice("fast", 120) == 60 && rt_ios_fps_choice("0", 120) == 60);
+}
+
+// In-game menu (settings_menu.c): every item is a Settings.bundle setting with
+// the same default and the same choices or slider range, so the two pages
+// stay in sync through the shared preferences.
+static void assert_entry_has(const char *key, const char *fragment) {
+    size_t length;
+    const char *entry = settings_entry(key, &length);
+    char text[8192];
+    assert(length < sizeof(text));
+    memcpy(text, entry, length); text[length] = 0;
+    if (!strstr(text, fragment)) { fprintf(stderr, "%s: missing %s\n", key, fragment); assert(0); }
+}
+RT_CHECK(ios_menu_items_match_settings_page) {
+    char fragment[256];
+    for (int i = 0; i < rt_menu_item_count; ++i) {
+        const rt_menu_item *it = &rt_menu_items[i];
+        assert(rt_ios_setting_named(it->key));
+        assert(rt_menu_item_named(it->key) == it);
+        switch (it->kind) {
+        case RT_MENU_CHOICE: assert_choices(it->key, it->def, it->values); break;
+        case RT_MENU_TOGGLE:
+            snprintf(fragment, sizeof(fragment), "<key>DefaultValue</key>\n\t\t\t<%s/>", strcmp(it->def, "0") ? "true" : "false");
+            assert_entry_has(it->key, fragment);
+            break;
+        case RT_MENU_SLIDER:
+            snprintf(fragment, sizeof(fragment), "<key>DefaultValue</key>\n\t\t\t<real>%s</real>", it->def);
+            assert_entry_has(it->key, fragment);
+            snprintf(fragment, sizeof(fragment), "<key>MinimumValue</key>\n\t\t\t<real>%g</real>", it->min);
+            assert_entry_has(it->key, fragment);
+            snprintf(fragment, sizeof(fragment), "<key>MaximumValue</key>\n\t\t\t<real>%g</real>", it->max);
+            assert_entry_has(it->key, fragment);
+            break;
+        }
+    }
+    assert(!rt_menu_item_named("P2Log") && !rt_menu_item_named(NULL));
+}
+
+// Controller steps and shown values.
+RT_CHECK(ios_menu_steps_and_display) {
+    char out[64];
+    const rt_menu_item *tap = rt_menu_item_named("P2BackTapSensitivity");
+    assert(!strcmp(rt_menu_step(tap, "1", 1, out, sizeof(out)), "1.05"));
+    assert(!strcmp(rt_menu_step(tap, "3", 1, out, sizeof(out)), "3"));         // clamped
+    assert(!strcmp(rt_menu_step(tap, "0.5", -1, out, sizeof(out)), "0.5"));
+    assert(!strcmp(rt_menu_step(tap, "1.33", 0, out, sizeof(out)), "1.35"));   // old High snaps to the step
+    assert(!strcmp(rt_menu_step(tap, "loud", 0, out, sizeof(out)), "1"));      // unreadable: the default
+    assert(!strcmp(rt_menu_step(tap, "9", 0, out, sizeof(out)), "3"));
+    rt_menu_display(tap, "1.35", out, sizeof(out)); assert(!strcmp(out, "1.35"));
+    const rt_menu_item *opacity = rt_menu_item_named("P2TouchOpacity");
+    assert(!strcmp(rt_menu_step(opacity, "0.3", 1, out, sizeof(out)), "0.35"));
+    assert(!strcmp(rt_menu_step(opacity, "0", -1, out, sizeof(out)), "0"));
+    rt_menu_display(opacity, "0.75", out, sizeof(out)); assert(!strcmp(out, "75 %"));
+    rt_menu_display(opacity, NULL, out, sizeof(out)); assert(!strcmp(out, "100 %"));
+    const rt_menu_item *size = rt_menu_item_named("P2TouchSize");
+    assert(!strcmp(rt_menu_step(size, "1.5", 1, out, sizeof(out)), "1.5"));
+    assert(!strcmp(rt_menu_step(size, "0.75", -1, out, sizeof(out)), "0.75"));
+    rt_menu_display(size, "1.25", out, sizeof(out)); assert(!strcmp(out, "125 %"));
+    const rt_menu_item *fps = rt_menu_item_named("P2MaxFPS");
+    assert(fps->flags & RT_MENU_RELAUNCH_ON_METAL);
+    assert(!strcmp(rt_menu_step(fps, "auto", -1, out, sizeof(out)), "120"));
+    assert(!strcmp(rt_menu_step(fps, "auto", 1, out, sizeof(out)), "auto"));  // stops at the end
+    assert(!strcmp(rt_menu_step(fps, "30", -1, out, sizeof(out)), "30"));
+    assert(!strcmp(rt_menu_step(fps, "75", 0, out, sizeof(out)), "60"));      // unknown: the default
+    rt_menu_display(fps, "auto", out, sizeof(out)); assert(!strcmp(out, "Auto"));
+    const rt_menu_item *haptics = rt_menu_item_named("P2Haptics");
+    assert(!strcmp(rt_menu_step(haptics, "1", 1, out, sizeof(out)), "0"));
+    assert(!strcmp(rt_menu_step(haptics, "0", -1, out, sizeof(out)), "1"));
+    assert(!strcmp(rt_menu_step(haptics, NULL, 1, out, sizeof(out)), "0"));   // default on, flipped
+    rt_menu_display(haptics, "0", out, sizeof(out)); assert(!strcmp(out, "Off"));
+}
+
+// One setting's variable, as the in-game menu applies it live.
+RT_CHECK(ios_setting_env_value_matches_launch) {
+    assert(!strcmp(rt_ios_setting_env_value(rt_ios_setting_named("P2Haptics"), "0"), "0"));
+    assert(!strcmp(rt_ios_setting_env_value(rt_ios_setting_named("P2Haptics"), "true"), "1"));
+    assert(!rt_ios_setting_env_value(rt_ios_setting_named("P2PortalButtons"), "auto"));
+    assert(!strcmp(rt_ios_setting_env_value(rt_ios_setting_named("P2PortalButtons"), "1"), "1"));
+    assert(!strcmp(rt_ios_setting_env_value(rt_ios_setting_named("P2TouchOpacity"), "0.4"), "0.4"));
+    assert(!strcmp(rt_ios_setting_env_value(rt_ios_setting_named("P2BackTapRecord"), "1"), "Documents/backtap/"));
+    assert(!rt_ios_setting_env_value(rt_ios_setting_named("P2BackTapRecord"), "0"));
 }
