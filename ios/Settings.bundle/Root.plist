@@ -390,6 +390,24 @@
 		</dict>
 		<dict>
 			<key>FooterText</key>
+			<string>Saves and their screenshots go between your devices through iCloud Drive: when the game starts, a few seconds after a save, and when you leave it. If two devices changed the same save, both are kept. Deleting a save never deletes it elsewhere.</string>
+			<key>Title</key>
+			<string>iCloud</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>P2ICloudSaves</string>
+			<key>Title</key>
+			<string>iCloud saves</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>FooterText</key>
 			<string>Writes the game log to Documents/game.log (visible in the Files app).</string>
 			<key>Title</key>
 			<string>Diagnostics</string>

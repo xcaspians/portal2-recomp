@@ -1,0 +1,16 @@
+# Le projet de signature de project.yml, avec iCloud Documents pour Portal 2
+# (sauvegardes iCloud, runtime/ios/icloud_saves_ios.m ; docs/ios.md). setup.sh
+# le prend quand config/local.json contient "ios_icloud": true. Le premier
+# passage active iCloud sur l'identifiant de l'app et crée le conteneur
+# iCloud.<identifiant> sur le compte développeur (Apple ne supprime jamais un
+# conteneur) ; ios/signing/sign.py reprend ensuite ces droits du profil.
+include: [project.yml]
+targets:
+  Portal2:
+    entitlements:
+      path: Portal2-icloud.entitlements
+      properties:
+        com.apple.developer.kernel.increased-memory-limit: true
+        com.apple.developer.icloud-container-identifiers: ["iCloud.${P2_BUNDLE_ID}"]
+        com.apple.developer.ubiquity-container-identifiers: ["iCloud.${P2_BUNDLE_ID}"]
+        com.apple.developer.icloud-services: [CloudDocuments]

@@ -57,6 +57,7 @@
 #include "touch_layout.h"
 #include "touch_test.h"
 #include "lifecycle_ios.h"
+#include "icloud_saves.h"
 #include "live_settings.h"
 #include "settings_menu_ios.h"
 
@@ -1039,6 +1040,7 @@ static P2TouchControls *controls;
 // Appelé à la création de la fenêtre du jeu (sdl_ios.m), sur le thread principal.
 void rt_ios_touch_controls_attach(SDL_Window *window) {
     rt_ios_settings_watch();   // réglages changés en jeu ou dans l'app Réglages (live_settings_ios.m)
+    rt_ios_icloud_start();     // sauvegardes iCloud (Portal 2 ; icloud_saves_ios.m)
     if (controls || !window || !rt_ios_env_flag("P2_TOUCH_CONTROLS", 1)) return;
     SDL_SysWMinfo info;
     SDL_VERSION(&info.version);
