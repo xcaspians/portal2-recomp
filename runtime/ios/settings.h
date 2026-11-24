@@ -18,3 +18,7 @@ void rt_ios_render_size(int *w, int *h);
 // Clés MTLD3D_CONFIG propres à iOS : present.maxFps, et render.scale si
 // upscale (P2_IOS_UPSCALE) est dans ]0, 1[ ; *scale reçoit l'échelle retenue (1 : aucune).
 int rt_ios_metal_keys(char *out, size_t size, int max_fps, const char *upscale, double *scale);
+// Frame rate cap from P2_IOS_MAX_FPS: a number (at least 1) is used as is;
+// "auto" is the screen's maximum (120 on a ProMotion screen, 60 otherwise);
+// anything else, or nothing, gives 60 (power_ios.m applies power saving on top).
+int rt_ios_fps_choice(const char *value, int screen_max);

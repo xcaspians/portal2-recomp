@@ -1,18 +1,22 @@
 // Plafond d'images par seconde et économie d'énergie automatique (power_ios.h).
 #include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
-#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "env_ios.h"
 #include "power_ios.h"
+#include "settings.h"
 
 enum { POWER_SAVE_FPS = 30 };
 static _Atomic int cap;   // 0 : pas encore calculé
 static int metal_renderer;
 
-static int requested(void) { return rt_ios_env_int("P2_IOS_MAX_FPS", 60, 1); }
+// P2_IOS_MAX_FPS: a number, or "auto" for the screen's maximum (settings.c).
+static int requested(void) {
+    return rt_ios_fps_choice(getenv("P2_IOS_MAX_FPS"), (int)UIScreen.mainScreen.maximumFramesPerSecond);
+}
 // Raison de brider la cadence, ou NULL.
 static const char *power_reason(void) {
     if (!rt_ios_env_flag("P2_IOS_POWER_SAVE", 1)) return NULL;
