@@ -167,7 +167,19 @@ The game's page in the Settings app ("Portal 2" or "Half-Life 2"; `ios/Settings.
 by `tools/build_ios.py`). At launch, `runtime/ios/settings.c` turns each
 changed setting into a `P2_*` variable; a variable that is already set (devicectl,
 simctl) takes precedence, and a setting that was never touched leaves the code's
-default in place. Changes take effect on the next launch.
+default in place. Settings you change there while the game is in the
+background apply when you come back to it.
+
+**Source of truth: the app's preferences (`NSUserDefaults`).** The Settings
+app and the in-game menu (pause menu, gear button; see "In-game settings
+menu") read and write the same preferences, so each shows what the other set.
+A change made in the game is written there, applied to its `P2_*` variable at
+once and announced to the parts that read it (`runtime/ios/live_settings_ios.m`:
+back taps, gyro, frame rate cap, touch overlay). Changes made in the Settings
+app are applied the same way when the game comes back to the foreground. The
+items of the in-game menu, their ranges and defaults are in
+`runtime/ios/settings_menu.c`; `tests/checks_ios_settings.c` checks that they
+match `ios/Settings.bundle`.
 
 The page is in English, and in French on a device set to French
 (`ios/Settings.bundle/fr.lproj/Root.strings`).
@@ -184,11 +196,13 @@ The page is in English, and in French on a device set to French
 | Trackpad camera | key `P2TouchTrackpad` | also toggled by the button at the bottom left (top left in Half-Life 2) |
 | Camera speed | `P2_TOUCH_LOOK` | ×0.5 to ×3 |
 | Trackpad acceleration | `P2_TOUCH_ACCEL` | none (1) to strong (4), normal 2.5 |
+| Button opacity | `P2_TOUCH_OPACITY` | slider, 0 to 1 (100 %, default): buttons and sticks, on top of their own transparency |
+| Button size | `P2_TOUCH_SIZE` | slider, 0.75 to 1.5 (default 1): every button and stick scaled around its anchor, moved back inside the screen if needed (`rt_touch_place_scaled`) |
 | Gyro aiming | `P2_GYRO` | on by default in Half-Life 2, off in Portal 2; see "Gyro aiming" |
 | Gyro speed | `P2_GYRO_SPEED` | ×0.5 to ×2, normal 1 |
 | Back taps | `P2_BACKTAP` | enabled by default |
 | Vibrate when firing | `P2_HAPTICS` | on by default: a light Taptic Engine tap for each portal fired from the overlay (button or back tap) |
-| Tap sensitivity | `P2_BACKTAP_SENSITIVITY` | 0.75 / 1 / 1.33: thresholds are divided by this value |
+| Tap sensitivity | `P2_BACKTAP_SENSITIVITY` | slider, 0.5 to 3, default 1: thresholds are divided by this value (higher catches lighter taps) |
 | Swap left and right | `P2_BACKTAP_INVERT` | |
 | Portal buttons | `P2_PORTAL_BUTTONS` | automatic (when back taps are off), always, never |
 | Record taps | `P2_BACKTAP_RAW=Documents/backtap/` | off; see [backtap.md](backtap.md) |

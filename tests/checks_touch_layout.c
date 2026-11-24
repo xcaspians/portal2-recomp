@@ -161,3 +161,28 @@ RT_CHECK(ios_touch_overlay_hides_on_controller_input) {
     rt_touch_overlay_update(&s, RT_OVERLAY_TOUCH, 0, 0, 0, "pad");
     assert(!s.concealed);
 }
+
+// Button size setting (P2_TOUCH_SIZE, 75 % to 150 %): every button of every
+// layout stays on screen on the three screens above; at 100 % the placement
+// is unchanged.
+RT_CHECK(ios_touch_layout_scaled_stays_on_screen) {
+    static const double scales[] = {.75, 1, 1.25, 1.5};
+    for (int layout = RT_IOS_LAYOUT_PORTAL2; layout <= RT_IOS_LAYOUT_HL2; ++layout) {
+        int n;
+        const rt_touch_button *b = rt_touch_layout((rt_ios_layout)layout, &n);
+        for (size_t a = 0; a < sizeof(areas) / sizeof(*areas); ++a) {
+            double x = areas[a].x, y = areas[a].y, w = areas[a].w, h = areas[a].h;
+            for (size_t k = 0; k < sizeof(scales) / sizeof(*scales); ++k)
+                for (int i = 0; i < n; ++i) {
+                    double cx, cy, r = b[i].size * scales[k] / 2;
+                    rt_touch_place_scaled(&b[i], scales[k], x, y, w, h, &cx, &cy);
+                    assert(cx - r >= x - .01 && cx + r <= x + w + .01 && cy - r >= y - .01 && cy + r <= y + h + .01);
+                    if (scales[k] == 1) {
+                        double ux, uy;
+                        rt_touch_place(&b[i], x, y, w, h, &ux, &uy);
+                        assert(fabs(ux - cx) < 1e-9 && fabs(uy - cy) < 1e-9);
+                    }
+                }
+        }
+    }
+}

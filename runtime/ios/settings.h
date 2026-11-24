@@ -11,6 +11,14 @@ typedef int (*rt_ios_settings_get)(void *ctx, const char *key, char *out, size_t
 // Pose les variables des réglages présents, sauf celles déjà définies ; rend
 // leur nombre et, dans summary, la liste « VAR=valeur, ... ».
 int rt_ios_settings_apply(rt_ios_settings_get get, void *ctx, char *summary, size_t size);
+// The setting with this key (Settings.bundle and the in-game menu), or NULL.
+const rt_ios_setting *rt_ios_setting_named(const char *key);
+// Value of its P2_* variable for this stored value ("1"/"0" for a switch), or
+// NULL: variable left unset (the code's default; "auto" or empty).
+const char *rt_ios_setting_env_value(const rt_ios_setting *s, const char *value);
+// On iOS: the stored preference (NSUserDefaults, shared by the Settings app
+// and the in-game menu), 0 if never set.
+int rt_ios_preference(const char *key, char *out, size_t size);
 // Sur iOS : depuis les préférences de l'app.
 int rt_ios_settings_load(char *summary, size_t size);
 // Taille de rendu (pixels, paysage) : écran en points × échelle de rendu (sdl_ios.m).

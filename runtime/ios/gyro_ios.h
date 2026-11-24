@@ -7,6 +7,9 @@
 // jeu) et qu'un capteur existe ; sinon rt_ios_gyro_available rend 0.
 void rt_ios_gyro_start(int on_by_default);
 int rt_ios_gyro_available(void);
+// P2_GYRO and P2_GYRO_SPEED read again (settings changed in game): starts,
+// stops or changes speed (main thread).
+void rt_ios_gyro_reload(void);
 // Capteurs en marche ou arrêtés (thread principal).
 void rt_ios_gyro_run(int on);
 // Orientation de l'écran : +1, -1 ou 0 (comme les tapes au dos).

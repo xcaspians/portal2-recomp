@@ -47,6 +47,11 @@ const rt_touch_button *rt_touch_layout(rt_ios_layout layout, int *count);
 double rt_touch_look_rest(rt_ios_layout layout);
 // Centre d'un bouton dans la zone (x, y, w, h).
 void rt_touch_place(const rt_touch_button *b, double x, double y, double w, double h, double *cx, double *cy);
+// Same, for the Button size setting (P2_TOUCH_SIZE): size and offset scaled
+// around the button's anchor, then moved back inside the area if the larger
+// button would cross its edge.
+void rt_touch_place_scaled(const rt_touch_button *b, double scale, double x, double y, double w, double h,
+                           double *cx, double *cy);
 
 // Overlay hidden for a controller or a keyboard (touch_controls.m draws it,
 // tests/checks_touch_layout.c checks these rules). mode is P2_TOUCH_CONTROLS:
