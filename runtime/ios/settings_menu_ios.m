@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "icloud_saves.h"
 #include "live_settings.h"
 #include "mods_list.h"
 #include "rt.h"
@@ -71,6 +72,8 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     CFTimeInterval repeatAt[2];
     CFTimeInterval resetArmedUntil;
     NSString *padName;        // localized name of the options button, for the gear
+    UILabel *icloudStatus;    // "Last synced ..." under the iCloud switch
+    CFTimeInterval icloudShownAt;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -225,12 +228,18 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     [self setNeedsLayout];
     [self layoutIfNeeded];
 }
+- (void)showICloudStatus {
+    char text[256];
+    rt_ios_icloud_status(text, sizeof(text));
+    icloudStatus.text = @(text);
+    icloudShownAt = CACurrentMediaTime();
+}
 - (void)closeMenu {
     if (!menu_open) return;
     menu_open = 0;
     closing_hold = [self padActive];   // the B that closed it stays away from the game
     [dim removeFromSuperview]; [panel removeFromSuperview];
-    dim = panel = header = nil; scroll = nil; stack = nil; rows = nil;
+    dim = panel = header = nil; scroll = nil; stack = nil; rows = nil; icloudStatus = nil;
     focus = -1;
     resetArmedUntil = 0;
 }
@@ -327,6 +336,19 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         below = seg;
         break;
     }
+    }
+    // iCloud saves: when they last synced, or why they can't.
+    if (!strcmp(it->key, "P2ICloudSaves")) {
+        icloudStatus = label(@"", 13, UIFontWeightRegular, .6);
+        icloudStatus.numberOfLines = 0;
+        [v addSubview:icloudStatus];
+        [c addObjectsFromArray:@[
+            [icloudStatus.leadingAnchor constraintEqualToAnchor:v.leadingAnchor constant:14],
+            [icloudStatus.trailingAnchor constraintEqualToAnchor:v.trailingAnchor constant:-14],
+            [icloudStatus.topAnchor constraintEqualToAnchor:below.bottomAnchor constant:6],
+        ]];
+        below = icloudStatus;
+        [self showICloudStatus];
     }
     // Metal reads its frame rate cap once, at start.
     if ((it->flags & RT_MENU_RELAUNCH_ON_METAL) && rt_ios_metal_active) {
@@ -596,6 +618,7 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         for (P2MenuRow *row in rows) if (start && row.kind == ROW_MAP) { [self startMap:row]; break; }
     }
     if (closing_hold && ![self padActive]) closing_hold = 0;
+    if (icloudStatus && CACurrentMediaTime() - icloudShownAt > 1) [self showICloudStatus];
     if (paused || menu_open) [self pollPad:paused];
 }
 @end

@@ -53,3 +53,5 @@
 "Button opacity" = "Opacité des boutons";
 "Button size" = "Taille des boutons";
 "From 0.5 (only firm taps) to 3 (light taps); 1 is the original. Also in the game: pause menu, gear button." = "De 0,5 (tapes fermes seulement) à 3 (tapes légères) ; 1 est la valeur d’origine. Aussi dans le jeu : menu pause, bouton engrenage.";
+"iCloud saves" = "Sauvegardes iCloud";
+"Saves and their screenshots go between your devices through iCloud Drive: when the game starts, a few seconds after a save, and when you leave it. If two devices changed the same save, both are kept. Deleting a save never deletes it elsewhere." = "Les sauvegardes et leurs captures passent d’un appareil à l’autre par iCloud Drive : au lancement du jeu, quelques secondes après une sauvegarde et quand vous le quittez. Si deux appareils ont modifié la même sauvegarde, les deux sont gardées. Supprimer une sauvegarde ne la supprime jamais ailleurs.";

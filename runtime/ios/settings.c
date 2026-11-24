@@ -34,6 +34,7 @@ const rt_ios_setting rt_ios_settings[] = {
     {"P2Log", "P2_LOG_FILE", "Documents/game.log", NULL},
     {"P2TouchOpacity", "P2_TOUCH_OPACITY", NULL, NULL},         // 0 à 1 : opacité des boutons et sticks (touch_controls.m)
     {"P2TouchSize", "P2_TOUCH_SIZE", NULL, NULL},               // 0,75 à 1,5 : taille des boutons et sticks
+    {"P2ICloudSaves", "P2_ICLOUD_SAVES", "1", "0"},              // sauvegardes iCloud (icloud_saves_ios.m)
 };
 const int rt_ios_settings_count = (int)(sizeof(rt_ios_settings) / sizeof(*rt_ios_settings));
 

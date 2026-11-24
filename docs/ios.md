@@ -260,6 +260,60 @@ dark, translucent panel drawn by the runtime over the game
 The touch overlay must be on (On-screen controls not set to "Never") for the
 gear to exist; the Settings app page always works.
 
+## iCloud saves (Portal 2)
+
+Saves and their screenshots go between your iPhone and iPad through the app's
+iCloud Drive container (`runtime/ios/icloud_saves_ios.m`, rules in
+`runtime/ios/save_sync_rules.c`, checked by `tests/checks_save_sync.c`). On
+by default: **iCloud saves** in the in-game menu (with "Last synced" under
+it) and on the Settings app page (`P2_ICLOUD_SAVES`).
+
+- **What:** the `*.sav` and `*.tga` files of
+  `Documents/portal2-userdata/portal2/SAVE/<id>/`, to
+  `<container>/Documents/SAVE/<id>/`. Never settings or video config.
+- **When:** at launch, about five seconds after the game writes a save (the
+  folder is checked every 10 s), when you leave the app, and when you come
+  back to it (that's when another device's new saves arrive).
+- **Rules:** a save changed on one side only is copied to the other. A save
+  changed on both sides since the last sync (or two different saves of the
+  same name, never synced) is a **conflict: both are kept**. The other
+  device's copy is renamed with that device's name and the time
+  (`quick_Caspians-iPad-mini_2026-11-24_1405.sav`) on both devices, and the
+  game's Load list shows the newer one first, since it sorts by date.
+  Two devices uploading the same name at the same moment (an iCloud conflict)
+  are kept the same way. **Deleting a save never deletes it elsewhere.** A
+  local save about to be replaced by a download is first copied to
+  `Documents/portal2-userdata/icloud-backups/<date>/` (two weeks kept). The
+  state of both sides at the last sync is in
+  `Documents/portal2-userdata/icloud-sync.json`.
+- **Mac:** left out. The Mac app isn't provisioned for iCloud and goes
+  through real Steam, which may sync its own saves with Steam Cloud; the
+  cable sync (`tools/ios_device.sh saves`) stays the Mac ↔ iPhone route.
+- Log lines: `[ios] iCloud (<why>) : N envoyées, N reçues, N conflits gardés
+  en double, N en attente`, and `conteneur indisponible` when iCloud can't
+  be reached.
+
+**One-time setup (paid developer account).** The app needs the iCloud
+capability, which only a provisioning profile can grant:
+
+1. Add `"ios_icloud": true` to `config/local.json` (top level).
+2. Connect and unlock the iPhone, then run `./setup.sh --ios --game portal2`.
+   Its signing step uses `ios/signing/project-icloud.yml`: Xcode turns on
+   iCloud Documents for the app's identifier and creates the container
+   `iCloud.<identifier>` on your account (**permanent**: Apple never deletes
+   a container). `ios/signing/sign.py` then narrows the profile's iCloud
+   entries to that container (`narrow_entitlements`, checked by
+   `tests/test_ios_sign.py`).
+3. If that step fails with a capability error: open
+   `ios/signing/P2Signing.xcodeproj` in Xcode, select the Portal2 target >
+   Signing & Capabilities, check that iCloud shows "iCloud Documents" with
+   the container `iCloud.<identifier>` ticked, build once (⌘B), then run
+   step 2 again.
+4. Install on the iPad too: `P2_DEVICE=<iPad UDID> tools/ios_device.sh install`.
+
+Until then the app runs as before, and the menu says "iCloud isn't
+available"; nothing is deleted or moved.
+
 ### Frame rate cap
 
 `P2_IOS_MAX_FPS` (Frames per second) is the ceiling, read at launch by
