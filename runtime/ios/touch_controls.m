@@ -226,7 +226,9 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
     int held[ACTION_COUNT];   // nombre de doigts par action
     BOOL toggled[ACTION_COUNT]; // boutons à bascule enfoncés (sprint, accroupi de HL2)
     BOOL wasd[4];             // W, A, S, D enfoncées
-    BOOL concealed;           // cachée pour une manette ou un clavier
+    BOOL concealed;           // cachée pour une manette ou un clavier (= overlay.concealed)
+    rt_overlay_state overlay; // règles de rt_touch_overlay_update (touch_layout.c)
+    BOOL hasGamepad, hasKeyboard;
     BOOL menu;                // interface du jeu affichée : surcouche effacée
     NSTimer *tick;            // caméra : un pas par image tant que le stick est incliné
     float lookCarry[2];       // fractions de comptes de souris reportées
@@ -301,9 +303,34 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
     for (GCController *c in GCController.controllers) gamepad |= c.extendedGamepad != nil;
     // Manette que le jeu verra (sauf pilote MFi de SDL coupé, SDL_JOYSTICK_MFI=0).
     physicalPad = gamepad && SDL_GetHintBoolean(SDL_HINT_JOYSTICK_MFI, SDL_TRUE);
-    BOOL any = gamepad || GCKeyboard.coalescedKeyboard != nil;
-    if (rt_ios_env_flag("P2_TOUCH_CONTROLS", 0)) any = NO;   // 1 : jamais cachée (essais sur simulateur)
-    if (any != concealed) { concealed = any; [self setNeedsRender]; }
+    hasGamepad = gamepad; hasKeyboard = GCKeyboard.coalescedKeyboard != nil;
+    [self overlayEvent:RT_OVERLAY_DEVICES padActive:NO];
+}
+
+// Applies one overlay event. P2_TOUCH_CONTROLS (Settings): auto, 1 (never
+// hidden, simulator tests), pad (off while a controller is connected).
+- (void)overlayEvent:(rt_overlay_event)event padActive:(BOOL)active {
+    BOOL was = concealed;
+    rt_touch_overlay_update(&overlay, event, hasGamepad, hasKeyboard, active, getenv("P2_TOUCH_CONTROLS"));
+    concealed = overlay.concealed != 0;
+    if (concealed == was) return;
+    // The controller takes over: no finger keeps a stick or a button held.
+    if (concealed && event == RT_OVERLAY_PAD_POLL) [self releaseAll];
+    [self setNeedsRender];
+}
+
+// A button pressed or a stick, d-pad or trigger moved on a physical controller
+// (GCController lists only real ones, not SDL's virtual touch controller).
+static BOOL pad_input_active(void) {
+    const float dead = .3f;   // a resting stick drifts: ignore small deflections
+    for (GCController *c in GCController.controllers) {
+        if (!c.extendedGamepad) continue;
+        GCPhysicalInputProfile *p = c.physicalInputProfile;
+        for (GCControllerButtonInput *b in p.allButtons) if (b.isPressed) return YES;
+        for (GCControllerDirectionPad *d in p.allDpads)
+            if (fabsf(d.xAxis.value) > dead || fabsf(d.yAxis.value) > dead) return YES;
+    }
+    return NO;
 }
 
 // À chaque image : rester devant la vue OpenGL de SDL (ajoutée après la
@@ -321,6 +348,8 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
     }
     [self updateFPS:now];
     [self syncPad];
+    // Overlay shown by a touch: the next controller input hides it again.
+    if (hasGamepad && !concealed) [self overlayEvent:RT_OVERLAY_PAD_POLL padActive:pad_input_active()];
     if (pad && rt_ios_move_response() != padResponse) { padResponse = rt_ios_move_response(); [self updateMove]; }
     [self testStep];
     // Capteurs de mouvement : orientation de l'écran lue une fois par image.
@@ -707,8 +736,11 @@ static void backtap_touches(NSSet<UITouch *> *touches) {
 }
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     (void)event;
-    concealed = NO;   // un toucher ramène la surcouche cachée pour une manette
+    // A touch brings back the overlay hidden for a controller, except with
+    // "Off with a controller": then touches drive no hidden control at all.
+    [self overlayEvent:RT_OVERLAY_TOUCH padActive:hasGamepad && pad_input_active()];
     backtap_touches(touches);
+    if (concealed) return;
     for (UITouch *t in touches) {
         P2Finger *f = [P2Finger new];
         f.start = f.at = [t locationInView:self];
