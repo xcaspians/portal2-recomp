@@ -180,7 +180,7 @@ The page is in English, and in French on a device set to French
 | Renderer | `P2_RENDERER` | Metal: `d3d9` (default), `opengl`; see "Metal renderer" |
 | Upscaling (MetalFX) | `P2_IOS_UPSCALE` | Off (1, default), Quality (0.75), Performance (0.5); Metal only, see "Metal renderer" |
 | FPS counter | `P2_SHOW_FPS` | shown by default; tapping the top-left corner shows or hides it (choice is remembered) |
-| On-screen controls | `P2_TOUCH_CONTROLS` | automatic (hidden when a controller is connected), always, never |
+| On-screen controls | `P2_TOUCH_CONTROLS` | automatic (hidden while a controller is connected; a touch shows them, the next controller input hides them again), always, never, off with a controller (`pad`: hidden and touches ignored while a controller is connected) |
 | Trackpad camera | key `P2TouchTrackpad` | also toggled by the button at the bottom left (top left in Half-Life 2) |
 | Camera speed | `P2_TOUCH_LOOK` | ×0.5 to ×3 |
 | Trackpad acceleration | `P2_TOUCH_ACCEL` | none (1) to strong (4), normal 2.5 |
@@ -393,7 +393,7 @@ building with `tools/build_ios.py`). `P2_TOUCH_TEST_*` is for the simulator
 |---|---|
 | `P2_LOG_FILE=Documents/game.log` | log file (relative to the container) |
 | `P2_PROFILE_DELAY=60`, `P2_PROFILE_RAW=1` | built-in profiler (with `P2_FRAME_LOG=1`); with `RAW`, `tools/ios_symbolize.py` resolves driver functions using the device's symbols (Xcode, iOS DeviceSupport) |
-| `P2_TOUCH_CONTROLS=0/1` | touch controls disabled / always shown |
+| `P2_TOUCH_CONTROLS=0/1/pad` | touch controls disabled / always shown / off while a controller is connected |
 | + `_LOW=300`, `_HIGH=1500`, `_SMOOTH=0.5`, `_LOG=1` | trackpad acceleration: gain of 1 below `_LOW` pt/s, ramping up to the `P2_TOUCH_ACCEL` multiplier at `_HIGH` pt/s; speed is smoothed (weight `_SMOOTH`); `=1` disables it, `_LOG` logs speed and gain |
 | `P2_BACKTAP=0` | disables back taps (enabled by default if the sensor exists; see "Back taps") |
 | `P2_BACKTAP_LOG=1` | logs every candidate (from half the thresholds) and the background noise every 5 s |

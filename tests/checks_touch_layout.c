@@ -109,3 +109,55 @@ RT_CHECK(ios_touch_layout_portal2_unchanged) {
         assert(fabs(cx - old[i].cx) < .01 && fabs(cy - old[i].cy) < .01 && fabs(b[i].size - old[i].size) < .01);
     }
 }
+
+// Overlay hidden for a controller (rt_touch_overlay_update): a touch shows it,
+// the next controller input hides it again; "1" never hides it; "pad" keeps it
+// off while a controller is connected, touches included.
+RT_CHECK(ios_touch_overlay_hides_on_controller_input) {
+    rt_overlay_state s = {0};
+    // Automatic: hidden when the controller connects, shown by a touch.
+    rt_touch_overlay_update(&s, RT_OVERLAY_DEVICES, 1, 0, 0, NULL);
+    assert(s.concealed);
+    rt_touch_overlay_update(&s, RT_OVERLAY_TOUCH, 1, 0, 0, "auto");
+    assert(!s.concealed);
+    // No controller input yet: stays shown, frame after frame.
+    for (int i = 0; i < 3; ++i) rt_touch_overlay_update(&s, RT_OVERLAY_PAD_POLL, 1, 0, 0, "auto");
+    assert(!s.concealed);
+    // Back on the controller: hidden again (the bug was that nothing did this).
+    rt_touch_overlay_update(&s, RT_OVERLAY_PAD_POLL, 1, 0, 1, "auto");
+    assert(s.concealed);
+    // A button held through the touch is not new input; releasing then pressing is.
+    rt_touch_overlay_update(&s, RT_OVERLAY_TOUCH, 1, 0, 1, "auto");
+    assert(!s.concealed);
+    rt_touch_overlay_update(&s, RT_OVERLAY_PAD_POLL, 1, 0, 1, "auto");
+    assert(!s.concealed);
+    rt_touch_overlay_update(&s, RT_OVERLAY_PAD_POLL, 1, 0, 0, "auto");
+    rt_touch_overlay_update(&s, RT_OVERLAY_PAD_POLL, 1, 0, 1, "auto");
+    assert(s.concealed);
+    // Controller gone: shown, and input polling cannot hide it.
+    rt_touch_overlay_update(&s, RT_OVERLAY_DEVICES, 0, 0, 0, "auto");
+    assert(!s.concealed);
+    rt_touch_overlay_update(&s, RT_OVERLAY_PAD_POLL, 0, 0, 1, "auto");
+    assert(!s.concealed);
+    // A keyboard alone hides it until a touch, as before.
+    rt_touch_overlay_update(&s, RT_OVERLAY_DEVICES, 0, 1, 0, "auto");
+    assert(s.concealed);
+    rt_touch_overlay_update(&s, RT_OVERLAY_TOUCH, 0, 1, 0, "auto");
+    assert(!s.concealed);
+    // "1": never hidden.
+    rt_touch_overlay_update(&s, RT_OVERLAY_DEVICES, 1, 0, 0, "1");
+    assert(!s.concealed);
+    rt_touch_overlay_update(&s, RT_OVERLAY_PAD_POLL, 1, 0, 1, "1");
+    assert(!s.concealed);
+    // "pad": off while a controller is connected, a touch does not bring it back.
+    s = (rt_overlay_state){0};
+    rt_touch_overlay_update(&s, RT_OVERLAY_DEVICES, 1, 0, 0, "pad");
+    assert(s.concealed);
+    rt_touch_overlay_update(&s, RT_OVERLAY_TOUCH, 1, 0, 0, "pad");
+    assert(s.concealed);
+    // ...and comes back once the controller disconnects.
+    rt_touch_overlay_update(&s, RT_OVERLAY_DEVICES, 0, 0, 0, "pad");
+    assert(!s.concealed);
+    rt_touch_overlay_update(&s, RT_OVERLAY_TOUCH, 0, 0, 0, "pad");
+    assert(!s.concealed);
+}

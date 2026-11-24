@@ -1,6 +1,7 @@
 // Dispositions des commandes tactiles (voir touch_layout.h).
 #include "touch_layout.h"
 #include <stddef.h>
+#include <string.h>
 
 // Tailles de touch_controls.m : bouton 54 pt, portail 60 pt, petits boutons
 // des coins aux trois quarts (40,5 pt), à 0,45 bouton du bord.
@@ -69,4 +70,25 @@ double rt_touch_look_rest(rt_ios_layout layout) { return layout == RT_IOS_LAYOUT
 void rt_touch_place(const rt_touch_button *b, double x, double y, double w, double h, double *cx, double *cy) {
     *cx = x + w * b->ax + b->ox;
     *cy = y + h * b->ay + b->oy;
+}
+
+void rt_touch_overlay_update(rt_overlay_state *s, rt_overlay_event event, int pad, int keyboard,
+                             int pad_active, const char *mode) {
+    int always = mode && *mode == '1';
+    int off_with_pad = mode && !strcmp(mode, "pad");
+    switch (event) {
+    case RT_OVERLAY_DEVICES:
+        s->concealed = !always && (pad || keyboard);
+        break;
+    case RT_OVERLAY_TOUCH:
+        s->concealed = !always && off_with_pad && pad;
+        s->pad_held = pad_active;   // a button held through the touch does not count as new input
+        break;
+    case RT_OVERLAY_PAD_POLL:
+        // New input only (pressed since the last poll): a stick resting past the
+        // dead zone or a button held while touching does not fight the finger.
+        if (pad && pad_active && !s->pad_held && !always) s->concealed = 1;
+        s->pad_held = pad_active;
+        break;
+    }
 }

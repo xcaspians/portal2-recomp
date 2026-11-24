@@ -150,6 +150,7 @@
 				<string>Automatic</string>
 				<string>Always</string>
 				<string>Never</string>
+				<string>Off with a controller</string>
 			</array>
 			<key>Type</key>
 			<string>PSMultiValueSpecifier</string>
@@ -158,6 +159,7 @@
 				<string>auto</string>
 				<string>1</string>
 				<string>0</string>
+				<string>pad</string>
 			</array>
 		</dict>
 		<dict>
