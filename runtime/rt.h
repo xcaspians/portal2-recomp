@@ -540,6 +540,7 @@ void rt_procfs_set_cmdline(const char *bytes, size_t size);
 const char *rt_write_path(const char *path, int preserve_existing);
 const char *rt_program_path(void);
 void rt_paths_set_program(const char *name);   // défaut : portal2_linux
+const char *rt_paths_game_root(void);          // dossier du jeu (--game-dir), "" avant rt_paths_init
 int rt_paths_case_insensitive(void);           // toutes les racines résolvent la casse (native.c)
 // iOS seulement (runtime/ios/case_path.c) : casse réelle des composants d'un
 // chemin canonique au-delà des `trusted` premiers octets.

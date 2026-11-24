@@ -21,6 +21,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "live_settings.h"
+#include "mods_list.h"
+#include "rt.h"
 #include "settings_menu.h"
 #include "settings_menu_ios.h"
 
@@ -30,7 +32,7 @@ static int menu_open, closing_hold;
 int rt_ios_settings_menu_captures_pad(void) { return menu_open || closing_hold; }
 int rt_ios_settings_menu_open(void) { return menu_open; }
 
-typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE } RowKind;
+typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP } RowKind;
 
 @interface P2MenuRow : NSObject
 @property (nonatomic) RowKind kind;
@@ -41,6 +43,7 @@ typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE } RowKind;
 @property (nonatomic, strong) UISwitch *toggle;
 @property (nonatomic, strong) UISegmentedControl *segments;
 @property (nonatomic, strong) UIButton *button;
+@property (nonatomic, copy) NSString *map;   // ROW_MAP: console name (mods_list.c)
 @end
 @implementation P2MenuRow
 @end
@@ -206,6 +209,7 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         if (it->section) [self addSection:@(it->section)];
         [self addSettingRow:it];
     }
+    [self addMapsSection];
     [self addSection:@""];
     [self addResetRow];
     [rows addObject:close];   // last in controller order, first on screen
@@ -359,6 +363,93 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     [rows addObject:row];
 }
 
+// ---- Maps & Mods (docs/mods.md) ----
+// Custom maps under the game folder: portal2/maps/custom and workshop (any
+// depth), and maps/ of the portal2_dlcN addons; rt_mods_map_name keeps those
+// the console can start.
+- (NSArray<NSString *> *)customMaps:(NSMutableArray<NSString *> *)addons {
+    const char *root = rt_paths_game_root();
+    if (!root || !*root) return @[];
+    NSString *game = @(root);
+    NSFileManager *files = NSFileManager.defaultManager;
+    NSMutableArray<NSString *> *found = [NSMutableArray array];
+    for (NSString *sub in @[@"portal2/maps/custom", @"portal2/maps/workshop"])
+        for (NSString *relative in [files enumeratorAtPath:[game stringByAppendingPathComponent:sub]])
+            [found addObject:[sub stringByAppendingPathComponent:relative]];
+    for (NSString *folder in [files contentsOfDirectoryAtPath:game error:nil]) {
+        if (!rt_mods_addon_folder(folder.UTF8String)) continue;
+        [addons addObject:folder];
+        NSString *maps = [folder stringByAppendingPathComponent:@"maps"];
+        for (NSString *name in [files contentsOfDirectoryAtPath:[game stringByAppendingPathComponent:maps] error:nil])
+            [found addObject:[maps stringByAppendingPathComponent:name]];
+    }
+    NSMutableArray<NSString *> *maps = [NSMutableArray array];
+    char name[256];
+    for (NSString *relative in found)
+        if (rt_mods_map_name(relative.UTF8String, name, sizeof(name))) [maps addObject:relative];
+    [addons sortUsingSelector:@selector(localizedStandardCompare:)];
+    return [maps sortedArrayUsingSelector:@selector(localizedStandardCompare:)];
+}
+- (void)addNote:(NSString *)text {
+    UILabel *l = label(text, 14, UIFontWeightRegular, .6);
+    l.numberOfLines = 0;
+    UIView *box = [UIView new];
+    [box addSubview:l];
+    [NSLayoutConstraint activateConstraints:@[
+        [l.leadingAnchor constraintEqualToAnchor:box.leadingAnchor constant:14],
+        [l.trailingAnchor constraintEqualToAnchor:box.trailingAnchor constant:-14],
+        [l.topAnchor constraintEqualToAnchor:box.topAnchor constant:4],
+        [l.bottomAnchor constraintEqualToAnchor:box.bottomAnchor constant:-6],
+    ]];
+    [stack addArrangedSubview:box];
+}
+- (void)addMapsSection {
+    [self addSection:@"Maps & Mods"];
+    NSMutableArray<NSString *> *addons = [NSMutableArray array];
+    NSArray<NSString *> *maps = [self customMaps:addons];
+    BOOL can_start = rt_ios_game_commands_available() != 0;
+    __weak P2SettingsMenu *weakSelf = self;
+    for (NSString *relative in maps) {
+        char name[256], origin[64];
+        rt_mods_map_name(relative.UTF8String, name, sizeof(name));
+        rt_mods_map_origin(relative.UTF8String, origin, sizeof(origin));
+        P2MenuRow *row = [P2MenuRow new];
+        row.kind = ROW_MAP;
+        row.map = @(name);
+        __weak P2MenuRow *weakRow = row;
+        UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
+        conf.title = relative.lastPathComponent.stringByDeletingPathExtension;
+        conf.subtitle = @(origin);
+        conf.image = [UIImage systemImageNamed:@"map.fill"];
+        conf.imagePadding = 10;
+        conf.baseForegroundColor = UIColor.whiteColor;
+        conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+        row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+            (void)a; [weakSelf startMap:weakRow];
+        }]];
+        row.button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+        row.button.enabled = can_start;
+        row.view = row.button;
+        row.view.layer.cornerRadius = 12;
+        [row.button.heightAnchor constraintGreaterThanOrEqualToConstant:52].active = YES;
+        [stack addArrangedSubview:row.button];
+        [rows addObject:row];
+    }
+    if (!maps.count)
+        [self addNote:@"No custom maps yet. Put .bsp files in Files > Portal 2 > game > portal2 > maps > custom, "
+                       "then open this menu again."];
+    else if (!can_start)
+        [self addNote:@"Maps can't be started from here in this game: use launch.args (docs/mods.md)."];
+    if (addons.count)
+        [self addNote:[NSString stringWithFormat:@"Addon folders, loaded at start: %@",
+                       [addons componentsJoinedByString:@", "]]];
+}
+- (void)startMap:(P2MenuRow *)row {
+    if (!row.map || !rt_ios_game_commands_available()) return;
+    NSString *command = [@"map " stringByAppendingString:row.map];
+    if (rt_ios_game_command(command.UTF8String)) [self closeMenu];   // the engine loads it next frame
+}
+
 // ---- values ----
 - (void)refresh:(P2MenuRow *)row {
     if (row.kind != ROW_SETTING) return;
@@ -450,6 +541,7 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     switch (row.kind) {
     case ROW_CLOSE: [self closeMenu]; return;
     case ROW_RESET: [self resetPressed]; return;
+    case ROW_MAP: [self startMap:row]; return;
     case ROW_SETTING: break;
     }
     const rt_menu_item *it = row.item;
@@ -490,10 +582,19 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     if (menu_open && !paused) [self closeMenu];   // the game left its pause menu
     gear.hidden = menu_open || !paused;
     if (!gear.hidden) [self updateGearHint];
-    // P2_SETTINGS_MENU_OPEN=1 (simulator checks, no finger): opens once, at the first pause.
+    // Simulator checks, no finger: P2_SETTINGS_MENU_OPEN=1 opens the panel once,
+    // at the first pause; =map also starts the first map of Maps & Mods.
     static int auto_open = -1;
-    if (auto_open < 0) auto_open = getenv("P2_SETTINGS_MENU_OPEN") && *getenv("P2_SETTINGS_MENU_OPEN") == '1';
-    if (auto_open && !gear.hidden) { auto_open = 0; [self openMenu]; }
+    if (auto_open < 0) {
+        const char *e = getenv("P2_SETTINGS_MENU_OPEN");
+        auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : 0;
+    }
+    if (auto_open && !gear.hidden) {
+        int start = auto_open == 2;
+        auto_open = 0;
+        [self openMenu];
+        for (P2MenuRow *row in rows) if (start && row.kind == ROW_MAP) { [self startMap:row]; break; }
+    }
     if (closing_hold && ![self padActive]) closing_hold = 0;
     if (paused || menu_open) [self pollPad:paused];
 }
