@@ -13,6 +13,8 @@
 #   tools/ios_device.sh prep                     copy only Documents/prep again (after gameprep: ~80 MB)
 #   tools/ios_device.sh run [seconds] [VAR=value...]   launch (default 180 s), then fetch Documents/game.log
 #   tools/ios_device.sh backtap                  fetch the back-tap dataset (Documents/backtap/dataset.csv)
+#   tools/ios_device.sh mods push <map.bsp | folder> [portal2_dlcN]   a map or an addon onto the device
+#                                                (tools/mods_dest.py; docs/mods.md)
 #   tools/ios_device.sh saves status|pull|push [--force] [--dry-run]   saves between the Mac and the iPhone
 #                                                (tools/save_sync.py; docs/usage.md#saves-between-mac-and-iphone-portal-2; Portal 2 only)
 # Device: P2_DEVICE (UDID or name), else the first connected iPhone/iPad.
@@ -118,6 +120,17 @@ backtap)
   dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" \
     --source Documents/backtap/dataset.csv --destination "$IOS_DIR/backtap/dataset.csv"
   echo "dataset: $IOS_DIR/backtap/dataset.csv ($(($(wc -l < "$IOS_DIR/backtap/dataset.csv") - 1)) examples)"
+  ;;
+mods)
+  # Cartes dans Documents/game/portal2/maps/custom, extensions dans
+  # Documents/game/portal2_dlcN (tools/mods_dest.py : destinations vérifiées).
+  [ "${2:-}" = push ] && [ -n "${3:-}" ] || { echo "usage: $0 mods push <map.bsp | folder> [portal2_dlcN]"; exit 2; }
+  pairs=$(python3 tools/mods_dest.py "$3" ${4:+"$4"}) || exit 2
+  while IFS=$'\t' read -r from to; do   # </dev/null : devicectl ne doit pas lire la liste
+    echo "$from -> $to"
+    copy_to "$APP_ID" "$from" "$to" >/dev/null </dev/null
+  done <<< "$pairs"
+  echo "Copied. In the game: pause menu > Touch Controls > Maps & Mods, or a line +map custom/<name> in Documents/launch.args"
   ;;
 saves)
   # tools/save_sync.py knows Portal 2's folders only (portal2-userdata/portal2).
