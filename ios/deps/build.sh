@@ -1,18 +1,23 @@
 #!/bin/bash
 # Dépendances hôtes du port iOS (simulateur arm64 par défaut), construites dans
 # ../work/ios-deps à côté du dépôt (là où tools/build_ios.py les cherche).
-#   ios/deps/build.sh [sim|device]
+#   ios/deps/build.sh [sim|device] [--prefix]   (--prefix : affiche le dossier d'installation, sans rien construire)
 # Sources à versions fixées : SDL2 2.30.9, FreeType 2.13.3, gl4es (commit
 # ci-dessous) avec les correctifs de gl4es-ios.patch.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WORK="${P2_IOS_DEPS:-$(cd "$HERE/../../.." && pwd)/work/ios-deps}"
+# Chemin absolu : le script se place ensuite dans WORK, et un P2_IOS_DEPS
+# relatif (docs/ios.md : P2_IOS_DEPS=deps/ios-deps) installait sinon dans
+# deps/ios-deps/deps/ios-deps/<cible>, où tools/build_ios.py --deps ne cherche pas.
+case "$WORK" in /*) ;; *) WORK="$PWD/$WORK" ;; esac
 TARGET="${1:-sim}"
 case "$TARGET" in
   sim)    SYSROOT=iphonesimulator ;;
   device) SYSROOT=iphoneos ;;
-  *) echo "usage: $0 [sim|device]"; exit 2 ;;
+  *) echo "usage: $0 [sim|device] [--prefix]"; exit 2 ;;
 esac
+if [ "${2:-}" = --prefix ]; then echo "$WORK/$TARGET"; exit 0; fi
 GL4ES_COMMIT=a025615bc79ac43ec911dced8fe5b8eb45a0b72d
 mkdir -p "$WORK/src"
 cd "$WORK"
