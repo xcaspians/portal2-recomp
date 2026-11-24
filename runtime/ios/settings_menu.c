@@ -26,6 +26,7 @@ const rt_menu_item rt_menu_items[] = {
     {"P2GyroSpeed", NULL, "Gyro speed", RT_MENU_CHOICE, "1", 0, 0, 0, 0, NULL, gyro_values, gyro_labels, 0},
     {"P2MaxFPS", "Display", "Frames per second", RT_MENU_CHOICE, "60", 0, 0, 0, 0, NULL, fps_values, fps_labels,
      RT_MENU_RELAUNCH_ON_METAL},
+    {"P2ICloudSaves", "iCloud", "iCloud saves", RT_MENU_TOGGLE, "1", 0, 0, 0, 0, NULL, NULL, NULL, 0},
 };
 const int rt_menu_item_count = (int)(sizeof(rt_menu_items) / sizeof(*rt_menu_items));
 

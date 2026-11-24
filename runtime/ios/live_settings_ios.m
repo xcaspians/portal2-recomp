@@ -7,6 +7,7 @@
 #include <string.h>
 #include "backtap_ios.h"
 #include "gyro_ios.h"
+#include "icloud_saves.h"
 #include "live_settings.h"
 #include "power_ios.h"
 #include "settings.h"
@@ -33,6 +34,7 @@ static void apply(const char *key, const char *value) {
     if (!strncmp(key, "P2BackTap", 9)) rt_ios_backtap_reload();
     if (!strncmp(key, "P2Gyro", 6)) rt_ios_gyro_reload();
     if (!strcmp(key, "P2MaxFPS")) rt_ios_power_reload();
+    if (!strcmp(key, "P2ICloudSaves")) rt_ios_icloud_reload();
     [NSNotificationCenter.defaultCenter postNotificationName:@"P2SettingsChanged" object:@(key)];
 }
 
