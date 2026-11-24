@@ -28,12 +28,8 @@ if [ ! -d src/gl4es ]; then
   git clone https://github.com/ptitSeb/gl4es.git src/gl4es
   git -C src/gl4es checkout -q "$GL4ES_COMMIT"
 fi
-# Correctifs : appliqués si l'arbre est propre, vérifiés sinon.
-if git -C src/gl4es diff --quiet; then
-  git -C src/gl4es apply "$HERE/gl4es-ios.patch"
-elif ! git -C src/gl4es diff | cmp -s - "$HERE/gl4es-ios.patch"; then
-  echo "src/gl4es modifié et différent de gl4es-ios.patch : à réconcilier" >&2; exit 1
-fi
+# Correctifs : appliqués si l'arbre est propre, vérifiés sinon (patch_state.sh).
+"$HERE/patch_state.sh" src/gl4es "$HERE/gl4es-ios.patch"
 
 PREFIX="$WORK/$TARGET"
 COMMON=(-G Ninja -DCMAKE_SYSTEM_NAME=iOS "-DCMAKE_OSX_SYSROOT=$SYSROOT" -DCMAKE_OSX_ARCHITECTURES=arm64
