@@ -128,7 +128,7 @@ def main():
     subprocess.run(link, check=True)
     plist = (ROOT / 'ios/Info.plist.in').read_text()
     for key, value in dict(EXECUTABLE=game['ios_executable'], IDENTIFIER=bundle_id(game=game['name']), NAME=game['ios_name'],
-                           GAME=game['name'], PLATFORM=target['plist']).items():
+                           GAME=game['name'], PLATFORM=target['plist'], FORK_VERSION=fork_version()).items():
         plist = plist.replace(f'@{key}@', value)
     (app / 'Info.plist').write_text(plist)
     # Page du jeu dans l'app Réglages d'iOS (lue par runtime/ios/settings.c).
@@ -143,6 +143,23 @@ def main():
     size = (app / game['ios_executable']).stat().st_size
     print(f'{app} : exécutable {size / 1e6:.0f} Mo, {time.time() - started:.0f} s au total')
     print(f'rendu Metal : {d3d9metal}' if d3d9metal else 'rendu Metal : absent (OpenGL seulement, voir --d3d9metal)')
+
+
+# Version of Jacksen's fork, shown at the bottom of the in-game settings menu
+# (Info.plist key P2ForkVersion, settings_menu_ios.m).
+FORK_VERSION = '0.4.0-fork.2'
+
+
+def fork_version(root=ROOT):
+    """FORK_VERSION and the commit it was built from: "0.4.0-fork.2 (69264e7)",
+    "+" after the hash when the tree had uncommitted changes."""
+    def git(*args):
+        result = subprocess.run(['git', '-C', str(root), *args], capture_output=True, text=True)
+        return result.stdout.strip() if result.returncode == 0 else ''
+    commit = git('rev-parse', '--short=7', 'HEAD')
+    if not commit: return FORK_VERSION
+    dirty = git('status', '--porcelain', '--untracked-files=no')
+    return f'{FORK_VERSION} ({commit}{"+" if dirty else ""})'
 
 
 def launch_args(game, config):
