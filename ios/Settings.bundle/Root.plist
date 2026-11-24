@@ -263,6 +263,42 @@
 			</array>
 		</dict>
 		<dict>
+			<key>Title</key>
+			<string>Button opacity</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<real>1</real>
+			<key>Key</key>
+			<string>P2TouchOpacity</string>
+			<key>MaximumValue</key>
+			<real>1</real>
+			<key>MinimumValue</key>
+			<real>0</real>
+			<key>Type</key>
+			<string>PSSliderSpecifier</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>Button size</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<real>1</real>
+			<key>Key</key>
+			<string>P2TouchSize</string>
+			<key>MaximumValue</key>
+			<real>1.5</real>
+			<key>MinimumValue</key>
+			<real>0.75</real>
+			<key>Type</key>
+			<string>PSSliderSpecifier</string>
+		</dict>
+		<dict>
 			<key>FooterText</key>
 			<string>Tap the back of the phone near the left edge for the blue portal, near the right edge for the orange one. Without back taps, portal buttons appear at the top of the screen. “Record taps” writes the sensor readings of each game to Portal 2’s backtap folder (Files app) and shows a ✗ button to report a wrong shot or a missed tap.</string>
 			<key>Title</key>
@@ -289,28 +325,6 @@
 			<string>Vibrate when firing</string>
 			<key>Type</key>
 			<string>PSToggleSwitchSpecifier</string>
-		</dict>
-		<dict>
-			<key>DefaultValue</key>
-			<string>1</string>
-			<key>Key</key>
-			<string>P2BackTapSensitivity</string>
-			<key>Title</key>
-			<string>Tap sensitivity</string>
-			<key>Titles</key>
-			<array>
-				<string>Low</string>
-				<string>Normal</string>
-				<string>High</string>
-			</array>
-			<key>Type</key>
-			<string>PSMultiValueSpecifier</string>
-			<key>Values</key>
-			<array>
-				<string>0.75</string>
-				<string>1</string>
-				<string>1.33</string>
-			</array>
 		</dict>
 		<dict>
 			<key>DefaultValue</key>
@@ -353,6 +367,26 @@
 				<string>1</string>
 				<string>0</string>
 			</array>
+		</dict>
+		<dict>
+			<key>FooterText</key>
+			<string>From 0.5 (only firm taps) to 3 (light taps); 1 is the original. Also in the game: pause menu, gear button.</string>
+			<key>Title</key>
+			<string>Tap sensitivity</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<real>1</real>
+			<key>Key</key>
+			<string>P2BackTapSensitivity</string>
+			<key>MaximumValue</key>
+			<real>3</real>
+			<key>MinimumValue</key>
+			<real>0.5</real>
+			<key>Type</key>
+			<string>PSSliderSpecifier</string>
 		</dict>
 		<dict>
 			<key>FooterText</key>
