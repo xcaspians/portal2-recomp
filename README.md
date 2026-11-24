@@ -241,7 +241,7 @@ On the phone, trust your account in Settings > General > VPN & Device
 Management. With a free account, re-run `./setup.sh --ios` every 7 days.
 `P2_TEAM_ID` sets the team when it cannot be read from the certificate;
 `P2_DEVICE` picks the iPhone when several are connected.
-More in [docs/ios.md](docs/ios.md).
+More in [docs/ios.md](docs/ios.md); custom maps and addons in [docs/mods.md](docs/mods.md).
 
 ## Play
 
@@ -478,6 +478,7 @@ profiles.
 - [docs/hl2.md](docs/hl2.md): Half-Life 2 (experimental)
 - [docs/portal1.md](docs/portal1.md): Portal (experimental)
 - [docs/ios.md](docs/ios.md): iOS port, controls, settings, back taps
+- [docs/mods.md](docs/mods.md): custom maps, addon folders and console tweaks on iPhone and iPad
 - [docs/backtap.md](docs/backtap.md): back-tap detector, recordings and dataset
 - [docs/d3d9-bridge.md](docs/d3d9-bridge.md): Metal renderer (Direct3D 9 bridge)
 - [docs/steam.md](docs/steam.md): Steam bridge
