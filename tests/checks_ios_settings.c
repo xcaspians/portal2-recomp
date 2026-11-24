@@ -126,7 +126,7 @@ static void assert_choices(const char *key, const char *def, const char *const *
 }
 RT_CHECK(ios_settings_choices_match_code) {
     // P2_IOS_MAX_FPS : 60 par défaut (power_ios.m), 40 demande l'écran à 120 Hz (gl_ios.m).
-    assert_choices("P2MaxFPS", "60", (const char *const[]){"30", "40", "60", "120", NULL});
+    assert_choices("P2MaxFPS", "60", (const char *const[]){"30", "40", "60", "120", "auto", NULL});
     assert_choices("P2ResolutionScale", "2", (const char *const[]){"native", "2", "1.5", "1", NULL});
     assert_choices("P2Upscale", "1", (const char *const[]){"1", "0.75", "0.5", NULL});
     // P2_GYRO_SPEED : multiplicateur, 1 par défaut (gyro_aim.c).
@@ -148,4 +148,15 @@ RT_CHECK(ios_metal_keys_add_render_scale) {
     }
     rt_ios_metal_keys(keys, sizeof(keys), 60, NULL, NULL);
     assert(!strcmp(keys, "present.maxFps=60"));
+}
+
+// P2_IOS_MAX_FPS=auto: the screen's maximum (ProMotion 120, else 60); numbers
+// unchanged; nothing or garbage gives the 60 default.
+RT_CHECK(ios_fps_auto_follows_the_screen) {
+    assert(rt_ios_fps_choice("auto", 120) == 120);
+    assert(rt_ios_fps_choice("auto", 60) == 60);
+    assert(rt_ios_fps_choice("auto", 0) == 60);   // screen rate unknown
+    assert(rt_ios_fps_choice("40", 120) == 40 && rt_ios_fps_choice("120", 60) == 120);
+    assert(rt_ios_fps_choice(NULL, 120) == 60 && rt_ios_fps_choice("", 120) == 60);
+    assert(rt_ios_fps_choice("fast", 120) == 60 && rt_ios_fps_choice("0", 120) == 60);
 }

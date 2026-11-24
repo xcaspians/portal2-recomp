@@ -98,3 +98,9 @@ static int preference(void *ctx, const char *key, char *out, size_t size) {
 
 int rt_ios_settings_load(char *summary, size_t size) { return rt_ios_settings_apply(preference, NULL, summary, size); }
 #endif
+
+int rt_ios_fps_choice(const char *value, int screen_max) {
+    if (value && !strcmp(value, "auto")) return screen_max >= 120 ? 120 : 60;
+    int n = value && *value ? atoi(value) : 0;
+    return n >= 1 ? n : 60;
+}

@@ -175,7 +175,7 @@ The page is in English, and in French on a device set to French
 | Setting | Variable | Values |
 |---|---|---|
 | Resolution | `P2_IOS_RENDER_SCALE` (+ the game's `-w`/`-h`) | native, ×2 (default), ×1.5, ×1 |
-| Frames per second | `P2_IOS_MAX_FPS` | 30, 40, 60 (default), 120; see "Frame rate cap" |
+| Frames per second | `P2_IOS_MAX_FPS` | 30, 40, 60 (default), 120, auto (the screen's maximum: 120 on ProMotion, 60 otherwise); see "Frame rate cap" |
 | Auto power saving | `P2_IOS_POWER_SAVE` | on by default: at most 30 fps in Low Power Mode or when the phone is hot |
 | Renderer | `P2_RENDERER` | Metal: `d3d9` (default), `opengl`; see "Metal renderer" |
 | Upscaling (MetalFX) | `P2_IOS_UPSCALE` | Off (1, default), Quality (0.75), Performance (0.5); Metal only, see "Metal renderer" |
@@ -197,7 +197,10 @@ The page is in English, and in French on a device set to French
 ### Frame rate cap
 
 `P2_IOS_MAX_FPS` (Frames per second) is the ceiling, read at launch by
-`runtime/ios/power_ios.m`:
+`runtime/ios/power_ios.m` (`auto` becomes 120 on a ProMotion screen and 60
+otherwise, from `UIScreen.maximumFramesPerSecond`; `rt_ios_fps_choice` in
+`settings.c`, checked by `tests/checks_ios_settings.c`). 60 stays the default
+until 120 is measured to hold in a busy chamber on the test devices:
 
 - Metal: `present.maxFps=<cap>` in `MTLD3D_CONFIG`; mtld3d holds presents to it.
 - OpenGL: 60 and 120 are paced by the display; under 60 the runtime waits
