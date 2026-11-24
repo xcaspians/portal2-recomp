@@ -49,6 +49,7 @@
 				<string>40 (ProMotion)</string>
 				<string>60 (recommended)</string>
 				<string>120 (ProMotion)</string>
+				<string>Auto (screen's max)</string>
 			</array>
 			<key>Type</key>
 			<string>PSMultiValueSpecifier</string>
@@ -58,6 +59,7 @@
 				<string>40</string>
 				<string>60</string>
 				<string>120</string>
+				<string>auto</string>
 			</array>
 		</dict>
 		<dict>
