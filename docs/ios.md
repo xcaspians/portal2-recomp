@@ -223,6 +223,7 @@ dark, translucent panel drawn by the runtime over the game
 | Back taps | Tap sensitivity (0.5 to 3), Swap left and right, Vibrate when firing |
 | Camera | Camera speed, Gyro aiming, Gyro speed |
 | Display | Frames per second (including Auto) |
+| Maps & Mods | custom maps found in `game/portal2/maps/custom`, `maps/workshop` and `portal2_dlcN/maps` (N ≥ 3); a tap starts one ([mods.md](mods.md)) |
 | | Reset to defaults (press twice), the fork's version at the bottom |
 
 - **Live:** every change applies at once and is saved in the app's
@@ -245,8 +246,16 @@ dark, translucent panel drawn by the runtime over the game
   from the symbols of the Mac edition's `engine.dylib`; `game_state.c`
   checks them at run time and leaves the gear off if they don't behave).
   Portal 2 only: Half-Life 2 and Portal use other interface versions.
+- **Maps & Mods:** the list is read each time the panel opens
+  (`runtime/ios/mods_list.c` turns a file into the name the console loads,
+  and refuses any name that could carry a second command). A tap sends
+  `map <name>` through `IVEngineClient::ClientCmd_Unrestricted` (entry 108),
+  which the engine runs at its next frame, and closes the panel.
 - `P2_SETTINGS_MENU_OPEN=1` opens the panel at the first pause (simulator
-  checks, where no finger can press the gear).
+  checks, where no finger can press the gear); `=map` also starts the first
+  map of Maps & Mods. Checked in the simulator on 24 November 2026: a map in
+  `portal2_dlc3/maps` was listed, started and loaded, so the runtime mounts
+  addon folders (still to confirm on a device).
 
 The touch overlay must be on (On-screen controls not set to "Never") for the
 gear to exist; the Settings app page always works.
