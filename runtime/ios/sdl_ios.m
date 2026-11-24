@@ -9,6 +9,7 @@
 #include <string.h>
 #include "lifecycle_ios.h"
 #include "settings.h"
+#include "settings_menu_ios.h"
 
 // Échelle points -> pixels. Sur simulateur (rendu OpenGL ES logiciel,
 // 0,5 image/s en 2622×1206), 1 par défaut. Sur appareil, 2 par défaut (voir
@@ -103,10 +104,23 @@ void rt_ios_warp_mouse_in_window(SDL_Window *window, int x, int y) { SDL_WarpMou
 
 // Positions absolues et tailles de fenêtre en pixels ; les déplacements
 // relatifs (visée) gardent leur échelle, pour ne pas tripler la sensibilité.
+// Menu des réglages ouvert (settings_menu_ios.m) : la manette le pilote, le
+// jeu ne voit ni appui ni mouvement de stick ; les relâchements passent, pour
+// qu'aucun bouton ne reste enfoncé côté jeu.
+static int pad_event_dropped(const SDL_Event *e) {
+    if (!rt_ios_settings_menu_captures_pad()) return 0;
+    switch (e->type) {
+    case SDL_CONTROLLERBUTTONDOWN: case SDL_CONTROLLERAXISMOTION: case SDL_JOYBUTTONDOWN:
+    case SDL_JOYAXISMOTION: case SDL_JOYHATMOTION: case SDL_JOYBALLMOTION: return 1;
+    default: return 0;
+    }
+}
+
 int rt_ios_poll_event(SDL_Event *event) {
     rt_ios_pause_while_inactive();   // app quittée : attendre son retour (lifecycle_ios.m)
     rt_ios_game_state_poll();   // menus/chargement ou partie (game_state.c), pour les commandes tactiles
-    int got = SDL_PollEvent(event);
+    int got;
+    do got = SDL_PollEvent(event); while (got && event && pad_event_dropped(event));
     if (!got || !event || rt_ios_render_scale() <= 1) return got;
     switch (event->type) {
     case SDL_MOUSEMOTION: event->motion.x = up(event->motion.x); event->motion.y = up(event->motion.y); break;

@@ -196,6 +196,77 @@ static void autoexec(CPU *c) {
     if (!next) done = 1;
 }
 
+// ---- In a level, and commands for the engine (in-game settings menu) -----
+// The menu's gear shows only in the pause menu: game UI visible *and* a level
+// loaded, which the engine says through IVEngineClient ("VEngineClient015",
+// engine.so, Portal 2 only): IsInGame is entry 25 of its table,
+// IsLevelMainMenuBackground 90 and ClientCmd_Unrestricted 108. These indices
+// come from the symbols of the Mac edition's engine.dylib, which exports the
+// same interface version (the Linux engine.so is stripped). Checked at run
+// time: every entry must point into the code, both answers must be booleans,
+// and gameplay (game UI hidden) must report a level; otherwise the menu never
+// shows its gear rather than guessing.
+enum { CLIENT_IS_IN_GAME = 25, CLIENT_IS_MENU_BACKGROUND = 90, CLIENT_CMD_UNRESTRICTED = 108 };
+static uint32_t engine_client;    // 0: not yet; 1: unavailable (other game, failed check)
+static int in_level;
+static int level_mismatch;        // polls in gameplay that reported no level
+static char command_queue[4][256];
+static int command_count;
+
+int rt_ios_game_in_level(void) { return in_level; }
+int rt_ios_game_paused(void) { return ui_visible && in_level; }
+int rt_ios_game_commands_available(void) { return engine_client > 1; }
+// Main thread (UIKit callbacks run inside SDL_PollEvent, like the poll below).
+int rt_ios_game_command(const char *line) {
+    if (engine_client <= 1 || command_count >= 4 || strlen(line) >= sizeof(command_queue[0])) return 0;
+    snprintf(command_queue[command_count++], sizeof(command_queue[0]), "%s", line);
+    return 1;
+}
+
+static void client_unavailable(const char *why) {
+    engine_client = 1; in_level = 0; command_count = 0;
+    fprintf(stderr, "[ios] IVEngineClient : %s ; menu des réglages sans engrenage\n", why);
+}
+static void find_engine_client(CPU *c) {
+    if (strcmp(rt_ios_current_game()->mod, "portal2")) { engine_client = 1; return; }
+    const GuestModule *engine = rt_find_module("engine.so");
+    uint32_t create = engine ? rt_module_symbol(engine, "CreateInterface") : 0;
+    uint32_t text = create ? guest_text("VEngineClient015") : 0;
+    uint32_t args[2] = {text, 0};
+    uint32_t client = text ? rt_invoke(c, create, args, 2) : 0;
+    rt_free(text);
+    if (!plausible(client) || !plausible(R32(client))) { client_unavailable("introuvable"); return; }
+    uint32_t table = R32(client);
+    static const int used[] = {CLIENT_IS_IN_GAME, CLIENT_IS_MENU_BACKGROUND, CLIENT_CMD_UNRESTRICTED};
+    for (size_t i = 0; i < sizeof(used) / sizeof(*used); ++i)
+        if (!plausible(R32(table + used[i] * 4))) { client_unavailable("table inattendue"); return; }
+    engine_client = client;
+    fprintf(stderr, "[ios] état du jeu : IVEngineClient à %#x\n", engine_client);
+}
+static void update_level(CPU *c, int visible) {
+    if (!engine_client && engine_vgui) find_engine_client(c);
+    if (engine_client <= 1) return;
+    uint32_t table = R32(engine_client);
+    uint32_t game = rt_invoke(c, R32(table + CLIENT_IS_IN_GAME * 4), &engine_client, 1) & 0xff;
+    uint32_t background = rt_invoke(c, R32(table + CLIENT_IS_MENU_BACKGROUND * 4), &engine_client, 1) & 0xff;
+    if (game > 1 || background > 1) { client_unavailable("réponse non booléenne"); return; }
+    // Two seconds of gameplay without a level: not the method we think.
+    level_mismatch = !visible && !game ? level_mismatch + 1 : 0;
+    if (level_mismatch > 20) { client_unavailable("partie sans niveau"); return; }
+    int now = game && !background;
+    if (now != in_level) fprintf(stderr, "[ios] niveau %s\n", now ? "chargé" : "fermé");
+    in_level = now;
+    for (int i = 0; i < command_count; ++i) {
+        uint32_t text = guest_text(command_queue[i]);
+        if (!text) continue;
+        uint32_t cmd_args[2] = {engine_client, text};
+        fprintf(stderr, "[ios] commande au moteur : %s\n", command_queue[i]);
+        rt_invoke(c, R32(table + CLIENT_CMD_UNRESTRICTED * 4), cmd_args, 2);   // to the command buffer: next frame
+        rt_free(text);
+    }
+    command_count = 0;
+}
+
 void rt_ios_game_state_poll(void) {
     uint64_t now = SDL_GetTicks64();
     if (now < next_query) return;
@@ -223,6 +294,7 @@ void rt_ios_game_state_poll(void) {
     // déplacement de souris le ramène en mode souris (runtime/sdl_input.c).
     if (visible && !ui_visible) rt_input_nudge_mouse();
     ui_visible = visible;
+    update_level(c, visible);
     if (linear_wanted || saved_response[0]) update_move_response(c);
     autoexec(c);
 }

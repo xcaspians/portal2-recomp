@@ -118,3 +118,15 @@ class LaunchArgs(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ForkVersionTests(unittest.TestCase):
+    """Version shown at the bottom of the in-game settings menu."""
+    def test_version_names_the_commit(self):
+        import re
+        self.assertRegex(build_ios.fork_version(), r'^' + re.escape(build_ios.FORK_VERSION) + r' \([0-9a-f]{7}\+?\)$')
+
+    def test_outside_a_repository_the_bare_version(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(build_ios.fork_version(Path(tmp)), build_ios.FORK_VERSION)
