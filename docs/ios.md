@@ -208,6 +208,47 @@ The page is in English, and in French on a device set to French
 | Record taps | `P2_BACKTAP_RAW=Documents/backtap/` | off; see [backtap.md](backtap.md) |
 | Log | `P2_LOG_FILE=Documents/game.log` | |
 
+## In-game settings menu (Portal 2)
+
+A **Touch Controls** gear button shows at the top right **only while the
+game's pause menu is open** (never in gameplay or the main menu). It opens a
+dark, translucent panel drawn by the runtime over the game
+(`runtime/ios/settings_menu_ios.m`, items in `runtime/ios/settings_menu.c`):
+
+| Section | Items |
+|---|---|
+| On-screen buttons | Button opacity, Button size, Show portal buttons |
+| Back taps | Tap sensitivity (0.5 to 3), Swap left and right, Vibrate when firing |
+| Camera | Camera speed, Gyro aiming, Gyro speed |
+| Display | Frames per second (including Auto) |
+| | Reset to defaults (press twice), the fork's version at the bottom |
+
+- **Live:** every change applies at once and is saved in the app's
+  preferences (see "Source of truth" above), so it is also on the Settings
+  app page and kept after a relaunch. The touch buttons are drawn behind the
+  open panel so opacity and size changes show while you drag. One exception:
+  with the Metal renderer the frame rate cap applies on the next launch
+  (mtld3d reads it once); the panel says so under that item.
+- **Touch:** sliders, switches and segmented choices; the ✕ closes it.
+- **Controller:** the options button (View, Select or −; its name is shown
+  under the gear when a controller is connected) opens and closes it; d-pad or
+  left stick up and down move between items, left and right change the
+  focused item; A flips a switch, steps a choice or presses a button; B
+  closes. While the panel is open the game gets no controller presses or stick
+  motion (`sdl_ios.m`), and a button still held when it closes is kept from
+  the game until released.
+- **When the gear shows:** game UI visible (`IEngineVGui::IsGameUIVisible`)
+  and a level loaded: `IVEngineClient::IsInGame` and not
+  `IsLevelMainMenuBackground` (`VEngineClient015`, entries 25 and 90, read
+  from the symbols of the Mac edition's `engine.dylib`; `game_state.c`
+  checks them at run time and leaves the gear off if they don't behave).
+  Portal 2 only: Half-Life 2 and Portal use other interface versions.
+- `P2_SETTINGS_MENU_OPEN=1` opens the panel at the first pause (simulator
+  checks, where no finger can press the gear).
+
+The touch overlay must be on (On-screen controls not set to "Never") for the
+gear to exist; the Settings app page always works.
+
 ### Frame rate cap
 
 `P2_IOS_MAX_FPS` (Frames per second) is the ceiling, read at launch by

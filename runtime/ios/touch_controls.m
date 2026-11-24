@@ -58,6 +58,7 @@
 #include "touch_test.h"
 #include "lifecycle_ios.h"
 #include "live_settings.h"
+#include "settings_menu_ios.h"
 
 int rt_ios_game_ui_visible(void);   // game_state.c
 extern _Atomic unsigned long rt_ios_frames;  // gl_ios.m : images présentées
@@ -233,6 +234,8 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
     float opacity;            // P2_TOUCH_OPACITY : boutons et sticks (0 à 1)
     float sizeScale;          // P2_TOUCH_SIZE : taille des boutons et sticks (0,75 à 1,5)
     CGFloat knobSize;         // diamètre dessiné des boutons des sticks
+    UIView *settingsMenu;     // menu des réglages en jeu (settings_menu_ios.m), sous-vue
+    BOOL preview;             // menu ouvert : boutons dessinés derrière, pour voir les réglages
     BOOL menu;                // interface du jeu affichée : surcouche effacée
     NSTimer *tick;            // caméra : un pas par image tant que le stick est incliné
     float lookCarry[2];       // fractions de comptes de souris reportées
@@ -290,6 +293,9 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
         rt_ios_backtap_start();
         rt_ios_gyro_start(rt_ios_current_game()->layout == RT_IOS_LAYOUT_HL2);
         [self setupLayers];
+        // Menu des réglages : sous-vue, gardée devant les vues de SDL avec la surcouche.
+        settingsMenu = (__bridge_transfer UIView *)rt_ios_settings_menu_create();
+        [self addSubview:settingsMenu];
         __weak P2TouchControls *weakSelf = self;
         // Fin de chaque passage de la boucle (SDL la fait tourner à chaque
         // lecture d'événements) : les touchers de ce passage sont affichés d'un coup.
@@ -366,6 +372,8 @@ static BOOL pad_input_active(void) {
         [self setNeedsRender];
     }
     [self updateFPS:now];
+    rt_ios_settings_menu_tick((__bridge void *)settingsMenu);
+    if ((rt_ios_settings_menu_open() != 0) != preview) { preview = !preview; [self setNeedsRender]; }
     [self syncPad];
     // Overlay shown by a touch: the next controller input hides it again.
     if (hasGamepad && !concealed) [self overlayEvent:RT_OVERLAY_PAD_POLL padActive:pad_input_active()];
@@ -382,7 +390,7 @@ static BOOL pad_input_active(void) {
         haptic_prepare();
     }
     if (host.subviews.lastObject != self) [host bringSubviewToFront:self];
-    if (!CGRectEqualToRect(self.frame, host.bounds)) { self.frame = host.bounds; [self invalidateLayout]; }
+    if (!CGRectEqualToRect(self.frame, host.bounds)) { self.frame = host.bounds; settingsMenu.frame = self.bounds; [self invalidateLayout]; }
     [self renderIfNeeded];
     if (trackpad) return;   // trackpad : mouvements envoyés au glissement (touchesMoved)
     for (P2Finger *f in fingers.objectEnumerator) {
@@ -478,6 +486,9 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
 
 // Hors partie, les doigts passent à la vue de SDL (clics dans les menus).
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    // Menu des réglages d'abord (son engrenage vit dans le menu pause du jeu).
+    UIView *hit = [settingsMenu hitTest:[self convertPoint:point toView:settingsMenu] withEvent:event];
+    if (hit) return hit;
     return menu ? nil : [super hitTest:point withEvent:event];
 }
 - (void)releaseAll {
@@ -951,7 +962,8 @@ static void set_circle(CAShapeLayer *l, CGFloat diameter) {
     needsRender = NO;
     [CATransaction begin]; [CATransaction setDisableActions:YES];
     [self renderFPS];
-    BOOL shown = !concealed && !menu && !rt_ios_touch_test_active();   // essai : écran dégagé
+    // Menu des réglages ouvert : boutons dessinés derrière (opacité et taille en direct).
+    BOOL shown = ((!concealed && !menu) || preview) && !rt_ios_touch_test_active();   // essai : écran dégagé
     for (int right = 0; right < 2; ++right) {
         BOOL hidden = !shown || (right && trackpad);
         stickRing[right].hidden = stickKnob[right].hidden = hidden;
