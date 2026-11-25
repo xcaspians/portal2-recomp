@@ -112,6 +112,24 @@ use, crouch and sprint as toggles, weapon chevrons, flashlight, quick save
 (hold it to quick load) and pause in the top bar. Back taps are off (`P2_BACKTAP=1` maps them to fire and alt-fire). A
 controller hides the overlay, as for Portal 2.
 
+## Fork status (round 14, 25 November 2026)
+
+Built from depot 224 on an M-series Mac mini (`--release`, Steamworks.NET
+2024.8.0 for SDK 1.60):
+
+- **Mac:** main menu and `d1_trainstation_01` at about 120 fps (the display),
+  1.2 GB; no missing import and no new root.
+- **iPad Pro (iPad17,1), its own app** (signed with the team's wildcard
+  profile, so no new App ID: no iCloud and no increased-memory entitlement):
+  main menu; `d1_trainstation_01` at **100 to 120 fps** with Frames per
+  second on Auto (60 by default), memory **1.2 GB** (peak 1.55 GB, 3.9 GB
+  left before iOS's limit, `P2_MEMORY_LOG=1`); `d1_canals_01` loads. The
+  fork's gear menu, layout editor, version line ("Half-Life 2 · recomp fork ·
+  version …") and FPS counter (top centre, under the weapon buttons) all show.
+- **Not checked yet:** the ammo readout against the bottom-right buttons (an
+  unattended run starts maps without a weapon), saves across chapters, sound
+  over a long session.
+
 ## Known limits
 
 - Indirect call targets are still being discovered; a crash ending with

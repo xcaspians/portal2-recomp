@@ -226,6 +226,10 @@ static const client_slots kClientSlots[] = {
     {"mel", "VEngineClient015", 25, 90, 108},
     {"hl2", "VEngineClient014", 26, 87, 106},
     {"portal1", "VEngineClient014", 26, 87, 106},
+    // Left 4 Dead 2: VEngineClient013, from the Mac edition's engine.dylib
+    // (CEngineClient's vtable: IsInGame 26, IsLevelMainMenuBackground 90,
+    // ClientCmd_Unrestricted 106).
+    {"l4d2", "VEngineClient013", 26, 90, 106},
 };
 static const client_slots *slots;
 #define CLIENT_IS_IN_GAME (slots->in_game)
@@ -250,6 +254,20 @@ int rt_ios_game_command(const char *line) {
     if (engine_client <= 1 || command_count >= 4 || strlen(line) >= sizeof(command_queue[0])) return 0;
     snprintf(command_queue[command_count++], sizeof(command_queue[0]), "%s", line);
     return 1;
+}
+
+// P2_MEMORY_LOG=1 (device measurements): the process's memory footprint, now
+// and at its peak (what iOS counts against the app's limit), every 10 s.
+static void memory_log(uint64_t now) {
+    static int on = -1;
+    static uint64_t next;
+    if (on < 0) on = rt_env_flag("P2_MEMORY_LOG");
+    if (!on || now < next) return;
+    next = now + 10000;
+    long long current, peak, available;
+    if (!rt_ios_memory_footprint(&current, &peak, &available)) return;
+    fprintf(stderr, "[ios] mémoire : %lld Mo maintenant, pic %lld Mo, %lld Mo encore disponibles%s\n", current >> 20,
+            peak >> 20, available >> 20, in_level ? " (en partie)" : "");
 }
 
 // P2_IOS_MENU_EXEC="<console command>" (device tests: tools/ios_device.sh mel
@@ -423,5 +441,6 @@ void rt_ios_game_state_poll(void) {
     if (linear_wanted || saved_response[0]) update_move_response(c);
     autoexec(c);
     menu_exec(now);
+    memory_log(now);
 }
 #endif

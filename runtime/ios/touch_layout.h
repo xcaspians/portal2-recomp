@@ -20,6 +20,9 @@ typedef enum {
     RT_TOUCH_WEAPON_PREV,   // molette vers le haut (invprev)
     RT_TOUCH_WEAPON_NEXT,   // molette vers le bas (invnext)
     RT_TOUCH_QUICKSAVE,     // F6 (save quick)
+    // Left 4 Dead 2's item slots (keys 1 to 5): primary, secondary, throwable,
+    // medkit, pills. Added at the end: stored layouts name actions, not numbers.
+    RT_TOUCH_SLOT1, RT_TOUCH_SLOT2, RT_TOUCH_SLOT3, RT_TOUCH_SLOT4, RT_TOUCH_SLOT5,
     RT_TOUCH_ACTION_COUNT
 } rt_touch_action;
 
@@ -57,9 +60,9 @@ void rt_touch_place_scaled(const rt_touch_button *b, double scale, double x, dou
 // FPS counter (gear menu > FPS counter): its box in points from the safe
 // area's corner (width area_w), for `lines` lines of at most `chars`
 // characters of the 5x7 pixel font at `pixel` points per font pixel
-// (touch_controls.m draws it). Clear of every button: top centre in Portal's
-// layout (the portal buttons sit under the top left corner), top left in
-// Half-Life 2's (its weapon buttons are at the top centre).
+// (touch_controls.m draws it). Clear of every button at every Button size:
+// top centre (the portal buttons sit under the top left corner), and in
+// Half-Life 2's and Left 4 Dead 2's layouts under their top row of buttons.
 void rt_touch_fps_box(rt_ios_layout layout, double area_w, int chars, int lines, double pixel, double *x, double *y,
                       double *w, double *h);
 
