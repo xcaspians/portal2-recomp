@@ -261,3 +261,22 @@ RT_CHECK(ios_menu_pad_filter_lets_releases_and_centring_through) {
     assert(!rt_menu_pad_dropped(RT_PAD_BUTTON_DOWN, 1, 0, 0, 0));
     assert(!rt_menu_pad_dropped(RT_PAD_NOT_PAD, 0, 0, 1, 1));
 }
+
+// Half-Life 2's menu (round 8): no back-tap, portal-button or firing-vibration
+// items (its Settings page has none), gyro aiming on by default.
+RT_CHECK(ios_menu_items_per_game) {
+    int hidden = 0;
+    for (int i = 0; i < rt_menu_item_count; ++i) {
+        const rt_menu_item *it = &rt_menu_items[i];
+        assert(rt_menu_item_for_game(it, 1));                        // Portal 2 and Mel: everything
+        if (!rt_menu_item_for_game(it, 0)) {
+            ++hidden;
+            assert(!strncmp(it->key, "P2BackTap", 9) || !strcmp(it->key, "P2PortalButtons") || !strcmp(it->key, "P2Haptics"));
+        }
+    }
+    assert(hidden >= 5);                                             // switch, sensitivity, swap, vibration, portal buttons
+    assert(rt_menu_item_for_game(rt_menu_item_named("P2Gyro"), 0) && rt_menu_item_for_game(rt_menu_item_named("P2MaxFPS"), 0));
+    const rt_menu_item *gyro = rt_menu_item_named("P2Gyro");
+    assert(!strcmp(rt_menu_item_default(gyro, "hl2"), "1") && !strcmp(rt_menu_item_default(gyro, "portal2"), "0"));
+    assert(!strcmp(rt_menu_item_default(rt_menu_item_named("P2TouchSize"), "hl2"), "1"));
+}
