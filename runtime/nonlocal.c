@@ -9,6 +9,7 @@
 // (runtime/rt.c), and the lifter makes every statically known setjmp return
 // site a resume point of its function (tools/lift.py).
 #include "rt.h"
+#include <stdio.h>
 
 // __sigsetjmp(env, savemask) : le masque de signaux invité (sync.c,
 // rt_signal_blocked_mask) n'est jamais livré à du code invité ; il est
@@ -35,7 +36,12 @@ static int nonlocal_shim(CPU *c, const char *name) {
         if (R32(env + 24)) { rt_span(c, env + 28, 8); rt_signal_set_blocked_mask(R64(env + 28)); }
         uint32_t sp = R32(env + 16), pc = R32(env + 20);
         // The target frame must still be active: it lies above this call.
-        if (sp < c->esp + 4) rt_trap(c, c->eip, "longjmp to a frame that has already returned");
+        if (sp < c->esp + 4) {
+            char why[160];
+            snprintf(why, sizeof(why), "longjmp to a frame that has already returned (called from 0x%x, env 0x%x: esp 0x%x, pc 0x%x)",
+                     R32(c->esp), env, sp, pc);
+            rt_trap(c, c->eip, why);
+        }
         c->ebx = R32(env); c->esi = R32(env + 4); c->edi = R32(env + 8); c->ebp = R32(env + 12);
         c->eax = value ? value : 1;
         // rt_dispatch pops the return address after a shim: make it the saved
