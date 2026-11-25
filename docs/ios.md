@@ -10,8 +10,8 @@ Tested devices:
 |---|---|---|---|
 | iPhone 15 Pro Max | A17 Pro | upstream | Portal 2 played at 60 fps; Half-Life 2 short session |
 | iPhone 17 Pro Max | A19 Pro | upstream | Portal starts and renders |
-| iPhone 18 Pro (iPhone19,2) | A20 Pro | this fork (Jacksen) | the fork's device builds |
-| iPad mini (A20 Pro, iPad19,1) | A20 Pro | this fork (Jacksen) | the fork's device builds |
+| iPhone 18 Pro (iPhone19,2) | A20 Pro | this fork (Caspian) | the fork's device builds |
+| iPad mini (A20 Pro, iPad19,1) | A20 Pro | this fork (Caspian) | the fork's device builds |
 
 Older phones (A15, A16) have not been run yet; see [Older phones](#older-phones).
 
@@ -314,7 +314,7 @@ it) and on the Settings app page (`P2_ICLOUD_SAVES`).
   changed on both sides since the last sync (or two different saves of the
   same name, never synced) is a **conflict: both are kept**. The other
   device's copy is renamed with that device's name and the time
-  (`quick_Jacksens-iPad-mini_2026-11-24_1405.sav`) on both devices, and the
+  (`quick_iPad-mini_2026-11-24_1405.sav`) on both devices, and the
   game's Load list shows the newer one first, since it sorts by date.
   Two devices uploading the same name at the same moment (an iCloud conflict)
   are kept the same way. **Deleting a save never deletes it elsewhere.** A
