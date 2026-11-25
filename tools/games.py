@@ -177,18 +177,22 @@ GAMES = {
         lib_dirs=('bin', 'left4dead2/bin'),
         system_libs=('libstdc++.so.6', 'libgcc_s.so.1'),
         mod='left4dead2',
-        # Chromium (in-game web pages: the store and news panels), the togl
-        # OpenGL layer (shaderapivk goes through the runtime's Direct3D 9
-        # bridge), the dx9 shader API (Windows-style, unused on Linux), the
-        # dedicated-server copies (*_srv.so, loaded by srcds only) and the
-        # unit test library.
-        excluded=_COMMON_EXCLUDED | {'libcef.so', 'chromehtml.so', 'libtogl.so', 'shaderapidx9.so',
+        # Chromium (in-game web pages: the store and news panels), the dx9
+        # shader API (unused: shaderapivk goes through the runtime's Direct3D 9
+        # bridge), the dedicated-server copies (*_srv.so, loaded by srcds only)
+        # and the unit test library. libtogl.so stays: the launcher links it,
+        # as Portal 2's does.
+        excluded=_COMMON_EXCLUDED | {'libcef.so', 'chromehtml.so', 'shaderapidx9.so',
                                      'libsteamvalidateuseridtickets.so', 'unitlib.so', 'unitlib_srv.so',
                                      'datacache_srv.so', 'dedicated_srv.so', 'engine_srv.so', 'libtier0_srv.so',
                                      'libvstdlib_srv.so', 'materialsystem_srv.so', 'scenefilecache_srv.so',
                                      'shaderapiempty_srv.so', 'soundemittersystem_srv.so', 'studiorender_srv.so',
                                      'vphysics_srv.so', 'vscript_srv.so'},
         roots='config/l4d2-roots.json',
+        # vstdlib's coroutines (used by matchmaking.so) switch stacks by copying
+        # them and longjmp-ing into a frame that isn't on the host's call stack:
+        # the runtime runs them instead, each on its own thread (runtime/coroutine.c).
+        host_exports=('libvstdlib.so:Coroutine_',),
         steam_appid=550,
         depot_id=554,
         # Offline: the local listen server never asks Valve's master server or VAC.

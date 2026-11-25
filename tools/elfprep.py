@@ -143,6 +143,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', required=True)
     ap.add_argument('--program', default='portal2_linux', help='main executable of the game')
+    ap.add_argument('--host-export', action='append', default=[], metavar='MODULE:PREFIX',
+                    help="exports of MODULE whose name starts with PREFIX become host imports (a runtime "
+                         "shim), e.g. libvstdlib.so:Coroutine_ (the game profile's host_exports)")
     ap.add_argument('mods', nargs='+', help='path.so@0xBASE, in load order')
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -158,6 +161,7 @@ def main():
     # Ainsi server.so utilise sa propre copie statique de libprotobuf et non
     # celle de client.so (sinon : « File already exists in database »).
     scopes = lookup_scopes(mods, a.program)
+    host_exports = [tuple(spec.split(':', 1)) for spec in a.host_export]
 
     def definition_for(module, name, skip=None):
         for candidate in scopes[module.name]:
@@ -166,6 +170,8 @@ def main():
             if symbol is None:
                 continue
             if candidate.name.startswith('libsteam_api') and name.startswith(HOST_BRIDGED):
+                continue
+            if any(candidate.name == m and name.startswith(p) for m, p in host_exports):
                 continue
             return candidate, symbol
         return None
