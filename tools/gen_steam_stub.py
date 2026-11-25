@@ -88,7 +88,9 @@ def slot_methods():
 def body_for(name, ret, args):
     """Answer of a stub function: RESPONSES, the stub interface for a
     GetISteam* accessor, else the default for the return type."""
-    body = RESPONSES.get(name)
+    # Older SDKs (Mel's 1.40) name the same method without the "_DEPRECATED"
+    # that later SDKs added: InitiateGameConnection, SendUserConnectAndAuthenticate.
+    body = RESPONSES.get(name, RESPONSES.get(name + '_DEPRECATED'))
     if body is None and ret == 'void *' and args and args[-1] == 'const char *' and 'GetISteam' in name:
         body = f'return steam_stub_interface(a{len(args) - 1});'
     return default(ret) if body is None else body

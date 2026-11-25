@@ -170,3 +170,15 @@ class IosProfiles(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class MelSteamStub(unittest.TestCase):
+    """The iOS Steam stub answers Mel's SDK 1.40 slots like Portal 2's flat
+    functions: a non-empty ticket to join the local server (else "STEAM
+    certificate length error! 0/2048" when a map loads), and the server accepts
+    the player."""
+    def test_pre_rename_methods_get_the_answers(self):
+        text = (Path(__file__).resolve().parent.parent / 'runtime/ios/steam_stub_generated.c').read_text()
+        line = lambda name: next(l for l in text.splitlines() if l.startswith(f'static ') and f' {name}(' in l)
+        self.assertIn('steam_stub_ticket(a1, a2)', line('v_SteamUser019_3'))          # InitiateGameConnection
+        self.assertIn('return true;', line('v_SteamGameServer012_24'))                  # SendUserConnectAndAuthenticate
