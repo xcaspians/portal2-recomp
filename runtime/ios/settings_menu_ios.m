@@ -1,7 +1,7 @@
 // In-game settings menu (see settings_menu_ios.h).
 //
-// The gear shows only while the game's pause menu is up (game_state.c: game
-// UI visible and a level loaded), never in gameplay or the main menu. The
+// The gear shows while a game menu is up, the main menu or the pause menu
+// (game_state.c: game UI visible, engine answering), never in gameplay. The
 // panel is a view inside the touch overlay, so the overlay's "stay in front
 // of SDL's views" also keeps it on top. Items come from settings_menu.c and
 // are stored through live_settings_ios.m (the app's preferences, shared with
@@ -23,6 +23,9 @@
 #include "device_defaults_ios.h"
 #include "game_ios.h"
 #include "game_picker_ios.h"
+#include "backtap_calibration_ios.h"
+#include "backtap_ios.h"
+#include "touch_editor_ios.h"
 #include "icloud_saves.h"
 #include "live_settings.h"
 #include "mods_list.h"
@@ -38,7 +41,8 @@ static int menu_open, closing_hold;
 int rt_ios_settings_menu_captures_pad(void) { return menu_open || closing_hold; }
 int rt_ios_settings_menu_open(void) { return menu_open; }
 
-typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED, ROW_SWITCH_GAME } RowKind;
+typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED, ROW_SWITCH_GAME, ROW_CALIBRATE,
+               ROW_EDIT_LAYOUT } RowKind;
 
 @interface P2MenuRow : NSObject
 @property (nonatomic) RowKind kind;
@@ -78,6 +82,9 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     CFTimeInterval resetArmedUntil, switchArmedUntil;
     NSString *padName;        // localized name of the options button, for the gear
     UIView *community;        // Community Maps browser (workshop_ios.m), over the panel while open
+    UIView *calibration;      // "Calibrate back taps" (backtap_calibration_ios.m), over the panel while open
+    UIView *editor;           // "Edit button layout" (touch_editor_ios.m), full screen while open
+    BOOL communityFromGame;   // Community Maps opened by the game's own Community button
     UILabel *icloudStatus;    // "Last synced ..." under the iCloud switch
     CFTimeInterval icloudShownAt;
 }
@@ -142,7 +149,7 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     scroll.frame = CGRectMake(0, 56, w, h - 56);
 }
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    if (menu_open) return [super hitTest:point withEvent:event];
+    if (menu_open || editor) return [super hitTest:point withEvent:event];   // the panel, or the layout editor
     if (!gear.hidden && CGRectContainsPoint(gear.frame, point))
         return [gear hitTest:[self convertPoint:point toView:gear] withEvent:event];
     return nil;   // everything else goes to the game
@@ -231,6 +238,8 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         if (it->section) [self addSection:@(it->section)];
         [self addSettingRow:it];
         if (!strcmp(it->key, "P2MaxFPS")) [self addRecommendedRow];
+        if (!strcmp(it->key, "P2PortalButtons")) [self addEditLayoutRow];
+        if (!strcmp(it->key, "P2BackTapSensitivity") && rt_ios_current_game()->back_taps) [self addCalibrateRow];
     }
     if (portal2) [self addMapsSection];
     [self addSection:@""];
@@ -268,14 +277,17 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     [community removeFromSuperview];
     community = nil;
     [self closeMenu];
-    if (!all) [self openMenu];   // back to the settings, Maps & Mods read again (new downloads)
+    // Opened from the game's own Community button: back to the game's menu.
+    if (!all && !communityFromGame) [self openMenu];   // back to the settings, Maps & Mods read again (new downloads)
+    communityFromGame = NO;
 }
 - (void)closeMenu {
     if (!menu_open) return;
     menu_open = 0;
     closing_hold = [self padActive];   // the B that closed it stays away from the game
     [dim removeFromSuperview]; [panel removeFromSuperview];
-    dim = panel = header = nil; scroll = nil; stack = nil; rows = nil; icloudStatus = nil; community = nil;
+    [calibration removeFromSuperview];
+    dim = panel = header = nil; scroll = nil; stack = nil; rows = nil; icloudStatus = nil; community = nil; calibration = nil;
     focus = -1;
     resetArmedUntil = 0;
 }
@@ -449,6 +461,80 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
 // process, so switching means a new launch. First press: what will happen;
 // second press: the remembered choice is forgotten and the app closes, and
 // the picker shows when it is opened again.
+// "Edit button layout" (touch_editor_ios.m): the panel closes, the editor covers
+// the screen, and the panel comes back when it's done.
+- (void)addEditLayoutRow {
+    P2MenuRow *row = [P2MenuRow new];
+    row.kind = ROW_EDIT_LAYOUT;
+    __weak P2SettingsMenu *weakSelf = self;
+    UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
+    conf.title = @"Edit button layout";
+    conf.subtitle = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad ? @"Saved for iPad, this game"
+                                                                                       : @"Saved for iPhone, this game";
+    conf.image = [UIImage systemImageNamed:@"square.and.pencil"];
+    conf.imagePadding = 8;
+    conf.baseForegroundColor = UIColor.whiteColor;
+    conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    conf.contentInsets = NSDirectionalEdgeInsetsMake(10, 14, 10, 14);
+    row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+        (void)a; [weakSelf openEditor];
+    }]];
+    row.button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+    row.view = row.button;
+    row.view.layer.cornerRadius = 12;
+    [stack addArrangedSubview:row.button];
+    [rows addObject:row];
+}
+static void editor_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx editorClosed]; }
+- (void)openEditor {
+    if (editor) return;
+    [self closeMenu];
+    editor = (__bridge_transfer UIView *)rt_ios_touch_editor_create(editor_closed, (__bridge void *)self);
+    editor.frame = self.bounds;
+    [self addSubview:editor];
+    gear.hidden = YES;
+}
+- (void)editorClosed {
+    [editor removeFromSuperview];
+    editor = nil;
+    [self openMenu];
+}
+// "Calibrate back taps" (backtap_calibration_ios.m): its screen over the panel.
+- (void)addCalibrateRow {
+    P2MenuRow *row = [P2MenuRow new];
+    row.kind = ROW_CALIBRATE;
+    __weak P2SettingsMenu *weakSelf = self;
+    UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
+    char summary[96];
+    conf.title = @"Calibrate back taps";
+    conf.subtitle = @(rt_ios_backtap_calibration_summary(summary, sizeof(summary)));
+    conf.image = [UIImage systemImageNamed:@"hand.tap"];
+    conf.imagePadding = 8;
+    conf.baseForegroundColor = UIColor.whiteColor;
+    conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    conf.contentInsets = NSDirectionalEdgeInsetsMake(10, 14, 10, 14);
+    row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+        (void)a; [weakSelf openCalibration];
+    }]];
+    row.button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+    row.view = row.button;
+    row.view.layer.cornerRadius = 12;
+    [stack addArrangedSubview:row.button];
+    [rows addObject:row];
+}
+static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx calibrationClosed]; }
+- (void)openCalibration {
+    if (calibration || !panel || !rt_ios_backtap_available()) return;
+    calibration = (__bridge_transfer UIView *)rt_ios_backtap_calibration_create(calibration_closed, (__bridge void *)self);
+    calibration.frame = panel.bounds;
+    [panel addSubview:calibration];
+}
+- (void)calibrationClosed {
+    [calibration removeFromSuperview];
+    calibration = nil;
+    [self closeMenu];
+    [self openMenu];   // the row shows the new "Calibrated on"
+}
 - (void)addSwitchGameRow {
     P2MenuRow *row = [P2MenuRow new];
     row.kind = ROW_SWITCH_GAME;
@@ -715,6 +801,8 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     case ROW_RESET: [self resetPressed]; return;
     case ROW_RECOMMENDED: [self useRecommended]; return;
     case ROW_SWITCH_GAME: [self switchGamePressed:nil]; return;
+    case ROW_CALIBRATE: [self openCalibration]; return;
+    case ROW_EDIT_LAYOUT: [self openEditor]; return;
     case ROW_MAP: [self startMap:row]; return;
     case ROW_COMMUNITY: [self openCommunity]; return;
     case ROW_SETTING: break;
@@ -765,18 +853,32 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     if (dx) [self change:dx];
 }
 - (void)tick {
-    BOOL paused = rt_ios_game_paused() != 0;
+    // The gear shows in the main menu and the pause menu (game UI up), never in gameplay.
+    BOOL paused = rt_ios_game_menu_shown() != 0;
+    // The game's own Community Test Chambers button (game_state.c): Community Maps instead.
+    if (rt_ios_game_take_community_request() && !community && !editor) {
+        [self openMenu];
+        communityFromGame = YES;
+        [self openCommunity];
+    }
     if (menu_open && !paused) [self closeMenu];   // the game left its pause menu
-    gear.hidden = menu_open || !paused;
+    gear.hidden = menu_open || editor != nil || !paused;
     if (!gear.hidden) [self updateGearHint];
     // Simulator checks, no finger: P2_SETTINGS_MENU_OPEN=1 opens the panel once,
     // at the first pause; =map also starts the first map of Maps & Mods.
     static int auto_open = -1;
     if (auto_open < 0) {
         const char *e = getenv("P2_SETTINGS_MENU_OPEN");
-        auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : !strcmp(e, "display") || !strcmp(e, "end") ? 3 : 0;
+        auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : !strcmp(e, "display") || !strcmp(e, "end") ? 3
+                  : !strcmp(e, "main") ? 4 : !strcmp(e, "editor") ? 5 : 0;
     }
-    if (auto_open && !gear.hidden) {
+    // In a level's pause menu, as before; =main: on the main menu (no level).
+    if (auto_open == 5 && !gear.hidden && !rt_ios_game_in_level()) {   // =editor: the layout editor, on the main menu
+        auto_open = 0;
+        [self openMenu];
+        [self openEditor];
+    }
+    if (auto_open && !gear.hidden && (auto_open == 4 ? !rt_ios_game_in_level() : rt_ios_game_paused())) {
         int start = auto_open == 2;
         auto_open = 0;
         [self openMenu];
@@ -806,7 +908,7 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
         community_id = e ? strtoull(e + (show ? 5 : 0), NULL, 10) : 0;
         community_test = !community_id ? 0 : show ? 2 : 1;
     }
-    if (community_test && !gear.hidden) {
+    if (community_test && !gear.hidden && rt_ios_game_paused()) {
         int play = community_test == 1;
         community_test = 0;
         [self openMenu];

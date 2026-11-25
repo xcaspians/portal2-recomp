@@ -1,5 +1,7 @@
 // Dispositions des commandes tactiles (voir touch_layout.h).
 #include "touch_layout.h"
+#include <stdio.h>
+#include <math.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -99,4 +101,68 @@ void rt_touch_overlay_update(rt_overlay_state *s, rt_overlay_event event, int pa
         s->pad_held = pad_active;
         break;
     }
+}
+
+// ---- Button layout editor ----
+static const char *const action_names[RT_TOUCH_ACTION_COUNT] = {
+    "jump", "crouch", "use", "pause", "fire", "alt_fire", "look_mode", "flag", "reload", "sprint", "flashlight",
+    "weapon_prev", "weapon_next", "quicksave"};
+const char *rt_touch_action_name(rt_touch_action a) { return a < RT_TOUCH_ACTION_COUNT ? action_names[a] : "?"; }
+
+int rt_touch_custom_format(const rt_touch_custom_layout *l, char *out, size_t size) {
+    size_t used = (size_t)snprintf(out, size, "v1");
+    for (int i = 0; i < RT_TOUCH_ACTION_COUNT && used < size; ++i)
+        if (l->b[i].set)
+            used += (size_t)snprintf(out + used, size - used, " %s=%.3f,%.3f,%.2f", action_names[i], l->b[i].fx, l->b[i].fy,
+                                     l->b[i].scale);
+    return used < size;
+}
+
+int rt_touch_custom_parse(const char *text, rt_touch_custom_layout *out) {
+    memset(out, 0, sizeof(*out));
+    if (!text || strncmp(text, "v1", 2)) return 0;
+    int found = 0;
+    for (const char *p = text + 2; (p = strchr(p, ' ')); ) {
+        ++p;
+        char name[32]; float fx, fy, scale;
+        if (sscanf(p, "%31[a-z_]=%f,%f,%f", name, &fx, &fy, &scale) != 4) continue;
+        if (!(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1 && scale >= 0.5f && scale <= 2)) continue;   // damaged entry
+        for (int i = 0; i < RT_TOUCH_ACTION_COUNT; ++i)
+            if (!strcmp(name, action_names[i])) { out->b[i] = (rt_touch_custom){1, fx, fy, scale}; ++found; }
+    }
+    return found;
+}
+
+void rt_touch_stick_rests(rt_ios_layout layout, double out[2][2]) {
+    out[0][0] = .16; out[0][1] = .72;                         // move stick (touch_controls.m restingStick:)
+    out[1][0] = rt_touch_look_rest(layout); out[1][1] = .72;  // camera stick
+}
+
+void rt_touch_custom_clamp(double *cx, double *cy, double d, double w, double h, const double (*stick)[2], int nstick,
+                           double stick_r, double grid) {
+    double r = d / 2;
+    if (grid > 0) { *cx = round(*cx / grid) * grid; *cy = round(*cy / grid) * grid; }
+    // Out of each stick's resting area: pushed out along the line from its centre.
+    for (int i = 0; i < nstick; ++i) {
+        double sx = stick[i][0] * w, sy = stick[i][1] * h, dx = *cx - sx, dy = *cy - sy, dist = hypot(dx, dy);
+        double keep = stick_r * .8 + r;   // overlapping the outer fifth of the ring is fine
+        if (dist >= keep) continue;
+        if (dist < 1e-6) { dx = 0; dy = -1; dist = 1; }   // dead centre: straight up
+        *cx = sx + dx / dist * keep; *cy = sy + dy / dist * keep;
+    }
+    *cx = clamp(*cx, r, w - r);
+    *cy = clamp(*cy, r, h - r);
+}
+
+void rt_touch_place_custom(const rt_touch_button *b, const rt_touch_custom *c, double scale, double x, double y,
+                           double w, double h, double *cx, double *cy, double *size) {
+    if (!c || !c->set) {
+        rt_touch_place_scaled(b, scale, x, y, w, h, cx, cy);
+        *size = b->size * scale;
+        return;
+    }
+    *size = b->size * c->scale * scale;   // the Button size slider still applies on top
+    double r = *size / 2;
+    *cx = clamp(x + w * c->fx, x + r, x + w - r);
+    *cy = clamp(y + h * c->fy, y + r, y + h - r);
 }

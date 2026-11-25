@@ -10,6 +10,7 @@
 //     cc -O2 -o build/backtap-replay tools/backtap_replay.c -lm
 //     build/backtap-replay backtap.raw
 #include "../runtime/ios/back_tap.c"
+#include "../runtime/ios/backtap_calibrate.c"
 #include "../runtime/ios/backtap_dataset.c"
 #include <stdio.h>
 #include <stdlib.h>
