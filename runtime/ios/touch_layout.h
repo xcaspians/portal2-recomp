@@ -63,6 +63,11 @@ void rt_touch_place_scaled(const rt_touch_button *b, double scale, double x, dou
 void rt_touch_fps_box(rt_ios_layout layout, double area_w, int chars, int lines, double pixel, double *x, double *y,
                       double *w, double *h);
 
+// The counter shows when its setting is on and a rate is measured, whether or
+// not a controller or keyboard hides the touch buttons (concealed): a
+// controller only hides the buttons.
+int rt_touch_fps_visible(int setting_on, int fps, int concealed);
+
 // ---- Button layout editor (settings menu, touch_editor_ios.m) ----
 // A player's own place and size for some buttons, per device kind (phone or
 // iPad) and per game; the others keep the built-in layout.
