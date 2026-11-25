@@ -474,13 +474,21 @@ struct DeviceStatus: Decodable, Equatable {
     var app_installed: Bool?
     var free_bytes: Int64?
     var data: [String: Bool]?
+    var apps: [String: Bool]?
     var problem: String?
 }
 struct PlanStep: Decodable { let label: String; let command: [String] }
 struct DownloadPlan: Decodable { let steps: [PlanStep]; let need_bytes: Int64; let problem: String? }
 
+// tools/devices.py DOWNLOADS: the Portal app's games, then the games with their own app.
 let downloads: [(id: String, title: String)] = [("portal2", "Portal 2"), ("mel", "Portal Stories: Mel"),
-                                                ("workshop", "Workshop maps")]
+                                                ("portal1", "Portal"), ("hl2", "Half-Life 2 (its own app)"),
+                                                ("l4d2", "Left 4 Dead 2 (its own app)"), ("workshop", "Workshop maps")]
+let ownAppNames = ["hl2": "Half-Life 2", "l4d2": "Left 4 Dead 2"]
+
+// The installer's version (tools/build_installer.sh: git describe), shown in the window.
+let installerVersion = (Bundle.main.object(forInfoDictionaryKey: "P2SourceVersion") as? String)
+    ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "development build"
 
 @MainActor
 final class Devices: ObservableObject {
@@ -539,7 +547,7 @@ final class Devices: ObservableObject {
                 return
             }
         }
-        message[key] = "Done. Open the Portal app on the device."
+        message[key] = "Done. Open the \(ownAppNames[game] ?? "Portal") app on the device."
         status[device.udid] = try? JSONDecoder().decode(DeviceStatus.self, from: await tool(["status", "--device", device.udid]))
     }
     private func runStep(_ words: [String], device: String) async -> Bool {
@@ -752,7 +760,11 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(windowTitle).font(.title2.weight(.semibold))
+                HStack(alignment: .firstTextBaseline) {
+                    Text(windowTitle).font(.title2.weight(.semibold))
+                    Spacer()
+                    Text("Version \(installerVersion)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                }
                 Text("Builds native Mac apps from your own copies of the games on Steam. Nothing from the games is downloaded by this installer.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
