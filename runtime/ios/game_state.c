@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "device_ios.h"
 #include "game_ios.h"
 #include "modules.h"
 #include "rt.h"
@@ -259,6 +260,7 @@ static void update_level(CPU *c, int visible) {
     if (level_mismatch > 20) { client_unavailable("partie sans niveau"); return; }
     int now = game && !background;
     if (now != in_level) fprintf(stderr, "[ios] niveau %s\n", now ? "chargé" : "fermé");
+    if (now && !in_level) rt_ios_memory_log("niveau chargé");   // device_ios.c: for crashes on 4 GB phones
     in_level = now;
     for (int i = 0; i < command_count; ++i) {
         uint32_t text = guest_text(command_queue[i]);
