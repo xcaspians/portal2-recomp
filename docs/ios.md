@@ -314,7 +314,7 @@ it) and on the Settings app page (`P2_ICLOUD_SAVES`).
   changed on both sides since the last sync (or two different saves of the
   same name, never synced) is a **conflict: both are kept**. The other
   device's copy is renamed with that device's name and the time
-  (`quick_Caspians-iPad-mini_2026-11-24_1405.sav`) on both devices, and the
+  (`quick_iPad-mini_2026-11-24_1405.sav`) on both devices, and the
   game's Load list shows the newer one first, since it sorts by date.
   Two devices uploading the same name at the same moment (an iCloud conflict)
   are kept the same way. **Deleting a save never deletes it elsewhere.** A
