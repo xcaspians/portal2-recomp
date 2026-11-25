@@ -225,6 +225,9 @@ int rt_ios_game_in_level(void) { return in_level; }
 static int level_seen_once;
 static int level_known(void) { return engine_client == 1 || level_seen_once; }
 int rt_ios_game_paused(void) { return ui_visible && in_level; }
+// A game menu is up, the main menu or the pause menu (the gear shows on both),
+// for a game whose engine answers (engine_client checked).
+int rt_ios_game_menu_shown(void) { return ui_visible && engine_client > 1; }
 int rt_ios_game_commands_available(void) { return engine_client > 1; }
 // Main thread (UIKit callbacks run inside SDL_PollEvent, like the poll below).
 int rt_ios_game_command(const char *line) {
