@@ -212,8 +212,10 @@ GAMES = {
         ios_name='Left 4 Dead 2',
         ios_executable='l4d2',
         ios_app='Left4Dead2.app',
+        # hl2: its gameinfo's last search path, where the shaders are (without
+        # it the device draws a black screen; missing_ios_data checks it).
         ios_data=('bin', 'platform', 'update', 'left4dead2', 'left4dead2_dlc1', 'left4dead2_dlc2',
-                  'left4dead2_dlc3'),
+                  'left4dead2_dlc3', 'hl2'),
     ),
 }
 
@@ -272,3 +274,34 @@ def profile(config):
     localconfig.game_config() returns such a config for any game."""
     name = config.get('game') or DEFAULT
     return dict(GAMES[check(name, 'config/local.json')], name=name)
+
+
+def gameinfo_dirs(text, mod):
+    """Top-level folders a gameinfo.txt's SearchPaths name (Game, GameBin, ...),
+    in order: `|gameinfo_path|.` is the mod itself, `|all_source_engine_paths|x`
+    and plain `x` are x. Left 4 Dead 2 keeps its shaders in `hl2`, a search
+    path of its gameinfo: a device copy without it draws a black screen."""
+    import re
+    block = re.search(r'SearchPaths\s*\{([^}]*)\}', re.sub(r'//[^\n]*', '', text), re.I)
+    found = []
+    for line in (block.group(1) if block else '').splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        path = parts[-1].strip('"')
+        path = re.sub(r'^\|gameinfo_path\|\.?', mod + '/', path)
+        path = re.sub(r'^\|all_source_engine_paths\|', '', path)
+        top = path.replace('\\', '/').strip('/').split('/')[0]
+        if top and top != '.' and top not in found:
+            found.append(top)
+    return found
+
+
+def missing_ios_data(game, game_root):
+    """Folders the game's gameinfo.txt searches that exist in game_root but that
+    its ios_data leaves off the device ([] when the gameinfo isn't there)."""
+    info = Path(game_root) / game['mod'] / 'gameinfo.txt'
+    if not game_root or not info.is_file():
+        return []
+    dirs = gameinfo_dirs(info.read_text(errors='replace'), game['mod'])
+    return [d for d in dirs if d not in game['ios_data'] and (Path(game_root) / d).is_dir()]

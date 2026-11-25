@@ -117,7 +117,7 @@ class IosProfiles(unittest.TestCase):
     def c_table(self):
         import re
         text = (self.ROOT / 'runtime/ios/game_ios.c').read_text()
-        rows = re.findall(r'\{"(\w+)", "(\w+)", "([\w-]+)", "(\d+)", (\d), (\w+), "(\w+)", (\d+), "(\w*)",\s*"([^"]+)"\}', text)
+        rows = re.findall(r'\{"(\w+)", "(\w+)", "([\w-]+)", "(\d+)", (\d), (\w+), "(\w+)", (\d+), "(\w*)",\s*"([^"]+)",\s*(NULL|"\w+")\}', text)
         return {r[0]: r for r in rows}
 
     def test_every_game_has_an_ios_profile(self):
@@ -180,6 +180,37 @@ class Left4Dead2Profile(unittest.TestCase):
         import launch
         self.assertEqual(launch.environment({}, l4d2, base={})['P2_STEAM_OFFLINE'], '1')   # no server lists or lobbies
         self.assertNotIn('P2_STEAM_OFFLINE', launch.environment({}, dict(games.GAMES['portal2']), base={}))
+
+
+class GameinfoSearchPaths(unittest.TestCase):
+    # Left 4 Dead 2's own gameinfo.txt (abridged): its shaders live in hl2.
+    L4D2 = """"GameInfo" { FileSystem { SteamAppId 550
+        SearchPaths
+        {
+            Game                update
+            Game                left4dead2_dlc3   // DLC
+            Game                |gameinfo_path|.
+            Game                hl2
+        } } }"""
+
+    def test_folders_named_by_search_paths(self):
+        self.assertEqual(games.gameinfo_dirs(self.L4D2, 'left4dead2'),
+                         ['update', 'left4dead2_dlc3', 'left4dead2', 'hl2'])
+        text = 'SearchPaths\n{\nGame |all_source_engine_paths|hl2\nGameBin |gameinfo_path|bin\n}'
+        self.assertEqual(games.gameinfo_dirs(text, 'ep2'), ['hl2', 'ep2'])
+
+    def test_l4d2_device_copy_has_its_shaders(self):
+        # The black screen on both iPads: hl2 (shaders) was never copied.
+        import tempfile
+        with tempfile.TemporaryDirectory() as root:
+            for d in ('update', 'left4dead2_dlc3', 'left4dead2', 'hl2', 'sdk'):
+                (Path(root) / d).mkdir()
+            (Path(root) / 'left4dead2' / 'gameinfo.txt').write_text(self.L4D2)
+            l4d2 = dict(games.GAMES['l4d2'], name='l4d2')
+            self.assertEqual(games.missing_ios_data(l4d2, root), [])
+            short = dict(l4d2, ios_data=tuple(d for d in l4d2['ios_data'] if d != 'hl2'))
+            self.assertEqual(games.missing_ios_data(short, root), ['hl2'])
+            self.assertEqual(games.missing_ios_data(l4d2, ''), [])   # no game files: nothing to check
 
 
 class IosSteamStub(unittest.TestCase):

@@ -27,6 +27,10 @@ def values(name, target, config, standalone=False):
     (DATA_ROOT); HOST names the app's game. standalone: its own app instead."""
     merged = localconfig.game_config(config, name)
     game = games.profile(merged)
+    missing = games.missing_ios_data(game, merged.get('game_root', ''))
+    if missing:   # the device copy would lack them (L4D2 without hl2: no shaders, black screen)
+        raise SystemExit(f'{name}: gameinfo.txt searches {", ".join(missing)}, missing from ios_data '
+                         '(tools/games.py)')
     host = None if standalone else game.get('ios_host')
     app_game = games.profile(localconfig.game_config(config, host)) if host else game
     return dict(GAME=game['name'], TITLE=game['ios_name'], MOD=game['mod'],
