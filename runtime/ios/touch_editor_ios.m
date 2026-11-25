@@ -192,6 +192,11 @@ int rt_ios_backtap_dataset_on(void);
     if (save) {
         char text[1024];
         int any = 0;
+        // One layout for every game: this game's buttons change, another game's stay.
+        rt_touch_custom_layout stored;
+        rt_touch_custom_parse(rt_ios_touch_layout_text(text, sizeof(text)), &stored);
+        rt_touch_custom_merge(&stored, &layout, rt_ios_current_game()->layout);
+        layout = stored;
         for (int i = 0; i < RT_TOUCH_ACTION_COUNT; ++i) any |= layout.b[i].set;
         if (any && rt_touch_custom_format(&layout, text, sizeof(text)))
             [NSUserDefaults.standardUserDefaults setObject:@(text) forKey:rt_ios_touch_layout_key()];

@@ -62,6 +62,10 @@ typedef struct { rt_touch_custom b[RT_TOUCH_ACTION_COUNT]; } rt_touch_custom_lay
 // Stored as "v1 jump=0.930,0.600,1.10 use=...": unknown or damaged entries are skipped.
 int rt_touch_custom_format(const rt_touch_custom_layout *l, char *out, size_t size);
 int rt_touch_custom_parse(const char *text, rt_touch_custom_layout *out);
+// Saving from one game into the layout every game shares: the buttons this
+// game's layout has take the edited entries (set or back to the default); a
+// button only another game has keeps its stored entry. Writes into *stored.
+void rt_touch_custom_merge(rt_touch_custom_layout *stored, const rt_touch_custom_layout *edited, rt_ios_layout layout);
 // Where a dragged button may go (area w x h, its diameter d): fully inside the
 // area, snapped to a grid of `grid` points, and pushed out of the sticks'
 // resting areas (centres stick[i] and radius stick_r) so a thumb on a stick

@@ -200,8 +200,52 @@ RT_CHECK(ios_hosted_game_data_and_preference_keys) {
     assert(!strcmp(p2->title, "Portal 2") && !strcmp(mel->title, "Portal Stories: Mel"));
     char key[64];
     assert(rt_ios_set_game("portal2") == p2 && !strcmp(rt_ios_pref_key("P2TouchSize", key, sizeof(key)), "P2TouchSize"));
-    assert(rt_ios_set_game("mel") == mel && !strcmp(rt_ios_pref_key("P2TouchSize", key, sizeof(key)), "mel.P2TouchSize"));
+    // Settings are shared by every game (round 11): Mel reads and writes Portal 2's keys...
+    assert(rt_ios_set_game("mel") == mel && !strcmp(rt_ios_pref_key("P2TouchSize", key, sizeof(key)), "P2TouchSize"));
+    static const char *const shared[] = {"P2TouchLayout.pad", "P2TouchLayout.phone", "P2TouchOpacity", "P2BackTap",
+        "P2BackTapSensitivity", "P2Gyro", "P2GyroSpeed", "P2TouchLook", "P2MaxFPS", "P2ShowFPS", "P2DefaultsFor"};
+    for (size_t i = 0; i < sizeof(shared) / sizeof(*shared); ++i)
+        assert(!strcmp(rt_ios_pref_key(shared[i], key, sizeof(key)), shared[i]));
+    // ...except what only means something to one game: its iCloud saves.
+    assert(!strcmp(rt_ios_pref_key("P2ICloudSaves", key, sizeof(key)), "mel.P2ICloudSaves"));
     rt_ios_set_game("portal2");
+    assert(!strcmp(rt_ios_pref_key("P2ICloudSaves", key, sizeof(key)), "P2ICloudSaves"));
+}
+
+// The layout is the same in every game: changed in one, the other reads it;
+// a button only one game has keeps its place when the other game saves.
+RT_CHECK(touch_layout_shared_between_games) {
+    char key_p2[64], key_mel[64], text[1024];
+    rt_ios_set_game("portal2"); rt_ios_pref_key("P2TouchLayout.pad", key_p2, sizeof(key_p2));
+    rt_ios_set_game("mel"); rt_ios_pref_key("P2TouchLayout.pad", key_mel, sizeof(key_mel));
+    rt_ios_set_game("portal2");
+    assert(!strcmp(key_p2, key_mel));                       // one stored layout
+    // Portal 2 moves jump; HL2's layout (flashlight, reload) saved into the same text keeps it.
+    rt_touch_custom_layout stored = {0}, edited = {0};
+    edited.b[RT_TOUCH_JUMP] = (rt_touch_custom){1, 0.8f, 0.4f, 1.2f};
+    rt_touch_custom_merge(&stored, &edited, RT_IOS_LAYOUT_PORTAL2);
+    assert(rt_touch_custom_format(&stored, text, sizeof(text)));
+    rt_touch_custom_layout back;
+    assert(rt_touch_custom_parse(text, &back) == 1 && back.b[RT_TOUCH_JUMP].set);
+    rt_touch_custom_layout hl2 = {0};
+    hl2.b[RT_TOUCH_FLASHLIGHT] = (rt_touch_custom){1, 0.5f, 0.2f, 1};
+    int count = 0, has_jump = 0, has_flash = 0;
+    const rt_touch_button *b = rt_touch_layout(RT_IOS_LAYOUT_HL2, &count);
+    for (int i = 0; i < count; ++i) { has_jump |= b[i].action == RT_TOUCH_JUMP; has_flash |= b[i].action == RT_TOUCH_FLASHLIGHT; }
+    hl2.b[RT_TOUCH_JUMP] = back.b[RT_TOUCH_JUMP];   // the editor starts from the stored text
+    rt_touch_custom_merge(&back, &hl2, RT_IOS_LAYOUT_HL2);
+    assert(back.b[RT_TOUCH_JUMP].set && fabsf(back.b[RT_TOUCH_JUMP].fx - 0.8f) < 1e-6f);
+    assert(!has_flash || back.b[RT_TOUCH_FLASHLIGHT].set);
+    // A game without a button: saving resets nothing of it.
+    rt_touch_custom_layout reset = {0};
+    rt_touch_custom_layout before = back;
+    rt_touch_custom_merge(&back, &reset, RT_IOS_LAYOUT_PORTAL2);
+    assert(!back.b[RT_TOUCH_JUMP].set);                    // Portal 2 has jump: its reset applies
+    int p2count = 0, p2_flash = 0;
+    const rt_touch_button *pb = rt_touch_layout(RT_IOS_LAYOUT_PORTAL2, &p2count);
+    for (int i = 0; i < p2count; ++i) p2_flash |= pb[i].action == RT_TOUCH_FLASHLIGHT;
+    if (!p2_flash) assert(back.b[RT_TOUCH_FLASHLIGHT].set == before.b[RT_TOUCH_FLASHLIGHT].set);
+    (void)has_jump;
 }
 
 // ---- Button layout editor (rt_touch_custom_*) ----
