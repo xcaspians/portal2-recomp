@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "device_defaults_ios.h"
+#include "game_ios.h"
 #include "icloud_saves.h"
 #include "live_settings.h"
 #include "mods_list.h"
@@ -220,13 +221,17 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         [stack.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor],
     ]];
 
+    // Portal 2 only: iCloud saves, Maps & Mods and Community Maps (its maps
+    // folders and Workshop app). Portal Stories: Mel has the rest.
+    BOOL portal2 = !strcmp(rt_ios_current_game()->name, "portal2");
     for (int i = 0; i < rt_menu_item_count; ++i) {
         const rt_menu_item *it = &rt_menu_items[i];
+        if (!portal2 && !strcmp(it->key, "P2ICloudSaves")) continue;
         if (it->section) [self addSection:@(it->section)];
         [self addSettingRow:it];
         if (!strcmp(it->key, "P2MaxFPS")) [self addRecommendedRow];
     }
-    [self addMapsSection];
+    if (portal2) [self addMapsSection];
     [self addSection:@""];
     [self addResetRow];
     [rows addObject:close];   // last in controller order, first on screen

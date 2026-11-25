@@ -22,6 +22,11 @@ RT_CHECK(ios_game_profile_from_plist_key) {
     // Portal 2 : dossier des installations existantes, tapes au dos, ICvar connu.
     assert(!strcmp(p2->userdata, "portal2-userdata") && !strcmp(p2->app_id, "620") && p2->back_taps);
     assert(!strcmp(p2->cvar_interface, "VEngineCvar007") && p2->find_command_base == 13);
+    // Portal Stories: Mel: its own saves and Steam app, Portal 2's controls and engine interfaces.
+    const rt_ios_game *mel = rt_ios_game_named("mel");
+    assert(mel != p2 && !strcmp(mel->mod, "portal_stories") && !strcmp(mel->app_id, "317400"));
+    assert(!strcmp(mel->userdata, "mel-userdata") && mel->layout == RT_IOS_LAYOUT_PORTAL2 && mel->back_taps);
+    assert(!strcmp(mel->cvar_interface, "VEngineCvar007") && mel->find_command_base == 13);
     // Builds d'avant la clé P2Game, ou valeur inconnue : Portal 2.
     assert(rt_ios_game_named(NULL) == p2 && rt_ios_game_named("") == p2 && rt_ios_game_named("ep2") == p2);
     assert(rt_ios_current_game() == p2);   // hors iOS

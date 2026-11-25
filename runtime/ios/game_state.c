@@ -229,7 +229,9 @@ static void client_unavailable(const char *why) {
     fprintf(stderr, "[ios] IVEngineClient : %s ; menu des réglages sans engrenage\n", why);
 }
 static void find_engine_client(CPU *c) {
-    if (strcmp(rt_ios_current_game()->mod, "portal2")) { engine_client = 1; return; }
+    // Portal 2's interface version: Portal 2 and Mel's 2021 build of its engine.
+    const char *name = rt_ios_current_game()->name;
+    if (strcmp(name, "portal2") && strcmp(name, "mel")) { engine_client = 1; return; }
     const GuestModule *engine = rt_find_module("engine.so");
     uint32_t create = engine ? rt_module_symbol(engine, "CreateInterface") : 0;
     uint32_t text = create ? guest_text("VEngineClient015") : 0;
