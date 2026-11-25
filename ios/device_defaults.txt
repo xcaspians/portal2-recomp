@@ -1,0 +1,68 @@
+# Defaults the iOS app picks for each device, at first launch only and only
+# for settings the player never changed (runtime/ios/device_defaults.c, read
+# from the app bundle). "Use recommended" in the in-game menu applies them
+# again. Tune the values here, then rebuild the app (tools/build_ios.py copies
+# this file into it). Checked by tests/checks_device_defaults.c.
+#
+# tier <name> scale=<native|2|1.5|1> upscale=<1|0.75|0.5> fps=<30|40|60|120|auto>
+#   scale:   Resolution (render scale over the screen in points; ×2 is the
+#            measured default on an iPhone 15 Pro Max)
+#   upscale: Upscaling (MetalFX): 0.75 renders at 75 % and upscales (Metal only)
+#   fps:     Frames per second. 40 needs a 120 Hz (ProMotion) screen: on a
+#            60 Hz screen it becomes 30. "auto" (120 on ProMotion) only once
+#            a device holds ~90 fps in a busy chamber (round 1 rule): none yet.
+#
+# Conservative values: nothing below an A17 Pro has been measured. The A15
+# (iPhone 13) has about half the GPU of the A17 Pro that holds 60 fps at ×2.
+tier weak    scale=1   upscale=0.75 fps=30
+tier a15     scale=1.5 upscale=0.75 fps=30
+tier a15pro  scale=1.5 upscale=0.75 fps=40
+tier a16     scale=2   upscale=0.75 fps=60
+tier strong  scale=2   upscale=1    fps=60
+
+# A model missing below: the safe middle.
+unknown a16
+
+# Low-memory guard: at or under this much memory (MB as iOS reports it: a
+# 4 GB phone shows about 3,700), the game also starts with these console
+# settings and these mtld3d memory caps, and logs its memory footprint at
+# each level load (with the Log setting).
+lowmem 4600
+lowmem-args +mat_picmip 1
+lowmem-metal memory.vramBudgetMB=512;memory.vbibRetentionCapMB=96;memory.pageboxPoolCapMB=32
+
+# model <identifier> <tier> <name shown in the menu>
+# An identifier ending in * matches every model that starts with it (exact
+# entries win).
+model iPhone12,8 weak    iPhone SE (2nd generation)
+model iPhone13,1 weak    iPhone 12 mini
+model iPhone13,2 weak    iPhone 12
+model iPhone13,3 weak    iPhone 12 Pro
+model iPhone13,4 weak    iPhone 12 Pro Max
+# A15, 4 GB, 60 Hz
+model iPhone14,4 a15     iPhone 13 mini
+model iPhone14,5 a15     iPhone 13
+model iPhone14,6 a15     iPhone SE (3rd generation)
+model iPad14,1   a15     iPad mini (6th generation)
+model iPad14,2   a15     iPad mini (6th generation)
+# A15, 6 GB (13 Pro: ProMotion; 14 and 14 Plus: 60 Hz, so 30 fps)
+model iPhone14,2 a15pro  iPhone 13 Pro
+model iPhone14,3 a15pro  iPhone 13 Pro Max
+model iPhone14,7 a15pro  iPhone 14
+model iPhone14,8 a15pro  iPhone 14 Plus
+# A16, 6 GB
+model iPhone15,2 a16     iPhone 14 Pro
+model iPhone15,3 a16     iPhone 14 Pro Max
+model iPhone15,4 a16     iPhone 15
+model iPhone15,5 a16     iPhone 15 Plus
+# A17 Pro and newer, 8 GB or more
+model iPhone16,1 strong  iPhone 15 Pro
+model iPhone16,2 strong  iPhone 15 Pro Max
+model iPhone17,*  strong iPhone 16 family
+model iPhone18,*  strong iPhone 17 family
+model iPhone18,3 strong  iPhone 17
+model iPhone19,*  strong iPhone 18 family
+model iPhone19,2 strong  iPhone 18 Pro
+model iPad16,1   strong  iPad mini (A17 Pro)
+model iPad16,2   strong  iPad mini (A17 Pro)
+model iPad19,1   strong  iPad mini (A20 Pro)

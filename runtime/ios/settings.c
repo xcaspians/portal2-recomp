@@ -32,8 +32,22 @@ const rt_ios_setting rt_ios_settings[] = {
     {"P2PortalButtons", "P2_PORTAL_BUTTONS", NULL, NULL},       // auto, 1, 0
     {"P2BackTapRecord", "P2_BACKTAP_RAW", "Documents/backtap/", NULL},   // tools/backtap_replay.c
     {"P2Log", "P2_LOG_FILE", "Documents/game.log", NULL},
+    {"P2TouchOpacity", "P2_TOUCH_OPACITY", NULL, NULL},         // 0 à 1 : opacité des boutons et sticks (touch_controls.m)
+    {"P2TouchSize", "P2_TOUCH_SIZE", NULL, NULL},               // 0,75 à 1,5 : taille des boutons et sticks
+    {"P2ICloudSaves", "P2_ICLOUD_SAVES", "1", "0"},              // sauvegardes iCloud (icloud_saves_ios.m)
 };
 const int rt_ios_settings_count = (int)(sizeof(rt_ios_settings) / sizeof(*rt_ios_settings));
+
+const rt_ios_setting *rt_ios_setting_named(const char *key) {
+    for (int i = 0; key && i < rt_ios_settings_count; ++i)
+        if (!strcmp(rt_ios_settings[i].key, key)) return &rt_ios_settings[i];
+    return NULL;
+}
+
+const char *rt_ios_setting_env_value(const rt_ios_setting *s, const char *value) {
+    if (s->on) return strcmp(value, "0") && strcmp(value, "false") ? s->on : s->off;
+    return !value[0] || !strcmp(value, "auto") ? NULL : value;
+}
 
 int rt_ios_settings_apply(rt_ios_settings_get get, void *ctx, char *summary, size_t size) {
     int applied = 0;
@@ -43,9 +57,7 @@ int rt_ios_settings_apply(rt_ios_settings_get get, void *ctx, char *summary, siz
         const rt_ios_setting *s = &rt_ios_settings[i];
         char value[256];
         if (getenv(s->env) || !get(ctx, s->key, value, sizeof(value))) continue;
-        const char *chosen = value;
-        if (s->on) chosen = strcmp(value, "0") && strcmp(value, "false") ? s->on : s->off;
-        else if (!value[0] || !strcmp(value, "auto")) chosen = NULL;
+        const char *chosen = rt_ios_setting_env_value(s, value);
         if (!chosen) continue;
         setenv(s->env, chosen, 0);
         ++applied;
@@ -97,4 +109,11 @@ static int preference(void *ctx, const char *key, char *out, size_t size) {
 }
 
 int rt_ios_settings_load(char *summary, size_t size) { return rt_ios_settings_apply(preference, NULL, summary, size); }
+int rt_ios_preference(const char *key, char *out, size_t size) { return preference(NULL, key, out, size); }
 #endif
+
+int rt_ios_fps_choice(const char *value, int screen_max) {
+    if (value && !strcmp(value, "auto")) return screen_max >= 120 ? 120 : 60;
+    int n = value && *value ? atoi(value) : 0;
+    return n >= 1 ? n : 60;
+}

@@ -4,6 +4,17 @@ Portal 2 runs on an iPhone 15 Pro Max (iOS 27): menus, gameplay, level
 transitions, voice lines, on-screen touch controls. Half-Life 2 has had a
 first short test on the same phone, at 60 fps; see [Half-Life 2](#half-life-2).
 
+Tested devices:
+
+| Device | Chip | Who | What |
+|---|---|---|---|
+| iPhone 15 Pro Max | A17 Pro | upstream | Portal 2 played at 60 fps; Half-Life 2 short session |
+| iPhone 17 Pro Max | A19 Pro | upstream | Portal starts and renders |
+| iPhone 18 Pro (iPhone19,2) | A20 Pro | this fork (Jacksen) | the fork's device builds |
+| iPad mini (A20 Pro, iPad19,1) | A20 Pro | this fork (Jacksen) | the fork's device builds |
+
+Older phones (A15, A16) have not been run yet; see [Older phones](#older-phones).
+
 ## Metal renderer (default)
 
 Instead of gl4es, the app can render through the native Direct3D 9 path
@@ -139,6 +150,8 @@ Saves: `tools/ios_device.sh saves status|pull|push` copies them between the Mac
 and the iPhone over the cable ([details](usage.md#saves-between-mac-and-iphone-portal-2));
 Portal 2 only for now.
 
+Custom maps, addon folders and console tweaks: [mods.md](mods.md).
+
 `Documents/launch.args` in the app's container adds arguments
 (one per line), for example `+map` followed by `sp_a2_laser_intro`.
 
@@ -167,7 +180,22 @@ The game's page in the Settings app ("Portal 2" or "Half-Life 2"; `ios/Settings.
 by `tools/build_ios.py`). At launch, `runtime/ios/settings.c` turns each
 changed setting into a `P2_*` variable; a variable that is already set (devicectl,
 simctl) takes precedence, and a setting that was never touched leaves the code's
-default in place. Changes take effect on the next launch.
+default in place. The settings that are also in the in-game menu (see
+below) apply when you come back to the game after changing them there; the
+others (Resolution, Renderer, Upscaling, On-screen controls, Trackpad camera
+and acceleration, FPS counter, Auto power saving, Log, Record taps) apply at
+the next launch.
+
+**Source of truth: the app's preferences (`NSUserDefaults`).** The Settings
+app and the in-game menu (pause menu, gear button; see "In-game settings
+menu") read and write the same preferences, so each shows what the other set.
+A change made in the game is written there, applied to its `P2_*` variable at
+once and announced to the parts that read it (`runtime/ios/live_settings_ios.m`:
+back taps, gyro, frame rate cap, touch overlay). Changes made in the Settings
+app are applied the same way when the game comes back to the foreground. The
+items of the in-game menu, their ranges and defaults are in
+`runtime/ios/settings_menu.c`; `tests/checks_ios_settings.c` checks that they
+match `ios/Settings.bundle`.
 
 The page is in English, and in French on a device set to French
 (`ios/Settings.bundle/fr.lproj/Root.strings`).
@@ -175,29 +203,150 @@ The page is in English, and in French on a device set to French
 | Setting | Variable | Values |
 |---|---|---|
 | Resolution | `P2_IOS_RENDER_SCALE` (+ the game's `-w`/`-h`) | native, ×2 (default), ×1.5, ×1 |
-| Frames per second | `P2_IOS_MAX_FPS` | 30, 40, 60 (default), 120; see "Frame rate cap" |
+| Frames per second | `P2_IOS_MAX_FPS` | 30, 40, 60 (default), 120, auto (the screen's maximum: 120 on ProMotion, 60 otherwise); see "Frame rate cap" |
 | Auto power saving | `P2_IOS_POWER_SAVE` | on by default: at most 30 fps in Low Power Mode or when the phone is hot |
 | Renderer | `P2_RENDERER` | Metal: `d3d9` (default), `opengl`; see "Metal renderer" |
 | Upscaling (MetalFX) | `P2_IOS_UPSCALE` | Off (1, default), Quality (0.75), Performance (0.5); Metal only, see "Metal renderer" |
 | FPS counter | `P2_SHOW_FPS` | shown by default; tapping the top-left corner shows or hides it (choice is remembered) |
-| On-screen controls | `P2_TOUCH_CONTROLS` | automatic (hidden when a controller is connected), always, never |
+| On-screen controls | `P2_TOUCH_CONTROLS` | automatic (hidden while a controller is connected; a touch shows them, the next controller input hides them again), always, never, off with a controller (`pad`: hidden and touches ignored while a controller is connected) |
 | Trackpad camera | key `P2TouchTrackpad` | also toggled by the button at the bottom left (top left in Half-Life 2) |
 | Camera speed | `P2_TOUCH_LOOK` | ×0.5 to ×3 |
 | Trackpad acceleration | `P2_TOUCH_ACCEL` | none (1) to strong (4), normal 2.5 |
+| Button opacity | `P2_TOUCH_OPACITY` | slider, 0 to 1 (100 %, default): buttons and sticks, on top of their own transparency |
+| Button size | `P2_TOUCH_SIZE` | slider, 0.75 to 1.5 (default 1): every button and stick scaled around its anchor, moved back inside the screen if needed (`rt_touch_place_scaled`) |
 | Gyro aiming | `P2_GYRO` | on by default in Half-Life 2, off in Portal 2; see "Gyro aiming" |
 | Gyro speed | `P2_GYRO_SPEED` | ×0.5 to ×2, normal 1 |
 | Back taps | `P2_BACKTAP` | enabled by default |
 | Vibrate when firing | `P2_HAPTICS` | on by default: a light Taptic Engine tap for each portal fired from the overlay (button or back tap) |
-| Tap sensitivity | `P2_BACKTAP_SENSITIVITY` | 0.75 / 1 / 1.33: thresholds are divided by this value |
+| Tap sensitivity | `P2_BACKTAP_SENSITIVITY` | slider, 0.5 to 3, default 1: thresholds are divided by this value (higher catches lighter taps) |
 | Swap left and right | `P2_BACKTAP_INVERT` | |
 | Portal buttons | `P2_PORTAL_BUTTONS` | automatic (when back taps are off), always, never |
 | Record taps | `P2_BACKTAP_RAW=Documents/backtap/` | off; see [backtap.md](backtap.md) |
 | Log | `P2_LOG_FILE=Documents/game.log` | |
 
+## In-game settings menu (Portal 2)
+
+A **Touch Controls** gear button shows at the top right **only while the
+game's pause menu is open** (never in gameplay or the main menu). It opens a
+dark, translucent panel drawn by the runtime over the game
+(`runtime/ios/settings_menu_ios.m`, items in `runtime/ios/settings_menu.c`):
+
+| Section | Items |
+|---|---|
+| On-screen buttons | Button opacity, Button size, Show portal buttons |
+| Back taps | Tap sensitivity (0.5 to 3), Swap left and right, Vibrate when firing |
+| Camera | Camera speed, Gyro aiming, Gyro speed |
+| Display | Frames per second (including Auto) |
+| Maps & Mods | **Community Maps** (Steam Workshop browser and downloader, [mods.md](mods.md#community-maps-steam-workshop-in-the-game)), then the custom maps found in `portal2/maps/custom` and `maps/workshop` (game and user folders) and `portal2_dlcN/maps` (N ≥ 3); a tap starts one ([mods.md](mods.md)) |
+| | Reset to defaults (press twice), the fork's version at the bottom |
+
+- **Live:** every change applies at once and is saved in the app's
+  preferences (see "Source of truth" above), so it is also on the Settings
+  app page and kept after a relaunch. The touch buttons are drawn behind the
+  open panel so opacity and size changes show while you drag. One exception:
+  with the Metal renderer the frame rate cap applies on the next launch
+  (mtld3d reads it once); the panel says so under that item.
+- **Touch:** sliders, switches and segmented choices; the ✕ closes it.
+- **Controller:** the options button (View, Select or −; its name is shown
+  under the gear when a controller is connected) opens and closes it; d-pad or
+  left stick up and down move between items, left and right change the
+  focused item; A flips a switch, steps a choice or presses a button; B
+  closes. While the panel is open the game gets no controller presses or stick
+  motion (`sdl_ios.m`, rule in `rt_menu_pad_dropped`), only releases and a
+  stick's return to centre, so nothing stays held; a button still held when it
+  closes is kept from the game until released. In the pause menu the options
+  button is the panel's alone.
+- **When the gear shows:** game UI visible (`IEngineVGui::IsGameUIVisible`)
+  and a level loaded: `IVEngineClient::IsInGame` and not
+  `IsLevelMainMenuBackground` (`VEngineClient015`, entries 25 and 90, read
+  from the symbols of the Mac edition's `engine.dylib`; `game_state.c`
+  checks them at run time and leaves the gear off if they don't behave).
+  Portal 2 only: Half-Life 2 and Portal use other interface versions.
+- **Maps & Mods:** the list is read each time the panel opens
+  (`runtime/ios/mods_list.c` turns a file into the name the console loads,
+  and refuses any name that could carry a second command). A tap sends
+  `map <name>` through `IVEngineClient::ClientCmd_Unrestricted` (entry 108),
+  which the engine runs at its next frame, and closes the panel.
+- `P2_SETTINGS_MENU_OPEN=1` opens the panel at the first pause (simulator
+  checks, where no finger can press the gear); `=map` also starts the first
+  map of Maps & Mods; `=display` scrolls to "Defaults for <device>". Checked in the simulator on 24 November 2026: a map in
+  `portal2_dlc3/maps` was listed, started and loaded, so the runtime mounts
+  addon folders (still to confirm on a device).
+
+The touch overlay must be on (On-screen controls not set to "Never") for the
+gear to exist; the Settings app page always works.
+
+## iCloud saves (Portal 2)
+
+Saves and their screenshots go between your iPhone and iPad through the app's
+iCloud Drive container (`runtime/ios/icloud_saves_ios.m`, rules in
+`runtime/ios/save_sync_rules.c`, checked by `tests/checks_save_sync.c`). On
+by default: **iCloud saves** in the in-game menu (with "Last synced" under
+it) and on the Settings app page (`P2_ICLOUD_SAVES`).
+
+- **What:** the `*.sav` and `*.tga` files of
+  `Documents/portal2-userdata/portal2/SAVE/<id>/`, to
+  `<container>/Documents/SAVE/<id>/`. Never settings or video config.
+- **When:** at launch, about five seconds after the game writes a save (the
+  folder is checked every 10 s), when you leave the app, and when you come
+  back to it (that's when another device's new saves arrive).
+- **Rules:** a save changed on one side only is copied to the other. A save
+  changed on both sides since the last sync (or two different saves of the
+  same name, never synced) is a **conflict: both are kept**. The other
+  device's copy is renamed with that device's name and the time
+  (`quick_Jacksens-iPad-mini_2026-11-24_1405.sav`) on both devices, and the
+  game's Load list shows the newer one first, since it sorts by date.
+  Two devices uploading the same name at the same moment (an iCloud conflict)
+  are kept the same way. **Deleting a save never deletes it elsewhere.** A
+  local save about to be replaced by a download is first copied to
+  `Documents/portal2-userdata/icloud-backups/<date>/` (two weeks kept). The
+  state of both sides at the last sync is in
+  `Documents/portal2-userdata/icloud-sync.json`.
+- **Safety rules** (from the round 4 audit, `rt_sync_after` in
+  `save_sync_rules.c`, checked over two syncs in a row):
+  - a save iCloud hasn't finished downloading is left alone until it has
+    arrived (never uploaded over, never recorded);
+  - a copy that fails (iCloud or the device full, the app killed) leaves the
+    record as it was, so the next sync sees the change again; the menu then
+    says some saves couldn't be copied, and it retries every 15 s;
+  - a save deleted on this device stays deleted on the next syncs too;
+  - conflict copies never overwrite each other (`-2`, `-3`… when the name is
+    taken), and iCloud's own conflict versions are only dropped once copied.
+- **Mac:** left out. The Mac app isn't provisioned for iCloud and goes
+  through real Steam, which may sync its own saves with Steam Cloud; the
+  cable sync (`tools/ios_device.sh saves`) stays the Mac ↔ iPhone route.
+- Log lines: `[ios] iCloud (<why>) : N envoyées, N reçues, N conflits gardés
+  en double, N en attente`, and `conteneur indisponible` when iCloud can't
+  be reached.
+
+**One-time setup (paid developer account).** The app needs the iCloud
+capability, which only a provisioning profile can grant:
+
+1. Add `"ios_icloud": true` to `config/local.json` (top level).
+2. Connect and unlock the iPhone, then run `./setup.sh --ios --game portal2`.
+   Its signing step uses `ios/signing/project-icloud.yml`: Xcode turns on
+   iCloud Documents for the app's identifier and creates the container
+   `iCloud.<identifier>` on your account (**permanent**: Apple never deletes
+   a container). `ios/signing/sign.py` then narrows the profile's iCloud
+   entries to that container (`narrow_entitlements`, checked by
+   `tests/test_ios_sign.py`).
+3. If that step fails with a capability error: open
+   `ios/signing/P2Signing.xcodeproj` in Xcode, select the Portal2 target >
+   Signing & Capabilities, check that iCloud shows "iCloud Documents" with
+   the container `iCloud.<identifier>` ticked, build once (⌘B), then run
+   step 2 again.
+4. Install on the iPad too: `P2_DEVICE=<iPad UDID> tools/ios_device.sh install`.
+
+Until then the app runs as before, and the menu says "iCloud isn't
+available"; nothing is deleted or moved.
+
 ### Frame rate cap
 
 `P2_IOS_MAX_FPS` (Frames per second) is the ceiling, read at launch by
-`runtime/ios/power_ios.m`:
+`runtime/ios/power_ios.m` (`auto` becomes 120 on a ProMotion screen and 60
+otherwise, from `UIScreen.maximumFramesPerSecond`; `rt_ios_fps_choice` in
+`settings.c`, checked by `tests/checks_ios_settings.c`). 60 stays the default
+until 120 is measured to hold in a busy chamber on the test devices:
 
 - Metal: `present.maxFps=<cap>` in `MTLD3D_CONFIG`; mtld3d holds presents to it.
 - OpenGL: 60 and 120 are paced by the display; under 60 the runtime waits
@@ -217,6 +366,43 @@ the cap follows thermal and power changes during play.
 Simulator: `xcrun simctl spawn <device> defaults write <bundle id>
 P2ResolutionScale -string 1.5`. `tests/checks_ios_settings.c` checks the
 translation and that the keys match between the code and the settings page.
+
+## Older phones
+
+The app picks its Resolution, Upscaling (MetalFX) and Frames per second from
+the device model and memory at **first launch only**, and only for the ones
+the player never set (`runtime/ios/device_defaults.c`; the marker
+`P2DefaultsFor` in the app's preferences records it was done). The table and
+thresholds are one file, **`ios/device_defaults.txt`**, copied into the app:
+tune it there and rebuild. Checked by `tests/checks_device_defaults.c`.
+
+| Tier | Devices | Resolution | MetalFX | Frames per second |
+|---|---|---|---|---|
+| weak | A13, A14 (iPhone SE 2, 12 family) | ×1 | Quality | 30 |
+| a15 | iPhone 13 and 13 mini, SE 3, iPad mini 6 (A15, 4 GB, 60 Hz) | ×1.5 | Quality | 30 |
+| a15pro | iPhone 13 Pro and Pro Max (ProMotion), 14 and 14 Plus (A15, 6 GB) | ×1.5 | Quality | 40 on ProMotion, else 30 |
+| a16 | iPhone 14 Pro, 15, 15 Plus; **any model not in the table** | ×2 | Quality | 60 |
+| strong | A17 Pro and newer (15 Pro, 16, 17, 18 families, iPad mini A17 Pro and A20 Pro) | ×2 | Off | 60 |
+
+The values are conservative guesses: nothing below an A17 Pro has been
+measured. Auto (120 Hz) is nowhere a default until a device holds ~90 fps in
+a busy chamber (round 1 rule).
+
+- **In the game:** pause > gear > Display shows "Defaults for <device>"
+  and a **Use recommended** button that applies them again (the frame rate
+  at once with OpenGL; Resolution and MetalFX on the next launch). Reset to
+  defaults goes back to these values too.
+- **Low-memory guard** (`lowmem` in the file: 4,600 MB as iOS reports it,
+  so every 4 GB device): the game also starts with `+mat_picmip 1` (textures
+  at half resolution) and lower mtld3d memory caps. `P2_NO_LOWMEM=1` turns it
+  off.
+- **Memory log:** at each level load the log (Log setting, `game.log`) gets
+  `[ios] mémoire (niveau chargé) : empreinte N Mo, pic N Mo, encore N Mo avant
+  la limite d'iOS (<model>, <RAM> Mo)`, so a crash can be diagnosed later.
+  The launch line `[ios] appareil : …` says which tier was picked.
+- Simulator: it reports the simulated model (`SIMULATOR_MODEL_IDENTIFIER`);
+  `P2_DEVICE_MODEL=iPhone14,5` and `P2_DEVICE_RAM_MB=3700` stand in for
+  another phone. It always renders at ×1 with OpenGL, whatever the table says.
 
 ## Gyro aiming
 
@@ -393,7 +579,7 @@ building with `tools/build_ios.py`). `P2_TOUCH_TEST_*` is for the simulator
 |---|---|
 | `P2_LOG_FILE=Documents/game.log` | log file (relative to the container) |
 | `P2_PROFILE_DELAY=60`, `P2_PROFILE_RAW=1` | built-in profiler (with `P2_FRAME_LOG=1`); with `RAW`, `tools/ios_symbolize.py` resolves driver functions using the device's symbols (Xcode, iOS DeviceSupport) |
-| `P2_TOUCH_CONTROLS=0/1` | touch controls disabled / always shown |
+| `P2_TOUCH_CONTROLS=0/1/pad` | touch controls disabled / always shown / off while a controller is connected |
 | + `_LOW=300`, `_HIGH=1500`, `_SMOOTH=0.5`, `_LOG=1` | trackpad acceleration: gain of 1 below `_LOW` pt/s, ramping up to the `P2_TOUCH_ACCEL` multiplier at `_HIGH` pt/s; speed is smoothed (weight `_SMOOTH`); `=1` disables it, `_LOG` logs speed and gain |
 | `P2_BACKTAP=0` | disables back taps (enabled by default if the sensor exists; see "Back taps") |
 | `P2_BACKTAP_LOG=1` | logs every candidate (from half the thresholds) and the background noise every 5 s |

@@ -39,3 +39,33 @@ class PickIdentity(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NarrowEntitlements(unittest.TestCase):
+    """iCloud saves: the profile's iCloud wildcards become the app's own values."""
+    BASE = {'application-identifier': 'TEAM.local.portal2recomp.x', 'get-task-allow': True,
+            'com.apple.developer.kernel.increased-memory-limit': True}
+
+    def test_without_icloud_nothing_changes(self):
+        self.assertEqual(sign.narrow_entitlements(self.BASE), self.BASE)
+
+    def test_icloud_wildcards_become_the_container(self):
+        profile = dict(self.BASE, **{
+            'com.apple.developer.icloud-container-identifiers': ['iCloud.local.portal2recomp.x'],
+            'com.apple.developer.icloud-services': '*',
+            'com.apple.developer.ubiquity-container-identifiers': ['TEAM.*'],
+            'com.apple.developer.icloud-container-environment': ['Development', 'Production'],
+            'com.apple.developer.ubiquity-kvstore-identifier': 'TEAM.*'})
+        narrowed = sign.narrow_entitlements(profile)
+        self.assertEqual(narrowed['com.apple.developer.icloud-container-identifiers'], ['iCloud.local.portal2recomp.x'])
+        self.assertEqual(narrowed['com.apple.developer.ubiquity-container-identifiers'], ['iCloud.local.portal2recomp.x'])
+        self.assertEqual(narrowed['com.apple.developer.icloud-services'], ['CloudDocuments'])
+        self.assertEqual(narrowed['com.apple.developer.icloud-container-environment'], 'Development')
+        self.assertNotIn('com.apple.developer.ubiquity-kvstore-identifier', narrowed)
+        self.assertTrue(all('*' not in str(v) for v in narrowed.values()))
+        self.assertEqual(profile['com.apple.developer.icloud-services'], '*')   # the profile itself untouched
+
+    def test_icloud_without_a_container_is_dropped(self):
+        profile = dict(self.BASE, **{'com.apple.developer.icloud-container-identifiers': [],
+                                     'com.apple.developer.icloud-services': '*'})
+        self.assertEqual(sign.narrow_entitlements(profile), self.BASE)

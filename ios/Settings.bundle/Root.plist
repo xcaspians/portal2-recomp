@@ -49,6 +49,7 @@
 				<string>40 (ProMotion)</string>
 				<string>60 (recommended)</string>
 				<string>120 (ProMotion)</string>
+				<string>Auto (screen's max)</string>
 			</array>
 			<key>Type</key>
 			<string>PSMultiValueSpecifier</string>
@@ -58,6 +59,7 @@
 				<string>40</string>
 				<string>60</string>
 				<string>120</string>
+				<string>auto</string>
 			</array>
 		</dict>
 		<dict>
@@ -150,6 +152,7 @@
 				<string>Automatic</string>
 				<string>Always</string>
 				<string>Never</string>
+				<string>Off with a controller</string>
 			</array>
 			<key>Type</key>
 			<string>PSMultiValueSpecifier</string>
@@ -158,6 +161,7 @@
 				<string>auto</string>
 				<string>1</string>
 				<string>0</string>
+				<string>pad</string>
 			</array>
 		</dict>
 		<dict>
@@ -259,6 +263,42 @@
 			</array>
 		</dict>
 		<dict>
+			<key>Title</key>
+			<string>Button opacity</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<real>1</real>
+			<key>Key</key>
+			<string>P2TouchOpacity</string>
+			<key>MaximumValue</key>
+			<real>1</real>
+			<key>MinimumValue</key>
+			<real>0</real>
+			<key>Type</key>
+			<string>PSSliderSpecifier</string>
+		</dict>
+		<dict>
+			<key>Title</key>
+			<string>Button size</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<real>1</real>
+			<key>Key</key>
+			<string>P2TouchSize</string>
+			<key>MaximumValue</key>
+			<real>1.5</real>
+			<key>MinimumValue</key>
+			<real>0.75</real>
+			<key>Type</key>
+			<string>PSSliderSpecifier</string>
+		</dict>
+		<dict>
 			<key>FooterText</key>
 			<string>Tap the back of the phone near the left edge for the blue portal, near the right edge for the orange one. Without back taps, portal buttons appear at the top of the screen. “Record taps” writes the sensor readings of each game to Portal 2’s backtap folder (Files app) and shows a ✗ button to report a wrong shot or a missed tap.</string>
 			<key>Title</key>
@@ -285,28 +325,6 @@
 			<string>Vibrate when firing</string>
 			<key>Type</key>
 			<string>PSToggleSwitchSpecifier</string>
-		</dict>
-		<dict>
-			<key>DefaultValue</key>
-			<string>1</string>
-			<key>Key</key>
-			<string>P2BackTapSensitivity</string>
-			<key>Title</key>
-			<string>Tap sensitivity</string>
-			<key>Titles</key>
-			<array>
-				<string>Low</string>
-				<string>Normal</string>
-				<string>High</string>
-			</array>
-			<key>Type</key>
-			<string>PSMultiValueSpecifier</string>
-			<key>Values</key>
-			<array>
-				<string>0.75</string>
-				<string>1</string>
-				<string>1.33</string>
-			</array>
 		</dict>
 		<dict>
 			<key>DefaultValue</key>
@@ -349,6 +367,44 @@
 				<string>1</string>
 				<string>0</string>
 			</array>
+		</dict>
+		<dict>
+			<key>FooterText</key>
+			<string>From 0.5 (only firm taps) to 3 (light taps); 1 is the original. Also in the game: pause menu, gear button.</string>
+			<key>Title</key>
+			<string>Tap sensitivity</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<real>1</real>
+			<key>Key</key>
+			<string>P2BackTapSensitivity</string>
+			<key>MaximumValue</key>
+			<real>3</real>
+			<key>MinimumValue</key>
+			<real>0.5</real>
+			<key>Type</key>
+			<string>PSSliderSpecifier</string>
+		</dict>
+		<dict>
+			<key>FooterText</key>
+			<string>Saves and their screenshots go between your devices through iCloud Drive: when the game starts, a few seconds after a save, and when you leave it. If two devices changed the same save, both are kept. Deleting a save never deletes it elsewhere.</string>
+			<key>Title</key>
+			<string>iCloud</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>P2ICloudSaves</string>
+			<key>Title</key>
+			<string>iCloud saves</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
 		</dict>
 		<dict>
 			<key>FooterText</key>

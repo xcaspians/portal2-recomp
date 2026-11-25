@@ -1663,6 +1663,7 @@ class LazyInsns(dict):
         super().__init__()
         self.layout, self.objdump, self.disasm_cache = layout, objdump, disasm_cache
         self.loaded, self.transient, self.previous, self.modules = set(), {}, {}, {}
+        self.resynced = {}   # module name -> entries already tried by _resync
 
     def load(self, module, transient=False):
         if module['name'] in self.loaded:
@@ -1684,6 +1685,7 @@ class LazyInsns(dict):
                 self.previous.pop(nxt, None)
             self.loaded.discard(name)
             self.modules.pop(name, None)
+            self.resynced.pop(name, None)   # its re-decoded entries went with it
         self.transient.clear()
 
     RESYNC_WINDOW = 0x800
@@ -1692,16 +1694,19 @@ class LazyInsns(dict):
         module = owner(self.layout, pc)
         if module is None:
             return False
-        if self.load(module, transient=True):
+        # The answer must not depend on whether this lookup is the one that
+        # loaded the module: try the re-decoding in the same call.
+        loaded = self.load(module, transient=True)
+        if dict.__contains__(self, pc):
             return True
-        return self._resync(module, pc)
+        return self._resync(module, pc) or loaded
 
     def _resync(self, module, pc):
         """Decode again from `pc` when the module's linear sweep went out of step
         before it (bytes the disassembler took for a longer instruction, as in
         Portal Stories: Mel's valve_avi.so), so that a function entry reached
         by a call still decodes. Instructions already decoded are kept."""
-        windows = self.__dict__.setdefault('resynced', set())
+        windows = self.resynced.setdefault(module['name'], set())
         if pc in windows:
             return False
         windows.add(pc)
