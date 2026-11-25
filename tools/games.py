@@ -197,6 +197,8 @@ GAMES = {
         depot_id=554,
         # Offline: the local listen server never asks Valve's master server or VAC.
         launch_args=('-insecure', '+sv_lan', '1', '-nomaster'),
+        # And the Steam bridge refuses server lists, pings and lobbies (P2_STEAM_OFFLINE).
+        steam_offline=True,
         app_name='Left 4 Dead 2 Natif',
         log_name='Left4Dead2Natif.log',
         bundle_id='fr.kanapitsas.l4d2-native',
