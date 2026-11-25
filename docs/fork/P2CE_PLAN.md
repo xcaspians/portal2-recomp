@@ -1,0 +1,60 @@
+# Portal 2: Community Edition: roadmap
+
+Written 24 November 2026 (fork round 13). Builds on
+[P2CE_RESEARCH.md](P2CE_RESEARCH.md). Future rounds are specced from this
+page; each round below has a milestone Jacksen can check himself and a size.
+
+**Size:** "S" fits in part of a round, "M" is about one round, "L" is one to
+two rounds, "XL" is two or more. The total is about 13 to 17 rounds to the
+main menu on the Mac, then 3 to 4 more for iOS. Rounds A to D are the
+foundation; nothing visible happens on screen before round G.
+
+**Ground rules for every round:** work on the `feat/x86-64` branch (or a
+branch from it), never change how Portal 2, Portal, Half-Life 2, Mel or L4D2
+are built (they use the i386 tools, which stay as they are), and keep
+`make check` fast and free of game files. A test that needs the P2CE depot
+is gated behind `P2_P2CE_TESTS=1`.
+
+## The pieces, in order
+
+| Round | What | Size | Milestone Jacksen can check |
+|---|---|---|---|
+| A (13, done) | **64-bit foundation.** ELF64 reader (`tools/elfprep64.py`), a first 64-bit lifter (`tools/lift64.py`), a small 64-bit runtime (`runtime/x64/`), a test harness in `make check`. | L | `make check` passes; `P2_P2CE_TESTS=1 make p2ce-tier0-check` lifts P2CE's `libtier0.so` and calls a few of its functions. |
+| B | **Lifter coverage and speed.** The rest of the integer set, the SSE/SSE2 set the engine uses (copied from the i386 lifter's `float_lift.py` ideas, widened to 16 registers), x87 leftovers, jump tables in every form clang emits, unused-flag removal (the i386 lifter's `dead_flags`), splitting the output in files and compiling in parallel like `tools/build_game.py`. | L | `make p2ce-coverage` reports 99 %+ of the instructions of every P2CE `.so` handled; the whole of `libtier0.so` and `libvstdlib.so` compiles. |
+| C | **Many modules and the dynamic loader.** Several `.so` files at once with Linux's symbol search order (`lookup_scopes` in `elfprep.py`), `dlopen`/`dlsym` of lifted modules, constructors and destructors, thread-local storage (`__tls_get_addr`, `fs:`), C++ exceptions and `longjmp` (the i386 runtime's resume points). | L | A test loads `libtier0.so` + `libvstdlib.so` + `filesystem_stdio.so`, runs their constructors, and `CommandLine()->CheckParm` works. |
+| D | **System bridge for 64-bit.** The import shims (libc, pthread, files, time, sockets, `dlopen`) retyped for 64-bit structures. Most are simpler than for i386 because Linux x86-64 and Apple arm64 lay out C structures the same way and guest pointers are host pointers. Threads, signals, `mmap`, `/proc` emulation. | XL | The dedicated server program (`srcds`-style launcher of P2CE) starts, loads `engine.so`, and prints its console banner in the Terminal. |
+| E | **SDL2, input, audio, Steam.** The existing bridges (SDL video/input, OpenAL or Steam Audio's output, Valve's `libsteam_api.dylib`) wired to the 64-bit runtime. | M | P2CE's launcher opens an empty SDL window on the Mac and reads the keyboard; Steam sees the game as running. |
+| F | **Direct3D 11 through DXVK and MoltenVK.** Lift DXVK (`libdxvk_d3d11.so.0`, `libdxvk_dxgi.so.0`) like any other module and bridge its Vulkan calls to MoltenVK (Vulkan on Metal). Shaders: DXVK turns D3D11 bytecode into SPIR-V, MoltenVK turns SPIR-V into Metal. Fallback if DXVK fights back: a direct D3D11-to-Metal bridge (much bigger). | XL | The window clears to a colour, then draws the loading screen. |
+| G | **V8 without its compiler (jitless).** V8 normally writes new x86-64 machine code while it runs, which an ahead-of-time recompiler can't follow. Start it with `--jitless` (interpreter only) and lift its built-in functions, which are machine code stored inside `libv8.so`. Riskiest step. | XL (uncertain) | A test runs `1 + 1` and a small JavaScript function through the lifted V8 and gets the right answers. |
+| H | **Panorama to the main menu.** `panorama.so`, its text stack (Pango, Cairo, HarfBuzz), Jolt physics, Steam Audio, DXC, ffmpeg for videos; one indirect-call or import gap at a time, like Mel and L4D2. | L | **P2CE reaches its main menu on the Mac**, with mouse and keyboard. |
+| I | **Into a map.** Map loading, physics, portals, sound, saves; play the first chambers. | L | Jacksen plays the first test chambers on the Mac. |
+| J | **iOS: memory and build.** The 64-bit runtime in the iOS app (arm64 iOS is also LP64, so the memory model carries over), MoltenVK on iOS, V8 jitless (iOS forbids writing code at run time anyway), app size and memory budget. | L | P2CE starts on the iPad mini and reaches its main menu. |
+| K | **iOS: touch and polish.** The touch overlay, menus and device tools that Portal 2's iOS app already has, mapped to Panorama's menus. | M | Jacksen plays a map on the iPad mini with touch controls. |
+
+Portal: Revolution follows P2CE once its binaries (depot 601363) are on the
+Mac: if it is P2CE's Strata build, it is a new game profile; if it is a
+modified engine, its own interface versions and indirect-call roots, about one
+extra round.
+
+## Order and why
+
+- **A, B, C before anything else:** every other piece is lifted code, so the
+  lifter has to be complete and correct first. Bugs found later in the lifter
+  are expensive, because they look like game bugs.
+- **D before E:** the game can't open a window before it can read files and
+  start threads.
+- **F before G:** the renderer is needed to see anything; V8 is only needed
+  once Panorama draws the menus.
+- **iOS last:** everything in A to I carries over, and iOS adds its own
+  limits (memory, no code written at run time, MoltenVK on iOS).
+
+## Risks
+
+- **V8's built-in functions** are hand-written machine code with their own
+  calling rules; they may need special handling in the lifter.
+- **DXVK** uses many threads and a large part of Vulkan; MoltenVK does not
+  support all of it (geometry shaders, for example, are emulated or missing).
+- **Size:** P2CE's Linux build is about 1 GB, much larger than Portal 2's.
+  Generated C and compile time will grow; round B's splitting and caching
+  matter.
+- **iOS memory:** a 64-bit engine plus V8 plus Metal on a 4 GB iPad is tight.
