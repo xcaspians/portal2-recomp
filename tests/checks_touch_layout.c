@@ -4,6 +4,7 @@
 // d'images et du stick gauche, Portal 2 inchangé.
 #include "checks.h"
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #include "../runtime/ios/game_ios.c"
 #include "../runtime/ios/touch_layout.c"
@@ -30,6 +31,15 @@ RT_CHECK(ios_game_profile_from_plist_key) {
     // Builds d'avant la clé P2Game, ou valeur inconnue : Portal 2.
     assert(rt_ios_game_named(NULL) == p2 && rt_ios_game_named("") == p2 && rt_ios_game_named("ep2") == p2);
     assert(rt_ios_current_game() == p2);   // hors iOS
+    // Left 4 Dead 2 reports one modern GPU on every chip: libd3d9metal's own
+    // pick for the A20 Pro (0x034b) is a GeForce FX in dxsupport.cfg (0x0301 to
+    // 0x034f there: DirectX 9.0, black hands). The others keep the pick their
+    // players' saved video settings were made with.
+    const rt_ios_game *l4d2 = rt_ios_game_named("l4d2");
+    assert(l4d2 != p2 && l4d2->gpu_device_id);
+    unsigned long id = strtoul(l4d2->gpu_device_id, NULL, 16);   // as runtime/d3d9.c reads it
+    assert(id && id <= 0xffff && !(id >= 0x0300 && id <= 0x034f));
+    assert(!p2->gpu_device_id && !hl2->gpu_device_id && !p1->gpu_device_id && !mel->gpu_device_id);
 }
 
 // Zones sûres en paysage (points) : iPhone SE, iPhone 15 Pro Max, iPad 11".
