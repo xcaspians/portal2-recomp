@@ -16,6 +16,19 @@ def plan(config, tool=None):
     game = games.profile(config)
     root = Path(config['linux_root'])
     paths = [p for d in game['lib_dirs'] for p in sorted((root / d).glob('*.so'))]
+    # Game libraries that ship in the data depot, not the Linux one (Portal Stories: Mel).
+    if game.get('game_lib_dirs'):
+        paths += [p for d in game['game_lib_dirs'] for p in sorted((Path(config['game_root']) / d).glob('*.so'))]
+    # System libraries the game links dynamically (Portal Stories: Mel's 2021 engine needs
+    # libstdc++.so.6 and libgcc_s.so.1): i386 copies from Debian, downloaded by setup.sh into
+    # system_lib_dir, recompiled like the game's own modules.
+    for name in game.get('system_libs', ()):
+        if not config.get('system_lib_dir'):
+            raise ValueError(f'{game["name"]} needs {name}: no system_lib_dir in the config (run ./setup.sh --game {game["name"]})')
+        lib = Path(config['system_lib_dir']).expanduser() / name
+        if not lib.is_file():
+            raise ValueError(f'{game["name"]} needs {lib} (run ./setup.sh --game {game["name"]})')
+        paths.append(lib)
     # Excluded modules (tools, DXVK...): see tools/games.py.
     excluded = set(game['excluded'])
     if tool:
@@ -41,7 +54,9 @@ def plan(config, tool=None):
     if tool and not p.is_file():
         raise ValueError(f'map compiler missing: {p}')
     if p.is_file():
-        program_base = 0 if tool else base
+        # A non-PIE program (ET_EXEC, Portal Stories: Mel's portal2_linux at 0x08048000)
+        # keeps its link-time addresses, like the map compiler.
+        program_base = 0 if tool or Elf(p, 0, 0).e_type == 2 else base
         module = Elf(p, program_base, len(result) + 1)
         extent = max(load[2] + load[5] for load in module.loads)
         result.append((p, program_base, extent))

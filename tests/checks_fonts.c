@@ -47,6 +47,28 @@ RT_CHECK(fonts_mulfix_is_32bit_i386) {
     assert(call("FT_MulFix", 2, 0x7fffffffu, 0x20000u) == 0xfffffffeu);  // FT_Long tronqué à 32 bits
 }
 
+RT_CHECK(fonts_bitmap_convert_and_done) {
+    uint32_t lib_out = SCRATCH, src = SCRATCH + 0x20, dst = SCRATCH + 0x40, px = SCRATCH + 0x80;
+    assert(call("FT_Init_FreeType", 1, lib_out) == 0);
+    uint32_t lib = R32(lib_out);
+    memset(GPTR(dst), 0xaa, 24);
+    call("FT_Bitmap_New", 1, dst);
+    for (uint32_t i = 0; i < 24; ++i) assert(R8(dst + i) == 0);
+    // 2x2 monochrome (FT_PIXEL_MODE_MONO = 1), 1 octet par ligne : 0b10000000, 0b01000000.
+    memset(GPTR(src), 0, 24);
+    W8(px, 0x80); W8(px + 1, 0x40);
+    W32(src + 0x00, 2); W32(src + 0x04, 2); W32(src + 0x08, 1); W32(src + 0x0c, px);
+    W8(src + 0x12, FT_PIXEL_MODE_MONO);
+    assert(call("FT_Bitmap_Convert", 4, lib, src, dst, 1) == 0);
+    assert(R32(dst + 0x00) == 2 && R32(dst + 0x04) == 2 && R8(dst + 0x12) == FT_PIXEL_MODE_GRAY);
+    uint32_t out_buf = R32(dst + 0x0c), pitch = R32(dst + 0x08);
+    assert(out_buf && pitch >= 2);
+    assert(R8(out_buf) == 1 && R8(out_buf + 1) == 0 && R8(out_buf + pitch) == 0 && R8(out_buf + pitch + 1) == 1);
+    assert(call("FT_Bitmap_Done", 2, lib, dst) == 0);
+    assert(R32(dst + 0x0c) == 0 && R32(dst + 0x00) == 0);
+    assert(call("FT_Done_FreeType", 1, lib) == 0);
+}
+
 static void compare_glyph(uint32_t face, FT_Face host) {
     uint32_t slot = R32(face + 0x54);
     assert(slot && R32(slot + 0x04) == face);

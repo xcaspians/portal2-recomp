@@ -14,6 +14,7 @@ import plistlib
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROFILES = [Path.home() / 'Library/Developer/Xcode/UserData/Provisioning Profiles',
@@ -25,18 +26,45 @@ def decode(profile):
     return plistlib.loads(raw)
 
 
+def choose_profile(candidates, bundle_id, now=None):
+    """(path, data) du profil pour bundle_id parmi candidates [(path, data)] :
+    le plus récent fait pour cet identifiant, sinon le plus récent profil joker
+    (« ÉQUIPE.* », le profil d'équipe de Xcode) ; un profil expiré ne compte
+    pas. Le joker évite d'enregistrer un nouvel App ID pour une app de
+    développement (Portal Stories: Mel), mais ne porte ni iCloud ni
+    increased-memory-limit. None si aucun."""
+    now = now or datetime.now(timezone.utc)
+    exact = wildcard = None
+    for path, data in candidates:
+        expires = data.get('ExpirationDate')
+        if expires is not None and (expires if expires.tzinfo else expires.replace(tzinfo=timezone.utc)) < now:
+            continue
+        suffix = data['Entitlements'].get('application-identifier', '').split('.', 1)[-1]
+        if suffix == bundle_id:
+            if exact is None or data['CreationDate'] > exact[1]['CreationDate']: exact = (path, data)
+        elif suffix == '*':
+            if wildcard is None or data['CreationDate'] > wildcard[1]['CreationDate']: wildcard = (path, data)
+    return exact or wildcard
+
+
+def app_entitlements(profile_entitlements, bundle_id):
+    """Droits signés : ceux du profil, avec l'identifiant de l'app à la place
+    du joker d'un profil d'équipe (comme Xcode)."""
+    out = dict(profile_entitlements)
+    app_id = out.get('application-identifier', '')
+    if app_id.endswith('.*'):
+        out['application-identifier'] = app_id[:-1] + bundle_id
+    return out
+
+
 def find_profile(bundle_id):
-    best = None
-    for folder in PROFILES:
-        for path in folder.glob('*.mobileprovision') if folder.is_dir() else []:
-            data = decode(path)
-            app_id = data['Entitlements'].get('application-identifier', '')
-            if app_id.split('.', 1)[-1] != bundle_id:
-                continue
-            if best is None or data['CreationDate'] > best[1]['CreationDate']:
-                best = (path, data)
+    candidates = [(path, decode(path)) for folder in PROFILES if folder.is_dir()
+                  for path in folder.glob('*.mobileprovision')]
+    best = choose_profile(candidates, bundle_id)
     if not best:
         sys.exit(f'aucun profil pour {bundle_id} : lancer xcodebuild sur ios/signing (voir project.yml)')
+    if best[1]['Entitlements'].get('application-identifier', '').endswith('.*'):
+        print(f"{bundle_id} : profil joker de l'équipe (sans increased-memory-limit ni iCloud)", file=sys.stderr)
     return best
 
 
@@ -101,7 +129,7 @@ def main():
     (app / 'embedded.mobileprovision').write_bytes(path.read_bytes())
     with tempfile.TemporaryDirectory() as tmp:
         entitlements = Path(tmp) / 'entitlements.plist'
-        entitlements.write_bytes(plistlib.dumps(narrow_entitlements(data['Entitlements'])))
+        entitlements.write_bytes(plistlib.dumps(narrow_entitlements(app_entitlements(data['Entitlements'], bundle_id))))
         subprocess.run(['codesign', '-f', '-s', identity(data), '--entitlements', str(entitlements),
                         '--generate-entitlement-der', str(app)], check=True)
     print(f'{app} signé ({bundle_id}, équipe {team}, profil expirant le {data["ExpirationDate"]:%Y-%m-%d})')

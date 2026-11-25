@@ -565,6 +565,36 @@ were locked for the last run of this checkout, so the app was not exercised
 again. Same experimental status as the Mac app
 ([portal1.md](portal1.md#what-was-tested)).
 
+## Portal Stories: Mel (phase 1)
+
+The same checkout builds Mel's own app ([mel.md](mel.md), plan in
+[fork/MEL_IOS_PLAN.md](fork/MEL_IOS_PLAN.md)): `tools/build_ios.py --game mel`
+writes `P2Game` = `mel` and builds `build/mel/ios/<target>/PortalStoriesMel.app`
+("Portal Stories Mel" on the home screen). At launch `runtime/ios/game_ios.c`
+gives `-game portal_stories`, saves in `Documents/mel-userdata`, `SteamAppId`
+317400 for the Steam stub (Mel's SDK 1.40 interfaces are in its tables),
+Portal 2's touch layout and back taps. Mel's 2021 engine uses Portal 2's
+interface versions, so the pause-menu gear and settings menu work; Maps & Mods,
+Community Maps and iCloud saves are Portal 2 only.
+
+```sh
+python3 tools/build_ios.py --game mel --target device --release --deps deps/ios-deps/device
+P2_DEVICE=<UDID> tools/ios_device.sh --game mel install
+P2_DEVICE=<UDID> tools/ios_device.sh mel data push --dry-run   # what goes, ~9.3 GB
+P2_DEVICE=<UDID> tools/ios_device.sh mel data push             # checks free space first
+tools/run_ios_sim.sh --game mel 300                            # simulator, headless
+```
+
+- **Identifier** `local.melrecomp.<team>` (`games.mel.ios_bundle_id`). It is
+  signed with the team's wildcard development profile (`ios/signing/sign.py`
+  falls back to it), so no App ID is registered for it. That profile has no
+  increased memory limit: fine on 8 GB and larger devices, not enough for a
+  4 GB phone (see the plan).
+- **Data:** `mel data push` copies the game folders, the Linux depot and the
+  prepared modules (Mel's i386 `libstdc++` and `libgcc_s` among them) and
+  leaves the Mac player's `SAVE`, screenshots and logs behind
+  (`tools/ios_data_plan.py`).
+
 ## Diagnostics
 
 iOS-specific variables; `P2_FRAME_LOG`, `P2_GATE_TIMING`, `P2_TRACE_*`,

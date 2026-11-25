@@ -10,6 +10,7 @@
 // SHIMS: FT_Init_FreeType FT_Done_FreeType FT_New_Face FT_New_Memory_Face FT_Done_Face
 // SHIMS: FT_Select_Charmap FT_Set_Pixel_Sizes FT_Request_Size FT_Select_Size
 // SHIMS: FT_Get_Char_Index FT_Load_Char FT_Load_Glyph FT_Get_Kerning FT_Get_Postscript_Name FT_MulFix
+// SHIMS: FT_Bitmap_New FT_Bitmap_Convert FT_Bitmap_Done
 // SHIMS: FcInit FcInitLoadConfigAndFonts FcConfigGetCurrent FcConfigSetCurrent FcConfigAppFontAddFile
 // SHIMS: FcConfigSubstitute FcDefaultSubstitute FcFontList FcFontMatch
 // SHIMS: FcFontSetDestroy FcObjectSetCreate FcObjectSetAdd FcObjectSetDestroy
@@ -17,6 +18,7 @@
 #include "rt.h"
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include FT_BITMAP_H
 #include <fontconfig/fontconfig.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -372,6 +374,53 @@ static int freetype_shim(CPU *c, const char *name) {
         // (arrondi au plus proche, demi loin de zéro), résultat tronqué à 32 bits.
         int64_t ab = (int64_t)(int32_t)rt_arg32(c, 0) * (int32_t)rt_arg32(c, 1);
         c->eax = (uint32_t)(uint64_t)((ab + 0x8000 - (ab < 0)) >> 16);
+    } else if (!strcmp(name, "FT_Bitmap_New")) {
+        uint32_t bm = rt_arg32(c, 0);
+        if (bm) memset(rt_write_span(c, bm, 24), 0, 24);
+    } else if (!strcmp(name, "FT_Bitmap_Convert")) {
+        FT_Library lib = library_of(rt_arg32(c, 0));
+        uint32_t src_addr = rt_arg32(c, 1), dst_addr = rt_arg32(c, 2);
+        FT_Int align = (FT_Int)(int32_t)rt_arg32(c, 3);
+        if (!lib) { c->eax = (uint32_t)FT_Err_Invalid_Library_Handle; return 1; }
+        if (!src_addr || !dst_addr) { c->eax = (uint32_t)FT_Err_Invalid_Argument; return 1; }
+        rt_span(c, src_addr, 24); rt_write_span(c, dst_addr, 24);
+        FT_Bitmap src; FT_Bitmap_New(&src);
+        src.rows = R32(src_addr + 0x00); src.width = R32(src_addr + 0x04);
+        src.pitch = (int32_t)R32(src_addr + 0x08);
+        uint32_t src_buf = R32(src_addr + 0x0c);
+        src.num_grays = R16(src_addr + 0x10);
+        src.pixel_mode = R8(src_addr + 0x12); src.palette_mode = R8(src_addr + 0x13);
+        uint64_t src_bytes = src_buf ? (uint64_t)src.rows * (uint64_t)(src.pitch < 0 ? -(int64_t)src.pitch : src.pitch) : 0;
+        src.buffer = src_bytes ? rt_span(c, src_buf, src_bytes) : NULL;
+        FT_Bitmap dst; FT_Bitmap_New(&dst);
+        FT_Error err = FT_Bitmap_Convert(lib, &src, &dst, align);
+        if (!err) {
+            uint64_t dst_bytes = dst.buffer ? (uint64_t)dst.rows * (uint64_t)(dst.pitch < 0 ? -(int64_t)dst.pitch : dst.pitch) : 0;
+            uint32_t old_buf = R32(dst_addr + 0x0c);
+            if (old_buf) rt_free(old_buf);
+            uint32_t new_buf = 0;
+            if (dst_bytes) {
+                if (dst_bytes > UINT32_MAX) rt_trap(c, c->eip, "FT_Bitmap_Convert result too large");
+                new_buf = guest_alloc(c, (uint32_t)dst_bytes);
+                memcpy(GPTR(new_buf), dst.buffer, (size_t)dst_bytes);
+            }
+            W32(dst_addr + 0x00, dst.rows); W32(dst_addr + 0x04, dst.width);
+            W32(dst_addr + 0x08, (uint32_t)dst.pitch); W32(dst_addr + 0x0c, new_buf);
+            W16(dst_addr + 0x10, dst.num_grays); W8(dst_addr + 0x12, dst.pixel_mode);
+            W8(dst_addr + 0x13, dst.palette_mode); W32(dst_addr + 0x14, 0);
+        }
+        FT_Bitmap_Done(lib, &dst);
+        c->eax = (uint32_t)err;
+    } else if (!strcmp(name, "FT_Bitmap_Done")) {
+        FT_Library lib = library_of(rt_arg32(c, 0));
+        uint32_t bm = rt_arg32(c, 1);
+        if (!lib) { c->eax = (uint32_t)FT_Err_Invalid_Library_Handle; return 1; }
+        if (!bm) { c->eax = (uint32_t)FT_Err_Invalid_Argument; return 1; }
+        rt_write_span(c, bm, 24);
+        uint32_t buf = R32(bm + 0x0c);
+        if (buf) rt_free(buf);
+        memset(GPTR(bm), 0, 24);
+        c->eax = 0;
     } else return 0;
     return 1;
 }

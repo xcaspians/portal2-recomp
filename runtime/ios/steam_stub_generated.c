@@ -746,6 +746,31 @@ EXPORT bool SteamAPI_ISteamVideo_IsBroadcasting(void *a0, void *a1) { (void)a0; 
 
 /* Interfaces appelées par emplacement de vtable (SDK récents). */
 static unsigned long long zero_slot(void) { return 0; }
+static uint32_t v_STEAMHTTP_INTERFACE_VERSION002_0(void *a0, int32_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_1(void *a0, uint32_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_2(void *a0, uint32_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_3(void *a0, uint32_t a1, const char *a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_4(void *a0, uint32_t a1, const char *a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_5(void *a0, uint32_t a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_6(void *a0, uint32_t a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_7(void *a0, uint32_t a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_8(void *a0, uint32_t a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_9(void *a0, uint32_t a1, const char *a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_10(void *a0, uint32_t a1, const char *a2, void *a3, uint32_t a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_11(void *a0, uint32_t a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_12(void *a0, uint32_t a1, void *a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_13(void *a0, uint32_t a1, uint32_t a2, void *a3, uint32_t a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_14(void *a0, uint32_t a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_15(void *a0, uint32_t a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static uint32_t v_STEAMHTTP_INTERFACE_VERSION002_17(void *a0, bool a1) { (void)a0; (void)a1; return 0; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_18(void *a0, uint32_t a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_19(void *a0, uint32_t a1, const char *a2, const char *a3, const char *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_20(void *a0, uint32_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_21(void *a0, uint32_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_22(void *a0, uint32_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_23(void *a0, uint32_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMHTTP_INTERFACE_VERSION002_24(void *a0, uint32_t a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static void *vt_STEAMHTTP_INTERFACE_VERSION002[25] = {(void *)v_STEAMHTTP_INTERFACE_VERSION002_0, (void *)v_STEAMHTTP_INTERFACE_VERSION002_1, (void *)v_STEAMHTTP_INTERFACE_VERSION002_2, (void *)v_STEAMHTTP_INTERFACE_VERSION002_3, (void *)v_STEAMHTTP_INTERFACE_VERSION002_4, (void *)v_STEAMHTTP_INTERFACE_VERSION002_5, (void *)v_STEAMHTTP_INTERFACE_VERSION002_6, (void *)v_STEAMHTTP_INTERFACE_VERSION002_7, (void *)v_STEAMHTTP_INTERFACE_VERSION002_8, (void *)v_STEAMHTTP_INTERFACE_VERSION002_9, (void *)v_STEAMHTTP_INTERFACE_VERSION002_10, (void *)v_STEAMHTTP_INTERFACE_VERSION002_11, (void *)v_STEAMHTTP_INTERFACE_VERSION002_12, (void *)v_STEAMHTTP_INTERFACE_VERSION002_13, (void *)v_STEAMHTTP_INTERFACE_VERSION002_14, (void *)v_STEAMHTTP_INTERFACE_VERSION002_15, (void *)zero_slot, (void *)v_STEAMHTTP_INTERFACE_VERSION002_17, (void *)v_STEAMHTTP_INTERFACE_VERSION002_18, (void *)v_STEAMHTTP_INTERFACE_VERSION002_19, (void *)v_STEAMHTTP_INTERFACE_VERSION002_20, (void *)v_STEAMHTTP_INTERFACE_VERSION002_21, (void *)v_STEAMHTTP_INTERFACE_VERSION002_22, (void *)v_STEAMHTTP_INTERFACE_VERSION002_23, (void *)v_STEAMHTTP_INTERFACE_VERSION002_24};
 static uint32_t v_STEAMREMOTEPLAY_INTERFACE_VERSION002_0(void *a0) { (void)a0; return 0; }
 static uint32_t v_STEAMREMOTEPLAY_INTERFACE_VERSION002_1(void *a0, int32_t a1) { (void)a0; (void)a1; return 0; }
 static uint64_t v_STEAMREMOTEPLAY_INTERFACE_VERSION002_2(void *a0, uint32_t a1) { (void)a0; (void)a1; return 0; }
@@ -755,6 +780,57 @@ static bool v_STEAMREMOTEPLAY_INTERFACE_VERSION002_5(void *a0, uint32_t a1, void
 static bool v_STEAMREMOTEPLAY_INTERFACE_VERSION002_6(void *a0, bool a1) { (void)a0; (void)a1; return false; }
 static bool v_STEAMREMOTEPLAY_INTERFACE_VERSION002_7(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
 static void *vt_STEAMREMOTEPLAY_INTERFACE_VERSION002[8] = {(void *)v_STEAMREMOTEPLAY_INTERFACE_VERSION002_0, (void *)v_STEAMREMOTEPLAY_INTERFACE_VERSION002_1, (void *)v_STEAMREMOTEPLAY_INTERFACE_VERSION002_2, (void *)v_STEAMREMOTEPLAY_INTERFACE_VERSION002_3, (void *)v_STEAMREMOTEPLAY_INTERFACE_VERSION002_4, (void *)v_STEAMREMOTEPLAY_INTERFACE_VERSION002_5, (void *)v_STEAMREMOTEPLAY_INTERFACE_VERSION002_6, (void *)v_STEAMREMOTEPLAY_INTERFACE_VERSION002_7};
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_0(void *a0, const char *a1, void *a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static int32_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_1(void *a0, const char *a1, void *a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_2(void *a0, const char *a1, void *a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_3(void *a0, const char *a1, uint32_t a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_4(void *a0, uint64_t a1, void *a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_5(void *a0, const char *a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_6(void *a0, const char *a1) { (void)a0; (void)a1; return false; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_7(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_8(void *a0, const char *a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_9(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_10(void *a0, uint64_t a1, void *a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_11(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_12(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_13(void *a0, const char *a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_14(void *a0, const char *a1) { (void)a0; (void)a1; return false; }
+static int32_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_15(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static int64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_16(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_17(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_18(void *a0) { (void)a0; return 0; }
+static const char *v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_19(void *a0, int32_t a1, void *a2) { (void)a0; (void)a1; (void)a2; return ""; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_20(void *a0, void *a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_21(void *a0) { (void)a0; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_22(void *a0) { (void)a0; return false; }
+static void v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_23(void *a0, bool a1) { (void)a0; (void)a1;  }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_24(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_25(void *a0, uint64_t a1, void *a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_26(void *a0, uint64_t a1, void *a2, const char **a3, void *a4, void *a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return false; }
+static int32_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_27(void *a0, uint64_t a1, void *a2, int32_t a3, uint32_t a4, int32_t a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return 0; }
+static int32_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_28(void *a0) { (void)a0; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_29(void *a0, int32_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_31(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_32(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_33(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_34(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_35(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_36(void *a0, uint64_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_38(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_39(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_40(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_41(void *a0, uint32_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_42(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_43(void *a0, uint32_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_44(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static bool v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_45(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_46(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_47(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_48(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_51(void *a0, uint64_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_52(void *a0, int32_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_54(void *a0, uint64_t a1, const char *a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static void *vt_STEAMREMOTESTORAGE_INTERFACE_VERSION014[55] = {(void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_0, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_1, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_2, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_3, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_4, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_5, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_6, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_7, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_8, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_9, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_10, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_11, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_12, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_13, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_14, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_15, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_16, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_17, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_18, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_19, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_20, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_21, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_22, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_23, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_24, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_25, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_26, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_27, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_28, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_29, (void *)zero_slot, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_31, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_32, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_33, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_34, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_35, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_36, (void *)zero_slot, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_38, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_39, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_40, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_41, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_42, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_43, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_44, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_45, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_46, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_47, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_48, (void *)zero_slot, (void *)zero_slot, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_51, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_52, (void *)zero_slot, (void *)v_STEAMREMOTESTORAGE_INTERFACE_VERSION014_54};
 static void v_STEAMTIMELINE_INTERFACE_V004_0(void *a0, const char *a1, float a2) { (void)a0; (void)a1; (void)a2;  }
 static void v_STEAMTIMELINE_INTERFACE_V004_1(void *a0, float a1) { (void)a0; (void)a1;  }
 static void v_STEAMTIMELINE_INTERFACE_V004_2(void *a0, int32_t a1) { (void)a0; (void)a1;  }
@@ -774,6 +850,80 @@ static void v_STEAMTIMELINE_INTERFACE_V004_15(void *a0, const char *a1, const ch
 static void v_STEAMTIMELINE_INTERFACE_V004_16(void *a0, const char *a1) { (void)a0; (void)a1;  }
 static void v_STEAMTIMELINE_INTERFACE_V004_17(void *a0, uint64_t a1) { (void)a0; (void)a1;  }
 static void *vt_STEAMTIMELINE_INTERFACE_V004[18] = {(void *)v_STEAMTIMELINE_INTERFACE_V004_0, (void *)v_STEAMTIMELINE_INTERFACE_V004_1, (void *)v_STEAMTIMELINE_INTERFACE_V004_2, (void *)v_STEAMTIMELINE_INTERFACE_V004_3, (void *)v_STEAMTIMELINE_INTERFACE_V004_4, (void *)v_STEAMTIMELINE_INTERFACE_V004_5, (void *)v_STEAMTIMELINE_INTERFACE_V004_6, (void *)v_STEAMTIMELINE_INTERFACE_V004_7, (void *)v_STEAMTIMELINE_INTERFACE_V004_8, (void *)v_STEAMTIMELINE_INTERFACE_V004_9, (void *)v_STEAMTIMELINE_INTERFACE_V004_10, (void *)v_STEAMTIMELINE_INTERFACE_V004_11, (void *)v_STEAMTIMELINE_INTERFACE_V004_12, (void *)v_STEAMTIMELINE_INTERFACE_V004_13, (void *)v_STEAMTIMELINE_INTERFACE_V004_14, (void *)v_STEAMTIMELINE_INTERFACE_V004_15, (void *)v_STEAMTIMELINE_INTERFACE_V004_16, (void *)v_STEAMTIMELINE_INTERFACE_V004_17};
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_0(void *a0, uint32_t a1, int32_t a2, int32_t a3, int32_t a4, uint32_t a5, uint32_t a6, uint32_t a7) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; (void)a7; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_1(void *a0, int32_t a1, int32_t a2, uint32_t a3, uint32_t a4, uint32_t a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_2(void *a0, void *a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_3(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_4(void *a0, uint64_t a1, uint32_t a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_5(void *a0, uint64_t a1, uint32_t a2, void *a3, uint32_t a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_6(void *a0, uint64_t a1, uint32_t a2, void *a3, uint32_t a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_7(void *a0, uint64_t a1, uint32_t a2, void *a3, uint32_t a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_8(void *a0, uint64_t a1, uint32_t a2, int32_t a3, void *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static uint32_t v_STEAMUGC_INTERFACE_VERSION010_9(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_10(void *a0, uint64_t a1, uint32_t a2, uint32_t a3, void *a4, uint32_t a5, void *a6, uint32_t a7, void *a8) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; (void)a7; (void)a8; return false; }
+static uint32_t v_STEAMUGC_INTERFACE_VERSION010_11(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_12(void *a0, uint64_t a1, uint32_t a2, uint32_t a3, void *a4, uint32_t a5, void *a6, uint32_t a7) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; (void)a7; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_13(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_14(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_15(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_16(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_17(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_18(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_19(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_20(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_21(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_22(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_23(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_24(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_25(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_26(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_27(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_28(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_29(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_30(void *a0, uint64_t a1, const char *a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_31(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_32(void *a0, uint32_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_33(void *a0, uint32_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_34(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_35(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_36(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_37(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_38(void *a0, uint64_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_40(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_41(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_42(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_43(void *a0, uint64_t a1, const char *a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_44(void *a0, uint64_t a1, const char *a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_45(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_46(void *a0, uint64_t a1, uint32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_47(void *a0, uint64_t a1, uint32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_48(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_49(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static int32_t v_STEAMUGC_INTERFACE_VERSION010_50(void *a0, uint64_t a1, void *a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_51(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_52(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_53(void *a0, uint32_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_54(void *a0, uint32_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_55(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_56(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint32_t v_STEAMUGC_INTERFACE_VERSION010_57(void *a0) { (void)a0; return 0; }
+static uint32_t v_STEAMUGC_INTERFACE_VERSION010_58(void *a0, void *a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint32_t v_STEAMUGC_INTERFACE_VERSION010_59(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_60(void *a0, uint64_t a1, void *a2, void *a3, uint32_t a4, void *a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_61(void *a0, uint64_t a1, void *a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_62(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUGC_INTERFACE_VERSION010_63(void *a0, uint32_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static void v_STEAMUGC_INTERFACE_VERSION010_64(void *a0, bool a1) { (void)a0; (void)a1;  }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_65(void *a0, void *a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_66(void *a0, void *a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_67(void *a0) { (void)a0; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_68(void *a0, uint64_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_69(void *a0, uint64_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_70(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_71(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_72(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMUGC_INTERFACE_VERSION010_73(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static void *vt_STEAMUGC_INTERFACE_VERSION010[74] = {(void *)v_STEAMUGC_INTERFACE_VERSION010_0, (void *)v_STEAMUGC_INTERFACE_VERSION010_1, (void *)v_STEAMUGC_INTERFACE_VERSION010_2, (void *)v_STEAMUGC_INTERFACE_VERSION010_3, (void *)v_STEAMUGC_INTERFACE_VERSION010_4, (void *)v_STEAMUGC_INTERFACE_VERSION010_5, (void *)v_STEAMUGC_INTERFACE_VERSION010_6, (void *)v_STEAMUGC_INTERFACE_VERSION010_7, (void *)v_STEAMUGC_INTERFACE_VERSION010_8, (void *)v_STEAMUGC_INTERFACE_VERSION010_9, (void *)v_STEAMUGC_INTERFACE_VERSION010_10, (void *)v_STEAMUGC_INTERFACE_VERSION010_11, (void *)v_STEAMUGC_INTERFACE_VERSION010_12, (void *)v_STEAMUGC_INTERFACE_VERSION010_13, (void *)v_STEAMUGC_INTERFACE_VERSION010_14, (void *)v_STEAMUGC_INTERFACE_VERSION010_15, (void *)v_STEAMUGC_INTERFACE_VERSION010_16, (void *)v_STEAMUGC_INTERFACE_VERSION010_17, (void *)v_STEAMUGC_INTERFACE_VERSION010_18, (void *)v_STEAMUGC_INTERFACE_VERSION010_19, (void *)v_STEAMUGC_INTERFACE_VERSION010_20, (void *)v_STEAMUGC_INTERFACE_VERSION010_21, (void *)v_STEAMUGC_INTERFACE_VERSION010_22, (void *)v_STEAMUGC_INTERFACE_VERSION010_23, (void *)v_STEAMUGC_INTERFACE_VERSION010_24, (void *)v_STEAMUGC_INTERFACE_VERSION010_25, (void *)v_STEAMUGC_INTERFACE_VERSION010_26, (void *)v_STEAMUGC_INTERFACE_VERSION010_27, (void *)v_STEAMUGC_INTERFACE_VERSION010_28, (void *)v_STEAMUGC_INTERFACE_VERSION010_29, (void *)v_STEAMUGC_INTERFACE_VERSION010_30, (void *)v_STEAMUGC_INTERFACE_VERSION010_31, (void *)v_STEAMUGC_INTERFACE_VERSION010_32, (void *)v_STEAMUGC_INTERFACE_VERSION010_33, (void *)v_STEAMUGC_INTERFACE_VERSION010_34, (void *)v_STEAMUGC_INTERFACE_VERSION010_35, (void *)v_STEAMUGC_INTERFACE_VERSION010_36, (void *)v_STEAMUGC_INTERFACE_VERSION010_37, (void *)v_STEAMUGC_INTERFACE_VERSION010_38, (void *)zero_slot, (void *)v_STEAMUGC_INTERFACE_VERSION010_40, (void *)v_STEAMUGC_INTERFACE_VERSION010_41, (void *)v_STEAMUGC_INTERFACE_VERSION010_42, (void *)v_STEAMUGC_INTERFACE_VERSION010_43, (void *)v_STEAMUGC_INTERFACE_VERSION010_44, (void *)v_STEAMUGC_INTERFACE_VERSION010_45, (void *)v_STEAMUGC_INTERFACE_VERSION010_46, (void *)v_STEAMUGC_INTERFACE_VERSION010_47, (void *)v_STEAMUGC_INTERFACE_VERSION010_48, (void *)v_STEAMUGC_INTERFACE_VERSION010_49, (void *)v_STEAMUGC_INTERFACE_VERSION010_50, (void *)v_STEAMUGC_INTERFACE_VERSION010_51, (void *)v_STEAMUGC_INTERFACE_VERSION010_52, (void *)v_STEAMUGC_INTERFACE_VERSION010_53, (void *)v_STEAMUGC_INTERFACE_VERSION010_54, (void *)v_STEAMUGC_INTERFACE_VERSION010_55, (void *)v_STEAMUGC_INTERFACE_VERSION010_56, (void *)v_STEAMUGC_INTERFACE_VERSION010_57, (void *)v_STEAMUGC_INTERFACE_VERSION010_58, (void *)v_STEAMUGC_INTERFACE_VERSION010_59, (void *)v_STEAMUGC_INTERFACE_VERSION010_60, (void *)v_STEAMUGC_INTERFACE_VERSION010_61, (void *)v_STEAMUGC_INTERFACE_VERSION010_62, (void *)v_STEAMUGC_INTERFACE_VERSION010_63, (void *)v_STEAMUGC_INTERFACE_VERSION010_64, (void *)v_STEAMUGC_INTERFACE_VERSION010_65, (void *)v_STEAMUGC_INTERFACE_VERSION010_66, (void *)v_STEAMUGC_INTERFACE_VERSION010_67, (void *)v_STEAMUGC_INTERFACE_VERSION010_68, (void *)v_STEAMUGC_INTERFACE_VERSION010_69, (void *)v_STEAMUGC_INTERFACE_VERSION010_70, (void *)v_STEAMUGC_INTERFACE_VERSION010_71, (void *)v_STEAMUGC_INTERFACE_VERSION010_72, (void *)v_STEAMUGC_INTERFACE_VERSION010_73};
 static uint64_t v_STEAMUGC_INTERFACE_VERSION020_0(void *a0, uint32_t a1, int32_t a2, int32_t a3, int32_t a4, uint32_t a5, uint32_t a6, uint32_t a7) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; (void)a7; return 0; }
 static uint64_t v_STEAMUGC_INTERFACE_VERSION020_1(void *a0, int32_t a1, int32_t a2, uint32_t a3, uint32_t a4, uint32_t a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return 0; }
 static uint64_t v_STEAMUGC_INTERFACE_VERSION020_2(void *a0, int32_t a1, int32_t a2, uint32_t a3, uint32_t a4, const char *a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return 0; }
@@ -865,10 +1015,83 @@ static bool v_STEAMUGC_INTERFACE_VERSION020_91(void *a0) { (void)a0; return fals
 static uint64_t v_STEAMUGC_INTERFACE_VERSION020_92(void *a0) { (void)a0; return 0; }
 static uint32_t v_STEAMUGC_INTERFACE_VERSION020_93(void *a0, void *a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
 static void *vt_STEAMUGC_INTERFACE_VERSION020[94] = {(void *)v_STEAMUGC_INTERFACE_VERSION020_0, (void *)v_STEAMUGC_INTERFACE_VERSION020_1, (void *)v_STEAMUGC_INTERFACE_VERSION020_2, (void *)v_STEAMUGC_INTERFACE_VERSION020_3, (void *)v_STEAMUGC_INTERFACE_VERSION020_4, (void *)v_STEAMUGC_INTERFACE_VERSION020_5, (void *)v_STEAMUGC_INTERFACE_VERSION020_6, (void *)v_STEAMUGC_INTERFACE_VERSION020_7, (void *)v_STEAMUGC_INTERFACE_VERSION020_8, (void *)v_STEAMUGC_INTERFACE_VERSION020_9, (void *)v_STEAMUGC_INTERFACE_VERSION020_10, (void *)v_STEAMUGC_INTERFACE_VERSION020_11, (void *)v_STEAMUGC_INTERFACE_VERSION020_12, (void *)v_STEAMUGC_INTERFACE_VERSION020_13, (void *)zero_slot, (void *)v_STEAMUGC_INTERFACE_VERSION020_15, (void *)v_STEAMUGC_INTERFACE_VERSION020_16, (void *)v_STEAMUGC_INTERFACE_VERSION020_17, (void *)v_STEAMUGC_INTERFACE_VERSION020_18, (void *)zero_slot, (void *)v_STEAMUGC_INTERFACE_VERSION020_20, (void *)v_STEAMUGC_INTERFACE_VERSION020_21, (void *)v_STEAMUGC_INTERFACE_VERSION020_22, (void *)zero_slot, (void *)v_STEAMUGC_INTERFACE_VERSION020_24, (void *)v_STEAMUGC_INTERFACE_VERSION020_25, (void *)v_STEAMUGC_INTERFACE_VERSION020_26, (void *)v_STEAMUGC_INTERFACE_VERSION020_27, (void *)v_STEAMUGC_INTERFACE_VERSION020_28, (void *)v_STEAMUGC_INTERFACE_VERSION020_29, (void *)v_STEAMUGC_INTERFACE_VERSION020_30, (void *)v_STEAMUGC_INTERFACE_VERSION020_31, (void *)v_STEAMUGC_INTERFACE_VERSION020_32, (void *)v_STEAMUGC_INTERFACE_VERSION020_33, (void *)v_STEAMUGC_INTERFACE_VERSION020_34, (void *)v_STEAMUGC_INTERFACE_VERSION020_35, (void *)v_STEAMUGC_INTERFACE_VERSION020_36, (void *)v_STEAMUGC_INTERFACE_VERSION020_37, (void *)v_STEAMUGC_INTERFACE_VERSION020_38, (void *)v_STEAMUGC_INTERFACE_VERSION020_39, (void *)v_STEAMUGC_INTERFACE_VERSION020_40, (void *)v_STEAMUGC_INTERFACE_VERSION020_41, (void *)v_STEAMUGC_INTERFACE_VERSION020_42, (void *)v_STEAMUGC_INTERFACE_VERSION020_43, (void *)v_STEAMUGC_INTERFACE_VERSION020_44, (void *)v_STEAMUGC_INTERFACE_VERSION020_45, (void *)v_STEAMUGC_INTERFACE_VERSION020_46, (void *)v_STEAMUGC_INTERFACE_VERSION020_47, (void *)v_STEAMUGC_INTERFACE_VERSION020_48, (void *)v_STEAMUGC_INTERFACE_VERSION020_49, (void *)v_STEAMUGC_INTERFACE_VERSION020_50, (void *)zero_slot, (void *)v_STEAMUGC_INTERFACE_VERSION020_52, (void *)v_STEAMUGC_INTERFACE_VERSION020_53, (void *)v_STEAMUGC_INTERFACE_VERSION020_54, (void *)v_STEAMUGC_INTERFACE_VERSION020_55, (void *)v_STEAMUGC_INTERFACE_VERSION020_56, (void *)v_STEAMUGC_INTERFACE_VERSION020_57, (void *)v_STEAMUGC_INTERFACE_VERSION020_58, (void *)v_STEAMUGC_INTERFACE_VERSION020_59, (void *)v_STEAMUGC_INTERFACE_VERSION020_60, (void *)v_STEAMUGC_INTERFACE_VERSION020_61, (void *)v_STEAMUGC_INTERFACE_VERSION020_62, (void *)v_STEAMUGC_INTERFACE_VERSION020_63, (void *)v_STEAMUGC_INTERFACE_VERSION020_64, (void *)v_STEAMUGC_INTERFACE_VERSION020_65, (void *)v_STEAMUGC_INTERFACE_VERSION020_66, (void *)v_STEAMUGC_INTERFACE_VERSION020_67, (void *)v_STEAMUGC_INTERFACE_VERSION020_68, (void *)v_STEAMUGC_INTERFACE_VERSION020_69, (void *)v_STEAMUGC_INTERFACE_VERSION020_70, (void *)v_STEAMUGC_INTERFACE_VERSION020_71, (void *)v_STEAMUGC_INTERFACE_VERSION020_72, (void *)v_STEAMUGC_INTERFACE_VERSION020_73, (void *)v_STEAMUGC_INTERFACE_VERSION020_74, (void *)v_STEAMUGC_INTERFACE_VERSION020_75, (void *)v_STEAMUGC_INTERFACE_VERSION020_76, (void *)v_STEAMUGC_INTERFACE_VERSION020_77, (void *)v_STEAMUGC_INTERFACE_VERSION020_78, (void *)v_STEAMUGC_INTERFACE_VERSION020_79, (void *)v_STEAMUGC_INTERFACE_VERSION020_80, (void *)v_STEAMUGC_INTERFACE_VERSION020_81, (void *)v_STEAMUGC_INTERFACE_VERSION020_82, (void *)v_STEAMUGC_INTERFACE_VERSION020_83, (void *)v_STEAMUGC_INTERFACE_VERSION020_84, (void *)v_STEAMUGC_INTERFACE_VERSION020_85, (void *)v_STEAMUGC_INTERFACE_VERSION020_86, (void *)v_STEAMUGC_INTERFACE_VERSION020_87, (void *)v_STEAMUGC_INTERFACE_VERSION020_88, (void *)v_STEAMUGC_INTERFACE_VERSION020_89, (void *)v_STEAMUGC_INTERFACE_VERSION020_90, (void *)v_STEAMUGC_INTERFACE_VERSION020_91, (void *)v_STEAMUGC_INTERFACE_VERSION020_92, (void *)v_STEAMUGC_INTERFACE_VERSION020_93};
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_0(void *a0) { (void)a0; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_1(void *a0, const char *a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_2(void *a0, const char *a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_3(void *a0, const char *a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_4(void *a0, const char *a1, float a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_5(void *a0, const char *a1, float a2, double a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_6(void *a0, const char *a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_7(void *a0, const char *a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_8(void *a0, const char *a1) { (void)a0; (void)a1; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_9(void *a0, const char *a1, void *a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_10(void *a0) { (void)a0; return false; }
+static int32_t v_STEAMUSERSTATS_INTERFACE_VERSION011_11(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static const char *v_STEAMUSERSTATS_INTERFACE_VERSION011_12(void *a0, const char *a1, const char *a2) { (void)a0; (void)a1; (void)a2; return ""; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_13(void *a0, const char *a1, uint32_t a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static uint32_t v_STEAMUSERSTATS_INTERFACE_VERSION011_14(void *a0) { (void)a0; return 0; }
+static const char *v_STEAMUSERSTATS_INTERFACE_VERSION011_15(void *a0, uint32_t a1) { (void)a0; (void)a1; return ""; }
+static uint64_t v_STEAMUSERSTATS_INTERFACE_VERSION011_16(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_17(void *a0, uint64_t a1, const char *a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_18(void *a0, uint64_t a1, const char *a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_19(void *a0, uint64_t a1, const char *a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_20(void *a0, uint64_t a1, const char *a2, void *a3, void *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_21(void *a0, bool a1) { (void)a0; (void)a1; return false; }
+static uint64_t v_STEAMUSERSTATS_INTERFACE_VERSION011_22(void *a0, const char *a1, int32_t a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static uint64_t v_STEAMUSERSTATS_INTERFACE_VERSION011_23(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static const char *v_STEAMUSERSTATS_INTERFACE_VERSION011_24(void *a0, uint64_t a1) { (void)a0; (void)a1; return ""; }
+static int32_t v_STEAMUSERSTATS_INTERFACE_VERSION011_25(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_STEAMUSERSTATS_INTERFACE_VERSION011_26(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_STEAMUSERSTATS_INTERFACE_VERSION011_27(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_STEAMUSERSTATS_INTERFACE_VERSION011_28(void *a0, uint64_t a1, int32_t a2, int32_t a3, int32_t a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return 0; }
+static uint64_t v_STEAMUSERSTATS_INTERFACE_VERSION011_29(void *a0, uint64_t a1, void *a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_30(void *a0, uint64_t a1, int32_t a2, void *a3, void *a4, int32_t a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return false; }
+static uint64_t v_STEAMUSERSTATS_INTERFACE_VERSION011_31(void *a0, uint64_t a1, int32_t a2, int32_t a3, void *a4, int32_t a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return 0; }
+static uint64_t v_STEAMUSERSTATS_INTERFACE_VERSION011_32(void *a0, uint64_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint64_t v_STEAMUSERSTATS_INTERFACE_VERSION011_33(void *a0) { (void)a0; return 0; }
+static uint64_t v_STEAMUSERSTATS_INTERFACE_VERSION011_34(void *a0) { (void)a0; return 0; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_37(void *a0, const char *a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static uint64_t v_STEAMUSERSTATS_INTERFACE_VERSION011_38(void *a0, int32_t a1) { (void)a0; (void)a1; return 0; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_39(void *a0, const char *a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_STEAMUSERSTATS_INTERFACE_VERSION011_40(void *a0, const char *a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static int32_t v_STEAMUSERSTATS_INTERFACE_VERSION011_41(void *a0, const char *a1, void *a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static int32_t v_STEAMUSERSTATS_INTERFACE_VERSION011_42(void *a0, const char *a1, void *a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static void *vt_STEAMUSERSTATS_INTERFACE_VERSION011[43] = {(void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_0, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_1, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_2, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_3, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_4, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_5, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_6, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_7, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_8, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_9, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_10, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_11, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_12, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_13, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_14, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_15, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_16, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_17, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_18, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_19, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_20, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_21, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_22, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_23, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_24, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_25, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_26, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_27, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_28, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_29, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_30, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_31, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_32, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_33, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_34, (void *)zero_slot, (void *)zero_slot, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_37, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_38, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_39, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_40, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_41, (void *)v_STEAMUSERSTATS_INTERFACE_VERSION011_42};
 static void v_STEAMVIDEO_INTERFACE_V007_0(void *a0, uint32_t a1) { (void)a0; (void)a1;  }
 static bool v_STEAMVIDEO_INTERFACE_V007_1(void *a0, void *a1) { (void)a0; (void)a1; return false; }
 static void v_STEAMVIDEO_INTERFACE_V007_2(void *a0, uint32_t a1) { (void)a0; (void)a1;  }
 static void *vt_STEAMVIDEO_INTERFACE_V007[3] = {(void *)v_STEAMVIDEO_INTERFACE_V007_0, (void *)v_STEAMVIDEO_INTERFACE_V007_1, (void *)v_STEAMVIDEO_INTERFACE_V007_2};
+static int32_t v_SteamClient017_0(void *a0) { (void)a0; return 0; }
+static bool v_SteamClient017_1(void *a0, int32_t a1) { (void)a0; (void)a1; return false; }
+static int32_t v_SteamClient017_2(void *a0, int32_t a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_SteamClient017_3(void *a0, void *a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static void v_SteamClient017_4(void *a0, int32_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2;  }
+static void *v_SteamClient017_5(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_6(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_8(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_9(void *a0, int32_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return steam_stub_interface(a2); }
+static void *v_SteamClient017_10(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_11(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_12(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_13(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_14(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_15(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_16(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_17(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_18(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static uint32_t v_SteamClient017_20(void *a0) { (void)a0; return 0; }
+static bool v_SteamClient017_22(void *a0) { (void)a0; return false; }
+static void *v_SteamClient017_23(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_25(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_26(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_27(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_28(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_29(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_30(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_34(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_35(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *v_SteamClient017_36(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
+static void *vt_SteamClient017[37] = {(void *)v_SteamClient017_0, (void *)v_SteamClient017_1, (void *)v_SteamClient017_2, (void *)v_SteamClient017_3, (void *)v_SteamClient017_4, (void *)v_SteamClient017_5, (void *)v_SteamClient017_6, (void *)zero_slot, (void *)v_SteamClient017_8, (void *)v_SteamClient017_9, (void *)v_SteamClient017_10, (void *)v_SteamClient017_11, (void *)v_SteamClient017_12, (void *)v_SteamClient017_13, (void *)v_SteamClient017_14, (void *)v_SteamClient017_15, (void *)v_SteamClient017_16, (void *)v_SteamClient017_17, (void *)v_SteamClient017_18, (void *)zero_slot, (void *)v_SteamClient017_20, (void *)zero_slot, (void *)v_SteamClient017_22, (void *)v_SteamClient017_23, (void *)zero_slot, (void *)v_SteamClient017_25, (void *)v_SteamClient017_26, (void *)v_SteamClient017_27, (void *)v_SteamClient017_28, (void *)v_SteamClient017_29, (void *)v_SteamClient017_30, (void *)zero_slot, (void *)zero_slot, (void *)zero_slot, (void *)v_SteamClient017_34, (void *)v_SteamClient017_35, (void *)v_SteamClient017_36};
 static int32_t v_SteamClient021_0(void *a0) { (void)a0; return 0; }
 static bool v_SteamClient021_1(void *a0, int32_t a1) { (void)a0; (void)a1; return false; }
 static int32_t v_SteamClient021_2(void *a0, int32_t a1) { (void)a0; (void)a1; return 0; }
@@ -903,6 +1126,140 @@ static void *v_SteamClient021_36(void *a0, int32_t a1, int32_t a2, const char *a
 static void *v_SteamClient021_37(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
 static void *v_SteamClient021_38(void *a0, int32_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return steam_stub_interface(a3); }
 static void *vt_SteamClient021[39] = {(void *)v_SteamClient021_0, (void *)v_SteamClient021_1, (void *)v_SteamClient021_2, (void *)v_SteamClient021_3, (void *)v_SteamClient021_4, (void *)v_SteamClient021_5, (void *)v_SteamClient021_6, (void *)zero_slot, (void *)v_SteamClient021_8, (void *)v_SteamClient021_9, (void *)v_SteamClient021_10, (void *)v_SteamClient021_11, (void *)v_SteamClient021_12, (void *)v_SteamClient021_13, (void *)v_SteamClient021_14, (void *)v_SteamClient021_15, (void *)v_SteamClient021_16, (void *)v_SteamClient021_17, (void *)v_SteamClient021_18, (void *)v_SteamClient021_19, (void *)zero_slot, (void *)v_SteamClient021_21, (void *)zero_slot, (void *)v_SteamClient021_23, (void *)v_SteamClient021_24, (void *)v_SteamClient021_25, (void *)v_SteamClient021_26, (void *)v_SteamClient021_27, (void *)v_SteamClient021_28, (void *)v_SteamClient021_29, (void *)zero_slot, (void *)zero_slot, (void *)zero_slot, (void *)v_SteamClient021_33, (void *)v_SteamClient021_34, (void *)v_SteamClient021_35, (void *)v_SteamClient021_36, (void *)v_SteamClient021_37, (void *)v_SteamClient021_38};
+static bool v_SteamController005_0(void *a0) { (void)a0; return false; }
+static bool v_SteamController005_1(void *a0) { (void)a0; return false; }
+static void v_SteamController005_2(void *a0) { (void)a0;  }
+static int32_t v_SteamController005_3(void *a0, void *a1) { (void)a0; (void)a1; return 0; }
+static bool v_SteamController005_4(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
+static uint64_t v_SteamController005_5(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static void v_SteamController005_6(void *a0, uint64_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2;  }
+static uint64_t v_SteamController005_7(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamController005_8(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_SteamController005_10(void *a0, uint64_t a1, uint64_t a2, uint64_t a3, void *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return 0; }
+static uint64_t v_SteamController005_11(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_SteamController005_13(void *a0, uint64_t a1, uint64_t a2, uint64_t a3, void *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return 0; }
+static void v_SteamController005_14(void *a0, uint64_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2;  }
+static void v_SteamController005_15(void *a0, uint64_t a1, int32_t a2, uint16_t a3) { (void)a0; (void)a1; (void)a2; (void)a3;  }
+static void v_SteamController005_16(void *a0, uint64_t a1, int32_t a2, uint16_t a3, uint16_t a4, uint16_t a5, uint32_t a6) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6;  }
+static void v_SteamController005_17(void *a0, uint64_t a1, uint16_t a2, uint16_t a3) { (void)a0; (void)a1; (void)a2; (void)a3;  }
+static void v_SteamController005_18(void *a0, uint64_t a1, uint8_t a2, uint8_t a3, uint8_t a4, uint32_t a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5;  }
+static int32_t v_SteamController005_19(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamController005_20(void *a0, int32_t a1) { (void)a0; (void)a1; return 0; }
+static const char *v_SteamController005_24(void *a0, int32_t a1) { (void)a0; (void)a1; return ""; }
+static const char *v_SteamController005_25(void *a0, int32_t a1) { (void)a0; (void)a1; return ""; }
+static void *vt_SteamController005[26] = {(void *)v_SteamController005_0, (void *)v_SteamController005_1, (void *)v_SteamController005_2, (void *)v_SteamController005_3, (void *)v_SteamController005_4, (void *)v_SteamController005_5, (void *)v_SteamController005_6, (void *)v_SteamController005_7, (void *)v_SteamController005_8, (void *)zero_slot, (void *)v_SteamController005_10, (void *)v_SteamController005_11, (void *)zero_slot, (void *)v_SteamController005_13, (void *)v_SteamController005_14, (void *)v_SteamController005_15, (void *)v_SteamController005_16, (void *)v_SteamController005_17, (void *)v_SteamController005_18, (void *)v_SteamController005_19, (void *)v_SteamController005_20, (void *)zero_slot, (void *)zero_slot, (void *)zero_slot, (void *)v_SteamController005_24, (void *)v_SteamController005_25};
+static const char *v_SteamFriends015_0(void *a0) { (void)a0; return "Player"; }
+static uint64_t v_SteamFriends015_1(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_SteamFriends015_2(void *a0) { (void)a0; return 1; }
+static int32_t v_SteamFriends015_3(void *a0, int32_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamFriends015_4(void *a0, int32_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static int32_t v_SteamFriends015_5(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_SteamFriends015_6(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static const char *v_SteamFriends015_7(void *a0, uint64_t a1) { (void)a0; (void)a1; return "Player"; }
+static bool v_SteamFriends015_8(void *a0, uint64_t a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static const char *v_SteamFriends015_9(void *a0, uint64_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return ""; }
+static int32_t v_SteamFriends015_10(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static const char *v_SteamFriends015_11(void *a0, uint64_t a1) { (void)a0; (void)a1; return ""; }
+static int32_t v_SteamFriends015_12(void *a0) { (void)a0; return 0; }
+static int16_t v_SteamFriends015_13(void *a0, int32_t a1) { (void)a0; (void)a1; return 0; }
+static const char *v_SteamFriends015_14(void *a0, int16_t a1) { (void)a0; (void)a1; return ""; }
+static int32_t v_SteamFriends015_15(void *a0, int16_t a1) { (void)a0; (void)a1; return 0; }
+static void v_SteamFriends015_16(void *a0, int16_t a1, void *a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3;  }
+static bool v_SteamFriends015_17(void *a0, uint64_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static int32_t v_SteamFriends015_18(void *a0) { (void)a0; return 0; }
+static uint64_t v_SteamFriends015_19(void *a0, int32_t a1) { (void)a0; (void)a1; return 0; }
+static const char *v_SteamFriends015_20(void *a0, uint64_t a1) { (void)a0; (void)a1; return ""; }
+static const char *v_SteamFriends015_21(void *a0, uint64_t a1) { (void)a0; (void)a1; return ""; }
+static bool v_SteamFriends015_22(void *a0, uint64_t a1, void *a2, void *a3, void *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static uint64_t v_SteamFriends015_23(void *a0, void *a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static int32_t v_SteamFriends015_24(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamFriends015_25(void *a0, uint64_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static bool v_SteamFriends015_26(void *a0, uint64_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static void v_SteamFriends015_27(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2;  }
+static void v_SteamFriends015_28(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamFriends015_29(void *a0, const char *a1, uint64_t a2) { (void)a0; (void)a1; (void)a2;  }
+static void v_SteamFriends015_30(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamFriends015_31(void *a0, uint32_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2;  }
+static void v_SteamFriends015_32(void *a0, uint64_t a1) { (void)a0; (void)a1;  }
+static void v_SteamFriends015_33(void *a0, uint64_t a1) { (void)a0; (void)a1;  }
+static int32_t v_SteamFriends015_34(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_SteamFriends015_35(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_SteamFriends015_36(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static bool v_SteamFriends015_37(void *a0, uint64_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static uint64_t v_SteamFriends015_38(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamFriends015_39(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_SteamFriends015_40(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamFriends015_41(void *a0, uint64_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static uint32_t v_SteamFriends015_42(void *a0) { (void)a0; return 0; }
+static bool v_SteamFriends015_43(void *a0, const char *a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static void v_SteamFriends015_44(void *a0) { (void)a0;  }
+static const char *v_SteamFriends015_45(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return ""; }
+static int32_t v_SteamFriends015_46(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static const char *v_SteamFriends015_47(void *a0, uint64_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return ""; }
+static void v_SteamFriends015_48(void *a0, uint64_t a1) { (void)a0; (void)a1;  }
+static bool v_SteamFriends015_49(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static int32_t v_SteamFriends015_50(void *a0) { (void)a0; return 0; }
+static uint64_t v_SteamFriends015_51(void *a0, int32_t a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_SteamFriends015_52(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint32_t v_SteamFriends015_53(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamFriends015_54(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static bool v_SteamFriends015_55(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
+static int32_t v_SteamFriends015_56(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamFriends015_57(void *a0, uint64_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static bool v_SteamFriends015_58(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static int32_t v_SteamFriends015_59(void *a0, uint64_t a1, int32_t a2, void *a3, int32_t a4, void *a5, void *a6) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; return 0; }
+static bool v_SteamFriends015_60(void *a0, uint64_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_SteamFriends015_61(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
+static bool v_SteamFriends015_62(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
+static bool v_SteamFriends015_63(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
+static bool v_SteamFriends015_64(void *a0, bool a1) { (void)a0; (void)a1; return false; }
+static bool v_SteamFriends015_65(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static int32_t v_SteamFriends015_66(void *a0, uint64_t a1, int32_t a2, void *a3, int32_t a4, void *a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return 0; }
+static uint64_t v_SteamFriends015_67(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamFriends015_68(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamFriends015_69(void *a0, uint32_t a1) { (void)a0; (void)a1; return 0; }
+static void *vt_SteamFriends015[70] = {(void *)v_SteamFriends015_0, (void *)v_SteamFriends015_1, (void *)v_SteamFriends015_2, (void *)v_SteamFriends015_3, (void *)v_SteamFriends015_4, (void *)v_SteamFriends015_5, (void *)v_SteamFriends015_6, (void *)v_SteamFriends015_7, (void *)v_SteamFriends015_8, (void *)v_SteamFriends015_9, (void *)v_SteamFriends015_10, (void *)v_SteamFriends015_11, (void *)v_SteamFriends015_12, (void *)v_SteamFriends015_13, (void *)v_SteamFriends015_14, (void *)v_SteamFriends015_15, (void *)v_SteamFriends015_16, (void *)v_SteamFriends015_17, (void *)v_SteamFriends015_18, (void *)v_SteamFriends015_19, (void *)v_SteamFriends015_20, (void *)v_SteamFriends015_21, (void *)v_SteamFriends015_22, (void *)v_SteamFriends015_23, (void *)v_SteamFriends015_24, (void *)v_SteamFriends015_25, (void *)v_SteamFriends015_26, (void *)v_SteamFriends015_27, (void *)v_SteamFriends015_28, (void *)v_SteamFriends015_29, (void *)v_SteamFriends015_30, (void *)v_SteamFriends015_31, (void *)v_SteamFriends015_32, (void *)v_SteamFriends015_33, (void *)v_SteamFriends015_34, (void *)v_SteamFriends015_35, (void *)v_SteamFriends015_36, (void *)v_SteamFriends015_37, (void *)v_SteamFriends015_38, (void *)v_SteamFriends015_39, (void *)v_SteamFriends015_40, (void *)v_SteamFriends015_41, (void *)v_SteamFriends015_42, (void *)v_SteamFriends015_43, (void *)v_SteamFriends015_44, (void *)v_SteamFriends015_45, (void *)v_SteamFriends015_46, (void *)v_SteamFriends015_47, (void *)v_SteamFriends015_48, (void *)v_SteamFriends015_49, (void *)v_SteamFriends015_50, (void *)v_SteamFriends015_51, (void *)v_SteamFriends015_52, (void *)v_SteamFriends015_53, (void *)v_SteamFriends015_54, (void *)v_SteamFriends015_55, (void *)v_SteamFriends015_56, (void *)v_SteamFriends015_57, (void *)v_SteamFriends015_58, (void *)v_SteamFriends015_59, (void *)v_SteamFriends015_60, (void *)v_SteamFriends015_61, (void *)v_SteamFriends015_62, (void *)v_SteamFriends015_63, (void *)v_SteamFriends015_64, (void *)v_SteamFriends015_65, (void *)v_SteamFriends015_66, (void *)v_SteamFriends015_67, (void *)v_SteamFriends015_68, (void *)v_SteamFriends015_69};
+static void v_SteamGameServer012_1(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_2(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_3(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_4(void *a0, bool a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_5(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_6(void *a0) { (void)a0;  }
+static void v_SteamGameServer012_7(void *a0) { (void)a0;  }
+static bool v_SteamGameServer012_8(void *a0) { (void)a0; return false; }
+static bool v_SteamGameServer012_9(void *a0) { (void)a0; return false; }
+static uint64_t v_SteamGameServer012_10(void *a0) { (void)a0; return 0; }
+static bool v_SteamGameServer012_11(void *a0) { (void)a0; return false; }
+static void v_SteamGameServer012_12(void *a0, int32_t a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_13(void *a0, int32_t a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_14(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_15(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_16(void *a0, bool a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_17(void *a0, uint16_t a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_18(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_19(void *a0) { (void)a0;  }
+static void v_SteamGameServer012_20(void *a0, const char *a1, const char *a2) { (void)a0; (void)a1; (void)a2;  }
+static void v_SteamGameServer012_21(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_22(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_23(void *a0, const char *a1) { (void)a0; (void)a1;  }
+static bool v_SteamGameServer012_24(void *a0, uint32_t a1, void *a2, uint32_t a3, void *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; if (a4) *(uint64_t *)a4 = 76561197960265729ull; return true; }
+static uint64_t v_SteamGameServer012_25(void *a0) { (void)a0; return 0; }
+static void v_SteamGameServer012_26(void *a0, uint64_t a1) { (void)a0; (void)a1;  }
+static bool v_SteamGameServer012_27(void *a0, uint64_t a1, const char *a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static uint32_t v_SteamGameServer012_28(void *a0, void *a1, int32_t a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; int32_t n = steam_stub_ticket(a1, a2); if (a3) *(uint32_t *)a3 = (uint32_t)n; return n > 0 ? 1u : 0u; }
+static int32_t v_SteamGameServer012_29(void *a0, void *a1, int32_t a2, uint64_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static void v_SteamGameServer012_30(void *a0, uint64_t a1) { (void)a0; (void)a1;  }
+static void v_SteamGameServer012_31(void *a0, uint32_t a1) { (void)a0; (void)a1;  }
+static int32_t v_SteamGameServer012_32(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static bool v_SteamGameServer012_33(void *a0, uint64_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static void v_SteamGameServer012_34(void *a0) { (void)a0;  }
+static uint64_t v_SteamGameServer012_35(void *a0) { (void)a0; return 0; }
+static bool v_SteamGameServer012_37(void *a0, void *a1, int32_t a2, uint32_t a3, uint16_t a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static int32_t v_SteamGameServer012_38(void *a0, void *a1, int32_t a2, void *a3, void *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return 0; }
+static void v_SteamGameServer012_39(void *a0, bool a1) { (void)a0; (void)a1;  }
+static uint64_t v_SteamGameServer012_42(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static uint64_t v_SteamGameServer012_43(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static void *vt_SteamGameServer012[44] = {(void *)zero_slot, (void *)v_SteamGameServer012_1, (void *)v_SteamGameServer012_2, (void *)v_SteamGameServer012_3, (void *)v_SteamGameServer012_4, (void *)v_SteamGameServer012_5, (void *)v_SteamGameServer012_6, (void *)v_SteamGameServer012_7, (void *)v_SteamGameServer012_8, (void *)v_SteamGameServer012_9, (void *)v_SteamGameServer012_10, (void *)v_SteamGameServer012_11, (void *)v_SteamGameServer012_12, (void *)v_SteamGameServer012_13, (void *)v_SteamGameServer012_14, (void *)v_SteamGameServer012_15, (void *)v_SteamGameServer012_16, (void *)v_SteamGameServer012_17, (void *)v_SteamGameServer012_18, (void *)v_SteamGameServer012_19, (void *)v_SteamGameServer012_20, (void *)v_SteamGameServer012_21, (void *)v_SteamGameServer012_22, (void *)v_SteamGameServer012_23, (void *)v_SteamGameServer012_24, (void *)v_SteamGameServer012_25, (void *)v_SteamGameServer012_26, (void *)v_SteamGameServer012_27, (void *)v_SteamGameServer012_28, (void *)v_SteamGameServer012_29, (void *)v_SteamGameServer012_30, (void *)v_SteamGameServer012_31, (void *)v_SteamGameServer012_32, (void *)v_SteamGameServer012_33, (void *)v_SteamGameServer012_34, (void *)v_SteamGameServer012_35, (void *)zero_slot, (void *)v_SteamGameServer012_37, (void *)v_SteamGameServer012_38, (void *)v_SteamGameServer012_39, (void *)zero_slot, (void *)zero_slot, (void *)v_SteamGameServer012_42, (void *)v_SteamGameServer012_43};
 static void v_SteamGameServer015_1(void *a0, const char *a1) { (void)a0; (void)a1;  }
 static void v_SteamGameServer015_2(void *a0, const char *a1) { (void)a0; (void)a1;  }
 static void v_SteamGameServer015_3(void *a0, const char *a1) { (void)a0; (void)a1;  }
@@ -943,6 +1300,24 @@ static uint64_t v_SteamGameServer015_39(void *a0) { (void)a0; return 0; }
 static void v_SteamGameServer015_40(void *a0, uint64_t a1) { (void)a0; (void)a1;  }
 static bool v_SteamGameServer015_41(void *a0, uint64_t a1, const char *a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
 static void *vt_SteamGameServer015[42] = {(void *)zero_slot, (void *)v_SteamGameServer015_1, (void *)v_SteamGameServer015_2, (void *)v_SteamGameServer015_3, (void *)v_SteamGameServer015_4, (void *)v_SteamGameServer015_5, (void *)v_SteamGameServer015_6, (void *)v_SteamGameServer015_7, (void *)v_SteamGameServer015_8, (void *)v_SteamGameServer015_9, (void *)v_SteamGameServer015_10, (void *)v_SteamGameServer015_11, (void *)v_SteamGameServer015_12, (void *)v_SteamGameServer015_13, (void *)v_SteamGameServer015_14, (void *)v_SteamGameServer015_15, (void *)v_SteamGameServer015_16, (void *)v_SteamGameServer015_17, (void *)v_SteamGameServer015_18, (void *)v_SteamGameServer015_19, (void *)v_SteamGameServer015_20, (void *)v_SteamGameServer015_21, (void *)v_SteamGameServer015_22, (void *)v_SteamGameServer015_23, (void *)v_SteamGameServer015_24, (void *)zero_slot, (void *)v_SteamGameServer015_26, (void *)v_SteamGameServer015_27, (void *)v_SteamGameServer015_28, (void *)v_SteamGameServer015_29, (void *)v_SteamGameServer015_30, (void *)v_SteamGameServer015_31, (void *)v_SteamGameServer015_32, (void *)zero_slot, (void *)v_SteamGameServer015_34, (void *)v_SteamGameServer015_35, (void *)v_SteamGameServer015_36, (void *)v_SteamGameServer015_37, (void *)v_SteamGameServer015_38, (void *)v_SteamGameServer015_39, (void *)v_SteamGameServer015_40, (void *)v_SteamGameServer015_41};
+static bool v_SteamNetworking005_0(void *a0, uint64_t a1, void *a2, uint32_t a3, int32_t a4, int32_t a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return false; }
+static bool v_SteamNetworking005_1(void *a0, void *a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_SteamNetworking005_2(void *a0, void *a1, uint32_t a2, void *a3, void *a4, int32_t a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return false; }
+static bool v_SteamNetworking005_3(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
+static bool v_SteamNetworking005_4(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
+static bool v_SteamNetworking005_5(void *a0, uint64_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_SteamNetworking005_7(void *a0, bool a1) { (void)a0; (void)a1; return false; }
+static uint32_t v_SteamNetworking005_9(void *a0, uint64_t a1, int32_t a2, int32_t a3, bool a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return 0; }
+static bool v_SteamNetworking005_11(void *a0, uint32_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_SteamNetworking005_12(void *a0, uint32_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_SteamNetworking005_13(void *a0, uint32_t a1, void *a2, uint32_t a3, bool a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static bool v_SteamNetworking005_14(void *a0, uint32_t a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static bool v_SteamNetworking005_15(void *a0, uint32_t a1, void *a2, uint32_t a3, void *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static bool v_SteamNetworking005_16(void *a0, uint32_t a1, void *a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_SteamNetworking005_17(void *a0, uint32_t a1, void *a2, uint32_t a3, void *a4, void *a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return false; }
+static int32_t v_SteamNetworking005_20(void *a0, uint32_t a1) { (void)a0; (void)a1; return 0; }
+static int32_t v_SteamNetworking005_21(void *a0, uint32_t a1) { (void)a0; (void)a1; return 0; }
+static void *vt_SteamNetworking005[22] = {(void *)v_SteamNetworking005_0, (void *)v_SteamNetworking005_1, (void *)v_SteamNetworking005_2, (void *)v_SteamNetworking005_3, (void *)v_SteamNetworking005_4, (void *)v_SteamNetworking005_5, (void *)zero_slot, (void *)v_SteamNetworking005_7, (void *)zero_slot, (void *)v_SteamNetworking005_9, (void *)zero_slot, (void *)v_SteamNetworking005_11, (void *)v_SteamNetworking005_12, (void *)v_SteamNetworking005_13, (void *)v_SteamNetworking005_14, (void *)v_SteamNetworking005_15, (void *)v_SteamNetworking005_16, (void *)v_SteamNetworking005_17, (void *)zero_slot, (void *)zero_slot, (void *)v_SteamNetworking005_20, (void *)v_SteamNetworking005_21};
 static int32_t v_SteamNetworkingSockets012_4(void *a0, uint32_t a1) { (void)a0; (void)a1; return 0; }
 static bool v_SteamNetworkingSockets012_5(void *a0, uint32_t a1, int32_t a2, const char *a3, bool a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
 static bool v_SteamNetworkingSockets012_6(void *a0, uint32_t a1) { (void)a0; (void)a1; return false; }
@@ -986,6 +1361,34 @@ static void v_SteamParties002_8(void *a0, uint64_t a1, uint64_t a2) { (void)a0; 
 static uint64_t v_SteamParties002_9(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
 static bool v_SteamParties002_10(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
 static void *vt_SteamParties002[11] = {(void *)v_SteamParties002_0, (void *)v_SteamParties002_1, (void *)zero_slot, (void *)v_SteamParties002_3, (void *)v_SteamParties002_4, (void *)zero_slot, (void *)zero_slot, (void *)v_SteamParties002_7, (void *)v_SteamParties002_8, (void *)v_SteamParties002_9, (void *)v_SteamParties002_10};
+static int32_t v_SteamUser019_0(void *a0) { (void)a0; return 1; }
+static bool v_SteamUser019_1(void *a0) { (void)a0; return true; }
+static uint64_t v_SteamUser019_2(void *a0) { (void)a0; return 76561197960265729ull; }
+static int32_t v_SteamUser019_3(void *a0, void *a1, int32_t a2, uint64_t a3, uint32_t a4, uint16_t a5, bool a6) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; return steam_stub_ticket(a1, a2); }
+static void v_SteamUser019_4(void *a0, uint32_t a1, uint16_t a2) { (void)a0; (void)a1; (void)a2;  }
+static void v_SteamUser019_5(void *a0, uint64_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3;  }
+static bool v_SteamUser019_6(void *a0, void *a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static void v_SteamUser019_7(void *a0) { (void)a0;  }
+static void v_SteamUser019_8(void *a0) { (void)a0;  }
+static int32_t v_SteamUser019_11(void *a0, void *a1, uint32_t a2, void *a3, uint32_t a4, void *a5, uint32_t a6) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; return 0; }
+static uint32_t v_SteamUser019_12(void *a0) { (void)a0; return 0; }
+static uint32_t v_SteamUser019_13(void *a0, void *a1, int32_t a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; int32_t n = steam_stub_ticket(a1, a2); if (a3) *(uint32_t *)a3 = (uint32_t)n; return n > 0 ? 1u : 0u; }
+static int32_t v_SteamUser019_14(void *a0, void *a1, int32_t a2, uint64_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return 0; }
+static void v_SteamUser019_15(void *a0, uint64_t a1) { (void)a0; (void)a1;  }
+static void v_SteamUser019_16(void *a0, uint32_t a1) { (void)a0; (void)a1;  }
+static int32_t v_SteamUser019_17(void *a0, uint64_t a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static bool v_SteamUser019_18(void *a0) { (void)a0; return false; }
+static void v_SteamUser019_19(void *a0, uint64_t a1, uint32_t a2, uint16_t a3) { (void)a0; (void)a1; (void)a2; (void)a3;  }
+static uint64_t v_SteamUser019_20(void *a0, void *a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static bool v_SteamUser019_21(void *a0, void *a1, int32_t a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static int32_t v_SteamUser019_22(void *a0, int32_t a1, bool a2) { (void)a0; (void)a1; (void)a2; return 0; }
+static int32_t v_SteamUser019_23(void *a0) { (void)a0; return 0; }
+static uint64_t v_SteamUser019_24(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static bool v_SteamUser019_25(void *a0) { (void)a0; return false; }
+static bool v_SteamUser019_26(void *a0) { (void)a0; return false; }
+static bool v_SteamUser019_27(void *a0) { (void)a0; return false; }
+static bool v_SteamUser019_28(void *a0) { (void)a0; return false; }
+static void *vt_SteamUser019[29] = {(void *)v_SteamUser019_0, (void *)v_SteamUser019_1, (void *)v_SteamUser019_2, (void *)v_SteamUser019_3, (void *)v_SteamUser019_4, (void *)v_SteamUser019_5, (void *)v_SteamUser019_6, (void *)v_SteamUser019_7, (void *)v_SteamUser019_8, (void *)zero_slot, (void *)zero_slot, (void *)v_SteamUser019_11, (void *)v_SteamUser019_12, (void *)v_SteamUser019_13, (void *)v_SteamUser019_14, (void *)v_SteamUser019_15, (void *)v_SteamUser019_16, (void *)v_SteamUser019_17, (void *)v_SteamUser019_18, (void *)v_SteamUser019_19, (void *)v_SteamUser019_20, (void *)v_SteamUser019_21, (void *)v_SteamUser019_22, (void *)v_SteamUser019_23, (void *)v_SteamUser019_24, (void *)v_SteamUser019_25, (void *)v_SteamUser019_26, (void *)v_SteamUser019_27, (void *)v_SteamUser019_28};
 static int32_t v_SteamUser023_0(void *a0) { (void)a0; return 1; }
 static bool v_SteamUser023_1(void *a0) { (void)a0; return true; }
 static uint64_t v_SteamUser023_2(void *a0) { (void)a0; return 76561197960265729ull; }
@@ -1016,17 +1419,56 @@ static uint64_t v_SteamUser023_30(void *a0) { (void)a0; return 0; }
 static uint64_t v_SteamUser023_31(void *a0) { (void)a0; return 0; }
 static bool v_SteamUser023_32(void *a0, int32_t a1) { (void)a0; (void)a1; return false; }
 static void *vt_SteamUser023[33] = {(void *)v_SteamUser023_0, (void *)v_SteamUser023_1, (void *)v_SteamUser023_2, (void *)v_SteamUser023_3, (void *)v_SteamUser023_4, (void *)zero_slot, (void *)v_SteamUser023_6, (void *)v_SteamUser023_7, (void *)v_SteamUser023_8, (void *)zero_slot, (void *)zero_slot, (void *)v_SteamUser023_11, (void *)v_SteamUser023_12, (void *)zero_slot, (void *)v_SteamUser023_14, (void *)v_SteamUser023_15, (void *)v_SteamUser023_16, (void *)v_SteamUser023_17, (void *)v_SteamUser023_18, (void *)v_SteamUser023_19, (void *)v_SteamUser023_20, (void *)v_SteamUser023_21, (void *)v_SteamUser023_22, (void *)v_SteamUser023_23, (void *)v_SteamUser023_24, (void *)v_SteamUser023_25, (void *)v_SteamUser023_26, (void *)v_SteamUser023_27, (void *)v_SteamUser023_28, (void *)v_SteamUser023_29, (void *)v_SteamUser023_30, (void *)v_SteamUser023_31, (void *)v_SteamUser023_32};
+static uint32_t v_SteamUtils009_0(void *a0) { (void)a0; return 0; }
+static uint32_t v_SteamUtils009_1(void *a0) { (void)a0; return 0; }
+static int32_t v_SteamUtils009_2(void *a0) { (void)a0; return 1; }
+static uint32_t v_SteamUtils009_3(void *a0) { (void)a0; return (uint32_t)time(NULL); }
+static const char *v_SteamUtils009_4(void *a0) { (void)a0; return "FR"; }
+static bool v_SteamUtils009_5(void *a0, int32_t a1, void *a2, void *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static bool v_SteamUtils009_6(void *a0, int32_t a1, void *a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
+static uint8_t v_SteamUtils009_8(void *a0) { (void)a0; return 255; }
+static uint32_t v_SteamUtils009_9(void *a0) { (void)a0; return steam_stub_app_id(); }
+static void v_SteamUtils009_10(void *a0, int32_t a1) { (void)a0; (void)a1;  }
+static bool v_SteamUtils009_11(void *a0, uint64_t a1, void *a2) { (void)a0; (void)a1; (void)a2; return false; }
+static int32_t v_SteamUtils009_12(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
+static bool v_SteamUtils009_13(void *a0, uint64_t a1, void *a2, int32_t a3, int32_t a4, void *a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return false; }
+static uint32_t v_SteamUtils009_15(void *a0) { (void)a0; return 0; }
+static bool v_SteamUtils009_17(void *a0) { (void)a0; return false; }
+static bool v_SteamUtils009_18(void *a0) { (void)a0; return false; }
+static uint64_t v_SteamUtils009_19(void *a0, const char *a1) { (void)a0; (void)a1; return 0; }
+static bool v_SteamUtils009_20(void *a0, int32_t a1, int32_t a2, const char *a3, uint32_t a4, const char *a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return false; }
+static uint32_t v_SteamUtils009_21(void *a0) { (void)a0; return 0; }
+static bool v_SteamUtils009_22(void *a0, void *a1, uint32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
+static const char *v_SteamUtils009_23(void *a0) { (void)a0; return "english"; }
+static bool v_SteamUtils009_24(void *a0) { (void)a0; return false; }
+static void v_SteamUtils009_25(void *a0, int32_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2;  }
+static bool v_SteamUtils009_26(void *a0) { (void)a0; return false; }
+static void v_SteamUtils009_27(void *a0) { (void)a0;  }
+static bool v_SteamUtils009_28(void *a0) { (void)a0; return false; }
+static void v_SteamUtils009_29(void *a0, bool a1) { (void)a0; (void)a1;  }
+static void *vt_SteamUtils009[30] = {(void *)v_SteamUtils009_0, (void *)v_SteamUtils009_1, (void *)v_SteamUtils009_2, (void *)v_SteamUtils009_3, (void *)v_SteamUtils009_4, (void *)v_SteamUtils009_5, (void *)v_SteamUtils009_6, (void *)zero_slot, (void *)v_SteamUtils009_8, (void *)v_SteamUtils009_9, (void *)v_SteamUtils009_10, (void *)v_SteamUtils009_11, (void *)v_SteamUtils009_12, (void *)v_SteamUtils009_13, (void *)zero_slot, (void *)v_SteamUtils009_15, (void *)zero_slot, (void *)v_SteamUtils009_17, (void *)v_SteamUtils009_18, (void *)v_SteamUtils009_19, (void *)v_SteamUtils009_20, (void *)v_SteamUtils009_21, (void *)v_SteamUtils009_22, (void *)v_SteamUtils009_23, (void *)v_SteamUtils009_24, (void *)v_SteamUtils009_25, (void *)v_SteamUtils009_26, (void *)v_SteamUtils009_27, (void *)v_SteamUtils009_28, (void *)v_SteamUtils009_29};
 void **steam_stub_vtable(const char *version) {
+    if (!strcmp(version, "STEAMHTTP_INTERFACE_VERSION002")) return vt_STEAMHTTP_INTERFACE_VERSION002;
     if (!strcmp(version, "STEAMREMOTEPLAY_INTERFACE_VERSION002")) return vt_STEAMREMOTEPLAY_INTERFACE_VERSION002;
+    if (!strcmp(version, "STEAMREMOTESTORAGE_INTERFACE_VERSION014")) return vt_STEAMREMOTESTORAGE_INTERFACE_VERSION014;
     if (!strcmp(version, "STEAMTIMELINE_INTERFACE_V004")) return vt_STEAMTIMELINE_INTERFACE_V004;
+    if (!strcmp(version, "STEAMUGC_INTERFACE_VERSION010")) return vt_STEAMUGC_INTERFACE_VERSION010;
     if (!strcmp(version, "STEAMUGC_INTERFACE_VERSION020")) return vt_STEAMUGC_INTERFACE_VERSION020;
+    if (!strcmp(version, "STEAMUSERSTATS_INTERFACE_VERSION011")) return vt_STEAMUSERSTATS_INTERFACE_VERSION011;
     if (!strcmp(version, "STEAMVIDEO_INTERFACE_V007")) return vt_STEAMVIDEO_INTERFACE_V007;
+    if (!strcmp(version, "SteamClient017")) return vt_SteamClient017;
     if (!strcmp(version, "SteamClient021")) return vt_SteamClient021;
+    if (!strcmp(version, "SteamController005")) return vt_SteamController005;
+    if (!strcmp(version, "SteamFriends015")) return vt_SteamFriends015;
+    if (!strcmp(version, "SteamGameServer012")) return vt_SteamGameServer012;
     if (!strcmp(version, "SteamGameServer015")) return vt_SteamGameServer015;
+    if (!strcmp(version, "SteamNetworking005")) return vt_SteamNetworking005;
     if (!strcmp(version, "SteamNetworkingSockets012")) return vt_SteamNetworkingSockets012;
     if (!strcmp(version, "SteamNetworkingUtils004")) return vt_SteamNetworkingUtils004;
     if (!strcmp(version, "SteamParties002")) return vt_SteamParties002;
+    if (!strcmp(version, "SteamUser019")) return vt_SteamUser019;
     if (!strcmp(version, "SteamUser023")) return vt_SteamUser023;
+    if (!strcmp(version, "SteamUtils009")) return vt_SteamUtils009;
     return NULL;
 }
 #endif

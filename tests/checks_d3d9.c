@@ -378,6 +378,23 @@ RT_CHECK(d3d9_bridge_against_fake_native_library) {
     assert(CALL(dev, IDirect3DDevice9, CreateVertexDeclaration, decl, out).eax == 0 && seen.decl == GPTR(decl));
     uint32_t decl_proxy = R32(out);
     assert(R32(decl_proxy + 4) == tag(D3D9_IDirect3DVertexDeclaration9));
+    // Format 12 octets (WORD sur 32 bits, Portal Stories: Mel) : tester 2 éléments + fin
+    // (fin à l'offset 24, multiple de 8 : ne doit pas être confondu avec le format 8 octets).
+    uint32_t decl12 = SCRATCH + 0x340;
+    memset(GPTR(decl12), 0, 36);
+    W32(decl12 + 0, 0); W32(decl12 + 4, 0); W8(decl12 + 8, 2); W8(decl12 + 10, 0);       // Stream 0, Offset 0, FLOAT3, POSITION
+    W32(decl12 + 12, 1); W32(decl12 + 16, 12); W8(decl12 + 20, 1); W8(decl12 + 22, 5);   // Stream 1, Offset 12, FLOAT2, TEXCOORD
+    W32(decl12 + 24, 0xff); W32(decl12 + 28, 0); W8(decl12 + 32, 17);                    // D3DDECL_END
+    const uint8_t *converted = d3d9_decl(&c, decl12);
+    assert(converted != GPTR(decl12));
+    uint16_t s0, o0, s1, o1, send;
+    memcpy(&s0, converted + 0, 2); memcpy(&o0, converted + 2, 2);
+    memcpy(&s1, converted + 8, 2); memcpy(&o1, converted + 10, 2);
+    memcpy(&send, converted + 16, 2);
+    assert(s0 == 0 && o0 == 0 && converted[4] == 2 && converted[6] == 0);
+    assert(s1 == 1 && o1 == 12 && converted[12] == 1 && converted[14] == 5);
+    assert(send == 0xff && converted[20] == 17);
+    assert(d3d9_decl(&c, decl) == GPTR(decl));   // retour au format 8 octets
     uint32_t tokens = SCRATCH + 0x400;
     static const uint32_t vs[] = {0xfffe0300u, 0x0002fffeu, 0x0000ffffu, 0x1234u,   // commentaire contenant le jeton de fin
                                   0x0200001fu, 0x80000000u, 0x900f0000u, 0x0000ffffu};

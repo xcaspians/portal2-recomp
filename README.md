@@ -1,4 +1,4 @@
-# Portal 2, Half-Life 2 and Portal, statically recompiled for Apple silicon
+# Portal 2, Half-Life 2, Portal and Portal Stories: Mel, statically recompiled for Apple silicon
 
 [![Portal 2 running natively on iPhone (video)](https://img.youtube.com/vi/YWX2BeMnlQI/maxresdefault.jpg)](https://youtu.be/YWX2BeMnlQI)
 
@@ -10,8 +10,8 @@
 </p>
 
 This project builds native Mac and iPhone apps from your own copies of
-Portal 2, Half-Life 2 (with Episode One, Episode Two and Lost Coast) and
-Portal. It
+Portal 2, Half-Life 2 (with Episode One, Episode Two and Lost Coast),
+Portal and (Mac only) Portal Stories: Mel. It
 translates the x86 code of the Linux versions into C, then compiles it for
 Apple silicon. No emulator, no Wine, no Rosetta.
 
@@ -96,6 +96,14 @@ Contributed in #31. [Full details](#portal-experimental).
   60 fps without a crash (#53); back taps were not reliable there. Our own
   test is a short session only (menu and touch layout).
 
+### Portal Stories: Mel
+
+Experimental, Mac only for now ([details](#portal-stories-mel-experimental)).
+
+- **Mac**: menu (with Bink video), chambers across chapters 1–4, Metal and
+  OpenGL renderers, audio, and save/load work; a full playthrough has not been
+  tested yet.
+
 ### All games
 
 - **Install**: the Natif Installer app from the
@@ -174,6 +182,11 @@ Terminal instead of the installer, iPhone, and the details:
   - the game data (the one with `portal/` and `platform/`): install it
     with Steam, or use `download_depot 400 401` in the Steam console;
   - the Linux binaries: `download_depot 400 404` (about 150 MB).
+- And/or Portal Stories: Mel on Steam (Mac only):
+  - the game data (with `portal_stories/` and `platform/`): install it with
+    Steam, or use `download_depot 317400 317401` (about 8.6 GB) in the Steam
+    console;
+  - the Linux binaries: `download_depot 317400 317404` (about 90 MB).
 - Optional: Rust 1.99 or newer from [rustup](https://rustup.rs) builds the
   Metal renderer from source instead of using the prebuilt one; the iPhone
   app needs it for Metal (Homebrew's `rust` has no iOS target).
@@ -202,8 +215,8 @@ Portal 2 installer, so an update rebuilds only what changed; its log is
 ```sh
 git clone https://github.com/kanapitsas/source-recomp.git
 cd source-recomp
-./setup.sh                    # every game found: Portal 2, Half-Life 2, Portal
-./setup.sh --game hl2         # one game (portal2, hl2, portal1), or --game all
+./setup.sh                    # every game found: Portal 2, Half-Life 2, Portal, Mel
+./setup.sh --game hl2         # one game (portal2, hl2, portal1, mel), or --game all
 ./setup.sh --puzzle-maker     # Portal 2 with its map compilers, for the Puzzle Maker (docs/puzzlemaker.md)
 ./setup.sh "/path/to/Portal 2" "/path/to/depot_661"   # folders Steam did not put in the usual place
 ```
@@ -212,9 +225,9 @@ Without paths, `setup.sh` looks where Steam usually puts the games and their
 Linux binaries, and builds each game it finds complete (`./setup.sh --detect`
 lists them without building). It downloads Valve's `libsteam_api.dylib`
 (from Steamworks.NET, SHA-256 checked), builds each game (about 10 minutes
-for Portal 2, 10 to 20 for Half-Life 2 and about 10 for Portal the first
-time) and creates `~/Applications/Portal 2 Natif.app`,
-`Half-Life 2 Natif.app` and/or `Portal Natif.app`.
+for Portal 2, 10 to 20 for Half-Life 2, about 10 for Portal and about 15 for
+Portal Stories: Mel the first time) and creates `~/Applications/Portal 2 Natif.app`,
+`Half-Life 2 Natif.app`, `Portal Natif.app` and/or `Portal Stories Mel Natif.app`.
 Re-running it is safe and quick, and adding a game later does not rebuild
 the others. "Natif" is French for native; the name is kept so
 existing installs are updated in place.
@@ -370,6 +383,31 @@ its own build folder (`build/portal1`). It creates
 
 Details, manual setup and what differs from Portal 2:
 [docs/portal1.md](docs/portal1.md).
+
+## Portal Stories: Mel (experimental)
+
+The same recompiler also turns the Linux version of **Portal Stories: Mel**
+(Steam app 317400, Mac only for now) into a native Mac app. **You must own
+Portal 2 and have Portal Stories: Mel on Steam**; nothing from Valve or Prism
+Studios is in this repository.
+
+Install Portal Stories: Mel with Steam (or `download_depot 317400 317401`,
+about 8.6 GB) and fetch its Linux engine binaries with
+`download_depot 317400 317404` (about 90 MB). Wait for “Depot download
+complete”, then tick it in the installer or run `./setup.sh --game mel`.
+`setup.sh` also fetches Debian bullseye's i386 `libstdc++.so.6` and
+`libgcc_s.so.1` (SHA-256 checked), builds under `build/mel`, and creates
+`~/Applications/Portal Stories Mel Natif.app`.
+
+- **Tested**: main menu (with Bink video), `sp_a1_tramride`,
+  `sp_a2_underbounce`, `sp_a3_paint_fling` and `sp_a4_overgrown` on Metal,
+  `sp_a2_underbounce` on OpenGL, plus save and load.
+- **Not yet**: iPhone support, a full playthrough, achievements, and any
+  indirect call roots not yet exercised (report crashes ending in
+  `target not recompiled` with `~/Library/Logs/PortalStoriesMelNatif.log`).
+
+Details, manual setup and what differs from Portal 2:
+[docs/mel.md](docs/mel.md).
 
 ## Troubleshooting
 
