@@ -1,6 +1,7 @@
-// Mode d'essai des commandes tactiles, sans toucher l'écran : simulateur
-// seulement (runtime/ios/touch_test.m, compilé sous TARGET_OS_SIMULATOR ;
-// ailleurs, ces fonctions rendent 0 et le mode n'existe pas).
+// Mode d'essai des commandes tactiles, sans toucher l'écran : simulateur et,
+// depuis le round 23, appareils (essai du joueur 2 en coop sur l'iPad Pro) ;
+// inerte sans ses variables (runtime/ios/touch_test.m). Hors iOS, ces
+// fonctions rendent 0.
 //
 // P2_TOUCH_TEST_MOVE="0.5,1" incline le stick de chaque valeur (négative : vers
 // l'arrière) pendant P2_TOUCH_TEST_SECONDS (2 par défaut), après
@@ -17,7 +18,7 @@
 #pragma once
 #include <TargetConditionals.h>
 
-#if TARGET_OS_SIMULATOR
+#if TARGET_OS_IPHONE
 // P2_TOUCH_TEST_MOVE posée : la surcouche n'est pas dessinée.
 int rt_ios_touch_test_active(void);
 // P2_TOUCH_TEST_WASD : pas de manette virtuelle, touches W/A/S/D.
