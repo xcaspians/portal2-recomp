@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "backtap_ios.h"
+#include "game_ios.h"
 #include "device_defaults_ios.h"
 #include "gyro_ios.h"
 #include "icloud_saves.h"
@@ -42,7 +43,8 @@ static void apply(const char *key, const char *value) {
 void rt_ios_setting_set(const char *key, const char *value) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     const rt_menu_item *it = rt_menu_item_named(key);
-    NSString *name = @(key);
+    char own[160];
+    NSString *name = @(rt_ios_pref_key(key, own, sizeof(own)));   // the running game's (game_ios.c)
     if (it && it->kind == RT_MENU_TOGGLE) [defaults setBool:strcmp(value, "0") != 0 forKey:name];
     else if (it && it->kind == RT_MENU_SLIDER) [defaults setDouble:strtod(value, NULL) forKey:name];
     else [defaults setObject:@(value) forKey:name];
@@ -54,7 +56,8 @@ void rt_ios_setting_reset(const char *key) {
     // code's default for the fastest phones.
     const char *recommended = rt_ios_device_recommended(key);
     if (recommended) { rt_ios_setting_set(key, recommended); return; }
-    [NSUserDefaults.standardUserDefaults removeObjectForKey:@(key)];
+    char own[160];
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:@(rt_ios_pref_key(key, own, sizeof(own)))];
     char value[64];
     apply(key, rt_ios_setting_value(key, value, sizeof(value)));
 }

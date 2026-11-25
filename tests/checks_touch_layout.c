@@ -191,3 +191,15 @@ RT_CHECK(ios_touch_layout_scaled_stays_on_screen) {
         }
     }
 }
+
+// One Portal app, several games: Mel's data under Documents/mel, its own
+// preference keys; Portal 2 keeps its historical folders and keys.
+RT_CHECK(ios_hosted_game_data_and_preference_keys) {
+    const rt_ios_game *p2 = rt_ios_game_named("portal2"), *mel = rt_ios_game_named("mel");
+    assert(!strcmp(p2->data_dir, "") && !strcmp(mel->data_dir, "mel"));
+    assert(!strcmp(p2->title, "Portal 2") && !strcmp(mel->title, "Portal Stories: Mel"));
+    char key[64];
+    assert(rt_ios_set_game("portal2") == p2 && !strcmp(rt_ios_pref_key("P2TouchSize", key, sizeof(key)), "P2TouchSize"));
+    assert(rt_ios_set_game("mel") == mel && !strcmp(rt_ios_pref_key("P2TouchSize", key, sizeof(key)), "mel.P2TouchSize"));
+    rt_ios_set_game("portal2");
+}

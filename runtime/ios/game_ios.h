@@ -15,9 +15,23 @@ typedef struct {
     // FindCommandBase dans sa table virtuelle.
     const char *cvar_interface;
     unsigned find_command_base;
+    // Its data in Documents: "" for the app's own game (Documents/game, prep,
+    // linux, where existing installs keep them), "mel" for a game hosted in the
+    // Portal app (Documents/mel/game, ...). Saves stay in Documents/<userdata>.
+    const char *data_dir;
+    const char *title;      // shown in the game picker and the menu's version line
 } rt_ios_game;
 
 // Profil de ce nom ; Portal 2 pour NULL, "" ou un nom inconnu (builds sans P2Game).
 const rt_ios_game *rt_ios_game_named(const char *name);
 // Profil de l'app en cours (Info.plist, lu une fois) ; Portal 2 hors iOS.
+// Dans l'app Portal (plusieurs jeux), celui choisi au lancement (rt_ios_set_game).
 const rt_ios_game *rt_ios_current_game(void);
+// The game picked at launch (ios/main_ios.c); returns its profile.
+const rt_ios_game *rt_ios_set_game(const char *name);
+// The app's own game: the Info.plist's P2Game (its keys and folders are the
+// historical ones). Another game's preference keys get "<name>." in front.
+const rt_ios_game *rt_ios_app_game(void);
+// Preference key of the running game: `key` itself for the app's own game,
+// "<game>.<key>" for a hosted one (each game keeps its own settings).
+const char *rt_ios_pref_key(const char *key, char *out, unsigned long size);

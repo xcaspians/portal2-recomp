@@ -454,6 +454,181 @@ nonisolated func unpackSource() throws {
     try? fm.removeItem(at: old)
 }
 
+// MARK: - Devices (tools/devices.py plans, tools/ios_device.sh does the work)
+
+// The checkout that built the iPhone apps: this installer's own copy, or a
+// git checkout named by P2_REPO.
+let repoDir = ProcessInfo.processInfo.environment["P2_REPO"].map { URL(fileURLWithPath: $0) } ?? sourceDir
+
+struct DeviceInfo: Decodable, Identifiable, Equatable {
+    let udid: String
+    let name: String?
+    let model: String?
+    let kind: String?
+    let link: String
+    let ready: Bool
+    let problem: String?
+    var id: String { udid }
+}
+struct DeviceStatus: Decodable, Equatable {
+    var app_installed: Bool?
+    var free_bytes: Int64?
+    var data: [String: Bool]?
+    var problem: String?
+}
+struct PlanStep: Decodable { let label: String; let command: [String] }
+struct DownloadPlan: Decodable { let steps: [PlanStep]; let need_bytes: Int64; let problem: String? }
+
+let downloads: [(id: String, title: String)] = [("portal2", "Portal 2"), ("mel", "Portal Stories: Mel"),
+                                                ("workshop", "Workshop maps")]
+
+@MainActor
+final class Devices: ObservableObject {
+    @Published var list: [DeviceInfo] = []
+    @Published var status: [String: DeviceStatus] = [:]
+    @Published var busy: String? = nil          // "<udid>/<game>" while downloading
+    @Published var message: [String: String] = [:]
+    @Published var line = ""
+    @Published var stepText = ""
+    @Published var searching = false
+    private var process: Process?
+
+    private func tool(_ args: [String]) async -> Data {
+        await withCheckedContinuation { done in
+            DispatchQueue.global().async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+                p.arguments = [repoDir.appendingPathComponent("tools/devices.py").path] + args
+                p.currentDirectoryURL = repoDir
+                let pipe = Pipe()
+                p.standardOutput = pipe
+                p.standardError = FileHandle.nullDevice
+                try? p.run()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                done.resume(returning: data)
+            }
+        }
+    }
+    // withStatus: also free space and games on each ready device. Reading free
+    // space opens the Portal app on the device for a second (P2_DEVICE_REPORT),
+    // so only on Refresh, never just because the window opened.
+    func refresh(withStatus: Bool = true) async {
+        searching = true
+        defer { searching = false }
+        list = (try? JSONDecoder().decode([DeviceInfo].self, from: await tool(["list"]))) ?? []
+        for d in list where d.ready && withStatus {
+            status[d.udid] = try? JSONDecoder().decode(DeviceStatus.self, from: await tool(["status", "--device", d.udid]))
+        }
+    }
+    func download(_ game: String, to device: DeviceInfo) async {
+        let key = "\(device.udid)/\(game)"
+        message[key] = nil
+        busy = key
+        defer { busy = nil; process = nil }
+        guard let plan = try? JSONDecoder().decode(DownloadPlan.self, from: await tool(["plan", "--device", device.udid, "--game", game])) else {
+            message[key] = "The download couldn't be planned. Check that the device is unlocked, then try again."
+            return
+        }
+        if let problem = plan.problem { message[key] = problem; return }
+        for (i, step) in plan.steps.enumerated() {
+            stepText = "\(step.label) (\(i + 1) of \(plan.steps.count))"
+            let ok = await runStep(step.command, device: device.udid)
+            if !ok {
+                message[key] = line.isEmpty ? "Stopped." : line
+                return
+            }
+        }
+        message[key] = "Done. Open the Portal app on the device."
+        status[device.udid] = try? JSONDecoder().decode(DeviceStatus.self, from: await tool(["status", "--device", device.udid]))
+    }
+    private func runStep(_ words: [String], device: String) async -> Bool {
+        await withCheckedContinuation { done in
+            let p = Process()
+            p.executableURL = repoDir.appendingPathComponent("tools/ios_device.sh")
+            p.arguments = words
+            p.currentDirectoryURL = repoDir
+            var env = ProcessInfo.processInfo.environment
+            env["P2_DEVICE"] = device   // never a guess: the device the button belongs to
+            p.environment = env
+            let pipe = Pipe()
+            p.standardOutput = pipe
+            p.standardError = pipe
+            pipe.fileHandleForReading.readabilityHandler = { h in
+                let text = String(decoding: h.availableData, as: UTF8.self)
+                if let last = text.split(separator: "\n").last.map(String.init), !last.isEmpty {
+                    DispatchQueue.main.async { self.line = last }
+                }
+            }
+            p.terminationHandler = { p in
+                pipe.fileHandleForReading.readabilityHandler = nil
+                done.resume(returning: p.terminationStatus == 0)
+            }
+            process = p
+            do { try p.run() } catch { done.resume(returning: false) }
+        }
+    }
+    func cancel() { process?.terminate(); line = "Canceled." }
+}
+
+struct DevicesPanel: View {
+    @ObservedObject var devices: Devices
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("iPhones and iPads plugged in, or paired on this Wi-Fi.")
+                Spacer()
+                Button(devices.searching ? "Looking…" : "Refresh") { Task { await devices.refresh() } }
+                    .disabled(devices.searching || devices.busy != nil)
+            }
+            if devices.list.isEmpty && !devices.searching {
+                Text("No device found. Plug one in with a cable and unlock it.").foregroundStyle(.secondary)
+            }
+            ForEach(devices.list) { d in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(d.name ?? "Device").bold()
+                        Text("\(d.model ?? "") · \(d.link)").foregroundStyle(.secondary)
+                        if let free = devices.status[d.udid]?.free_bytes {
+                            Text(String(format: "· %.1f GB free", Double(free) / 1e9)).foregroundStyle(.secondary)
+                        }
+                    }
+                    if let problem = d.problem ?? devices.status[d.udid]?.problem {
+                        Text(problem).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        ForEach(downloads, id: \.id) { g in
+                            let key = "\(d.udid)/\(g.id)"
+                            HStack {
+                                Text(g.title)
+                                if devices.status[d.udid]?.data?[g.id] == true { Text("on the device").foregroundStyle(.green) }
+                                Spacer()
+                                if devices.busy == key {
+                                    ProgressView().controlSize(.small)
+                                    Button("Cancel") { devices.cancel() }
+                                } else {
+                                    Button("Download") { Task { await devices.download(g.id, to: d) } }
+                                        .disabled(devices.busy != nil)
+                                }
+                            }
+                            if devices.busy == key {
+                                Text(devices.stepText).font(.caption)
+                                Text(devices.line).font(.caption.monospaced()).lineLimit(1).foregroundStyle(.secondary)
+                            }
+                            if let m = devices.message[key] {
+                                Text(m).font(.caption).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
+            }
+        }
+        .task { if devices.list.isEmpty { await devices.refresh(withStatus: false) } }
+    }
+}
+
 // MARK: - Views
 
 struct StepRow<Content: View>: View {
@@ -568,6 +743,7 @@ struct GameRow: View {
 
 struct ContentView: View {
     @ObservedObject var model: Installer
+    @StateObject private var devices = Devices()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -594,6 +770,9 @@ struct ContentView: View {
                 }
                 StepRow(number: 3, title: "Build", ok: model.phase == .done) {
                     buildStatus
+                }
+                StepRow(number: 4, title: "Devices", ok: false) {
+                    DevicesPanel(devices: devices)
                 }
             }
 
