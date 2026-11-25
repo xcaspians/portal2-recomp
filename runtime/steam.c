@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+// SHIMS: SteamAPI_Init SteamAPI_IsSteamRunning
 // SHIMS: SteamAPI_InitSafe SteamAPI_Shutdown SteamAPI_RestartAppIfNecessary SteamAPI_RunCallbacks
 // SHIMS: SteamAPI_RegisterCallback SteamAPI_UnregisterCallback SteamAPI_RegisterCallResult SteamAPI_UnregisterCallResult
 // SHIMS: SteamAPI_GetHSteamPipe SteamAPI_GetHSteamUser SteamAPI_SetTryCatchCallbacks SteamAPI_GetSteamInstallPath
@@ -276,7 +277,11 @@ static uint32_t build_vtable(CPU *c, size_t i) {
         rt_trap(c, c->eip, "Steam: out of memory");
     uint32_t *vtable = interface_vtable(i);
     if (*vtable) return *vtable;
-    uint32_t slots = interface_slots(i), table = rt_alloc(slots * 4);
+    // 16 spare slots past the SDK's: a game built against a longer table of the
+    // same version (Left 4 Dead 2's SteamGameServer014 calls slot 43 of 42)
+    // reaches a named slot (a clear trap, or virtual_bridge) instead of
+    // whatever follows the table in memory.
+    uint32_t slots = interface_slots(i) + 16, table = rt_alloc(slots * 4);
     if (!table) rt_trap(c, c->eip, "Steam: guest vtable allocation failed");
     for (uint32_t s = 0; s < slots; ++s) {
         char name[160];
@@ -335,6 +340,34 @@ void *steam_proxy_host(uint32_t proxy) {
 // ISteamGameCoordinator001 : SendMessage, IsMessageAvailable, RetrieveMessage.
 static int virtual_bridge(CPU *c, const char *name, uint32_t table, long iface) {
     unsigned slot;
+    // Timeline V001 (SDK 1.60; Left 4 Dead 2): its methods only feed Steam's
+    // game recording timeline (state text, events, game mode) and return
+    // nothing the game reads: answered as done, nothing sent.
+    // ISteamNetworking's old socket API (slots 8 and up: CreateListenSocket,
+    // CreateP2PConnectionSocket, ... GetMaxPacketSize), dropped from the flat
+    // functions of newer SDKs. Left 4 Dead 2 opens a listen socket for its
+    // local server; offline there is nothing to listen on through Steam:
+    // invalid handle (0) or failure (false), as Steam answers without a network.
+    if (!strncmp(name, "SteamNetworking006::slot", 24) && atoi(name + 24) >= 8) {
+        static int logged;
+        if (!logged++) fprintf(stderr, "steam: %s and the other Steam socket calls answer \"none\" (offline)\n", name);
+        c->eax = 0;
+        return 1;
+    }
+    // ISteamGameServer014 past the SDK's 42 slots (Left 4 Dead 2's listen
+    // server, offline): nothing to tell Valve's game-server directory; 0.
+    if (!strncmp(name, "SteamGameServer014::slot", 24) && atoi(name + 24) >= 42) {
+        static int logged;
+        if (!logged++) fprintf(stderr, "steam: %s (past the SDK's table) answers 0 (offline listen server)\n", name);
+        c->eax = 0;
+        return 1;
+    }
+    if (!strncmp(name, "STEAMTIMELINE_INTERFACE_V001::", 30)) {
+        static int logged;
+        if (!logged++) fprintf(stderr, "steam: STEAMTIMELINE_INTERFACE_V001 calls ignored (game recording timeline)\n");
+        c->eax = 0;
+        return 1;
+    }
     if (!strcmp(name, "SteamInput006::slot17") || !strcmp(name, "SteamInput006::slot21") ||
         !strcmp(name, "SteamInput006::slot29")) {
         // Steam Input returns these structures by value. C++ i386 uses a
@@ -497,6 +530,33 @@ static int virtual_bridge(CPU *c, const char *name, uint32_t table, long iface) 
     return 1;
 }
 
+// P2_STEAM_OFFLINE=1 (Left 4 Dead 2: games.py launch_args, tools/launch.py):
+// the online matchmaking paths never reach Steam. Server lists (internet,
+// LAN through Steam, favourites...), server pings and queries, and lobby
+// searches, creation and joins answer "no request" (a null list handle, an
+// invalid query, k_uAPICallInvalid), as Steam does without a network.
+static int offline_refused(CPU *c, const char *name) {
+    const char *e = getenv("P2_STEAM_OFFLINE");
+    if (!e || !*e || !strcmp(e, "0")) return 0;
+    const char *method = strstr(name, "::") + 2;
+    int refused = 0;
+    if (!strncmp(name, "SteamMatchMakingServers", 23)) {
+        if (!strcmp(method, "PingServer") || !strcmp(method, "PlayerDetails") || !strcmp(method, "ServerRules")) {
+            c->eax = UINT32_MAX; refused = 1;                    // HServerQuery: invalid
+        } else if (!strncmp(method, "Request", 7)) {
+            c->eax = 0; refused = 1;                             // HServerListRequest: none
+        }
+    } else if (!strncmp(name, "SteamMatchMaking0", 17) &&
+               (!strcmp(method, "RequestLobbyList") || !strcmp(method, "CreateLobby") || !strcmp(method, "JoinLobby"))) {
+        c->eax = 0; c->edx = 0; refused = 1;                     // SteamAPICall_t: k_uAPICallInvalid
+    }
+    if (refused) {
+        static int logged;
+        if (logged++ < 8) fprintf(stderr, "steam: %s refused (offline: P2_STEAM_OFFLINE)\n", name);
+    }
+    return refused;
+}
+
 // Appel invité d'un emplacement de vtable : "Version::Méthode" ou "Version::slotN".
 static int method_shim(CPU *c, const char *name) {
     const char *separator = strstr(name, "::");
@@ -506,6 +566,7 @@ static int method_shim(CPU *c, const char *name) {
     uint32_t table = iface < 0 || ((size_t)iface < steam_interface_count && !vtables) ? 0 : *interface_vtable((size_t)iface);
     pthread_mutex_unlock(&lock);
     if (iface < 0) return 0;
+    if (offline_refused(c, name)) return 1;
     const SteamMethodInfo *m = find_method(name);
     if ((!m || !m->fn) && virtual_bridge(c, name, table, iface)) return 1;
     if (!m) fail(c, "Steam: %s has no flat function in SDK 1.53a%s", name, "");
@@ -865,9 +926,11 @@ static int steam_shim(CPU *c, const char *name) {
         c->eax = (uint32_t)result;
     } else if (!strcmp(name, "SteamAPI_SetBreakpadAppID")) {
         log_once(&breakpad_app_logged, "SteamAPI_SetBreakpadAppID");
-    } else if (!strcmp(name, "SteamAPI_InitSafe")) {
+    } else if (!strcmp(name, "SteamAPI_IsSteamRunning")) {
+        c->eax = FLAT(bool (*)(void), "SteamAPI_IsSteamRunning")();
+    } else if (!strcmp(name, "SteamAPI_InitSafe") || !strcmp(name, "SteamAPI_Init")) {   // Init: Left 4 Dead 2
         set_app_id();
-        bool (*init)(void) = FLAT(bool (*)(void), "SteamAPI_InitSafe");
+        bool (*init)(void) = FLAT(bool (*)(void), name);
         Capture capture; capture_begin(&capture);
         bool ok = init();
         capture_end(&capture);

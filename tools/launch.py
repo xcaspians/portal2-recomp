@@ -34,6 +34,8 @@ def environment(config, game, base=None, hidden=False, metal=True):
     dylib = config.get('d3d9metal_dylib')
     if metal and dylib and Path(dylib).expanduser().is_file():
         env.setdefault('P2_D3D9METAL', str(Path(dylib).expanduser()))
+    if game.get('steam_offline'):   # Left 4 Dead 2: online matchmaking never reaches Steam (runtime/steam.c)
+        env['P2_STEAM_OFFLINE'] = '1'
     if hidden:
         env.setdefault('P2_HIDDEN_WINDOWS', '1')
         env.setdefault('SDL_AUDIODRIVER', 'dummy')

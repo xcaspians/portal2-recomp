@@ -72,7 +72,7 @@ size() { du -sh "$1" 2>/dev/null | cut -f1 | tr -d ' '; }
 
 # Every game's executable (tools/games.py EXECUTABLES). Tests use a fake home:
 # a game running for real does not concern it.
-if [ -z "${P2_UNINSTALL_HOME:-}" ] && pgrep -qx 'portal2-native|hl2-native|portal1-native|mel-native' 2>/dev/null; then
+if [ -z "${P2_UNINSTALL_HOME:-}" ] && pgrep -qx 'portal2-native|hl2-native|portal1-native|mel-native|l4d2-native' 2>/dev/null; then
     echo "A recompiled game (portal2-native, hl2-native, portal1-native or mel-native) is running: quit it first." >&2
     exit 1
 fi

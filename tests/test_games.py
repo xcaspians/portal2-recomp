@@ -61,7 +61,7 @@ class GameProfiles(unittest.TestCase):
                          ('build/portal1', 'build/portal1/portal1-native', 'build/portal1/ios', 'portal1-native'))
         self.assertEqual((mel['build_dir'], mel['binary'], mel['ios_dir'], mel['executable']),
                          ('build/mel', 'build/mel/mel-native', 'build/mel/ios', 'mel-native'))
-        self.assertEqual(games.EXECUTABLES, ('portal2-native', 'hl2-native', 'portal1-native', 'mel-native'))
+        self.assertEqual(games.EXECUTABLES, ('portal2-native', 'hl2-native', 'portal1-native', 'mel-native', 'l4d2-native'))
         # No two games share a build tree, binary or data folder.
         for key in ('build_dir', 'binary', 'ios_dir', 'executable', 'app_name', 'log_name', 'bundle_id'):
             self.assertEqual(len({g[key] for g in games.GAMES.values()}), len(games.GAMES), key)
@@ -166,6 +166,20 @@ class IosProfiles(unittest.TestCase):
         plist = (self.ROOT / 'ios/Info.plist.in').read_text()
         self.assertIn('<key>P2Game</key><string>@GAME@</string>', plist)
         self.assertNotIn('Portal 2', plist)   # the name comes from the profile (@NAME@)
+
+
+class Left4Dead2Profile(unittest.TestCase):
+    def test_offline_arguments_are_always_added(self):
+        l4d2 = dict(games.GAMES['l4d2'], name='l4d2')
+        self.assertEqual(l4d2['program'], 'hl2_linux')
+        self.assertEqual(l4d2['roots'], 'config/l4d2-roots.json')
+        args = games.forced_args(l4d2, ['-game', 'left4dead2', '+map', 'c1m1_hotel'])
+        self.assertEqual(args[-4:], ['-insecure', '+sv_lan', '1', '-nomaster'])   # never Valve's servers or VAC
+        self.assertEqual(games.forced_args(dict(games.GAMES['portal2']), ['-novid']), ['-novid'])   # others unchanged
+        self.assertTrue((games.ROOT / l4d2['roots']).is_file())
+        import launch
+        self.assertEqual(launch.environment({}, l4d2, base={})['P2_STEAM_OFFLINE'], '1')   # no server lists or lobbies
+        self.assertNotIn('P2_STEAM_OFFLINE', launch.environment({}, dict(games.GAMES['portal2']), base={}))
 
 
 if __name__ == '__main__':

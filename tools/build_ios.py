@@ -286,7 +286,7 @@ def launch_args(game, config):
     tools/language.py at build time, for this game's config (its folder and
     appmanifest): to change it, set "language" in config/local.json and
     rebuild."""
-    words = ['-game', game['mod'], '-novid', '-fullscreen']
+    words = games.forced_args(game, ['-game', game['mod'], '-novid', '-fullscreen'])   # L4D2: offline, always
     return ['--', *words, *language.language_args(config, words)]
 
 

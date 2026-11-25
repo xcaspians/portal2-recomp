@@ -14,6 +14,7 @@
 // SHIMS: wcslen wcscpy wcsncpy wcscat wcsncat wcscmp wcsncmp wcschr wcsrchr wcsstr
 // SHIMS: wcstoll __wcscpy_chk __wcsncpy_chk __wcscat_chk __wcsncat_chk __wcstombs_chk
 // SHIMS: wcscoll __wcscoll_l __wcsxfrm_l wcstol wcstod wcstof
+// SHIMS: wcsdup
 // SHIMS: wmemchr wmemcmp wmemcpy wmemmove wmemset
 // SHIMS: towlower towupper iswalnum iswalpha iswblank iswcntrl iswdigit iswgraph iswlower
 // SHIMS: iswprint iswpunct iswspace iswupper iswxdigit
@@ -165,6 +166,12 @@ static int wchar_shim(CPU *c, const char *name) {
     uint32_t a = 0, b = 0, n = 0;
     if (!strncmp(name, "wcs", 3) || !strncmp(name, "wmem", 4) || !strncmp(name, "__wcs", 5)) { a = rt_arg32(c, 0); b = rt_arg32(c, 1); }
     if (!strcmp(name, "wcslen")) c->eax = wlen(c, a);
+    else if (!strcmp(name, "wcsdup")) {   // guest heap, as strdup
+        uint32_t bytes = (wlen(c, a) + 1) * 4, copy = rt_alloc(bytes);
+        if (copy) memcpy(GPTR(copy), GPTR(a), bytes);
+        else { errno = ENOMEM; rt_save_errno(c); }
+        c->eax = copy;
+    }
     else if (!strcmp(name, "wcscpy")) {
         n = wlen(c, b) + 1;
         memmove(wspan(c, a, n, 1), GPTR(b), (size_t)n * 4); c->eax = a;

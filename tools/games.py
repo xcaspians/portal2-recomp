@@ -166,6 +166,55 @@ GAMES = {
         ios_app='PortalStoriesMel.app',
         ios_data=('bin', 'platform', 'portal2', 'portal2_dlc2', 'portal_stories'),
     ),
+    # Left 4 Dead 2 (Steam app 550, Linux binaries depot 554): i386 like Portal 2,
+    # on the engine branch Portal 2 grew from (docs/fork/L4D2_RESEARCH.md). Its
+    # modules link libstdc++ and libgcc_s dynamically, as Mel's do (system_libs,
+    # Debian i386 packages). Local and offline only: launched with -insecure,
+    # +sv_lan 1 and -nomaster (launch_args), never connected to Valve's servers.
+    # Experimental, see docs/l4d2.md.
+    'l4d2': dict(
+        program='hl2_linux',
+        lib_dirs=('bin', 'left4dead2/bin'),
+        system_libs=('libstdc++.so.6', 'libgcc_s.so.1'),
+        mod='left4dead2',
+        # Chromium (in-game web pages: the store and news panels), the dx9
+        # shader API (unused: shaderapivk goes through the runtime's Direct3D 9
+        # bridge), the dedicated-server copies (*_srv.so, loaded by srcds only)
+        # and the unit test library. libtogl.so stays: the launcher links it,
+        # as Portal 2's does.
+        excluded=_COMMON_EXCLUDED | {'libcef.so', 'chromehtml.so', 'shaderapidx9.so',
+                                     'libsteamvalidateuseridtickets.so', 'unitlib.so', 'unitlib_srv.so',
+                                     'datacache_srv.so', 'dedicated_srv.so', 'engine_srv.so', 'libtier0_srv.so',
+                                     'libvstdlib_srv.so', 'materialsystem_srv.so', 'scenefilecache_srv.so',
+                                     'shaderapiempty_srv.so', 'soundemittersystem_srv.so', 'studiorender_srv.so',
+                                     'vphysics_srv.so', 'vscript_srv.so'},
+        roots='config/l4d2-roots.json',
+        # vstdlib's coroutines (used by matchmaking.so) switch stacks by copying
+        # them and longjmp-ing into a frame that isn't on the host's call stack:
+        # the runtime runs them instead, each on its own thread (runtime/coroutine.c).
+        host_exports=('libvstdlib.so:Coroutine_',),
+        steam_appid=550,
+        depot_id=554,
+        # Offline: the local listen server never asks Valve's master server or VAC.
+        launch_args=('-insecure', '+sv_lan', '1', '-nomaster'),
+        # And the Steam bridge refuses server lists, pings and lobbies (P2_STEAM_OFFLINE).
+        steam_offline=True,
+        app_name='Left 4 Dead 2 Natif',
+        log_name='Left4Dead2Natif.log',
+        bundle_id='fr.kanapitsas.l4d2-native',
+        icon='left4dead2.ico',
+        renderer=None,   # Metal when libd3d9metal is there, as for Portal 2
+        build_dir='build/l4d2',
+        binary='build/l4d2/l4d2-native',
+        executable='l4d2-native',
+        ios_dir='build/l4d2/ios',
+        ios=False,   # round 12: Mac first
+        ios_name='Left 4 Dead 2',
+        ios_executable='l4d2',
+        ios_app='Left4Dead2.app',
+        ios_data=('bin', 'platform', 'update', 'left4dead2', 'left4dead2_dlc1', 'left4dead2_dlc2',
+                  'left4dead2_dlc3'),
+    ),
 }
 
 
@@ -173,6 +222,14 @@ DEFAULT = 'portal2'
 # Executable names of every game: "is a recompiled game running" checks
 # (uninstall.sh, tests) must cover them all.
 EXECUTABLES = tuple(g['executable'] for g in GAMES.values())
+
+
+def forced_args(game, args):
+    """`args` with the profile's own arguments after them, always, whatever the
+    launcher was given: Left 4 Dead 2's offline set (-insecure +sv_lan 1
+    -nomaster), so a recompiled build never meets Valve's servers or VAC."""
+    extra = list(game.get('launch_args', ()))
+    return [*args, *extra] if extra else list(args)
 
 
 def check(name, origin='--game'):
