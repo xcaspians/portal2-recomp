@@ -23,10 +23,9 @@ Then start one:
   line), for example `+map`, then `custom/sp_laser_maze`. Remove them
   afterwards, or every launch starts that map.
 
-Workshop maps you have on a Mac: copy the `.bsp` from the Mac's Portal 2
-folder (`portal2/maps/workshop/<number>/`) into `game/portal2/maps/custom/`.
-There is no Workshop on iPhone (no Steam), so the game's Community Test
-Chambers screen stays empty.
+Workshop maps you have on a Mac: `tools/ios_device.sh workshop push` (below)
+copies all of them. There is no Workshop on iPhone (no Steam), so the game's
+own Community Test Chambers screen stays empty; Community Maps (below) replaces it.
 
 From the Mac, over the cable:
 
@@ -75,6 +74,34 @@ Findings and rules: [fork/ROUND3_REPORT.md](fork/ROUND3_REPORT.md).
 `P2_COMMUNITY_TEST=<id>` (simulator checks) opens Community Maps on that
 chamber at the first pause, downloads it and starts it; `show:<id>` only
 opens its details.
+
+### The Mac's Workshop maps, over the cable
+
+The Mac game downloads your subscribed chambers by itself (through Steam) into
+`~/Library/Application Support/Portal 2 Natif/userdata/portal2/maps/workshop`.
+To put them on the device:
+
+```sh
+tools/ios_device.sh workshop push --dry-run   # what would be copied, and the total size
+tools/ios_device.sh workshop push             # copy (P2_DEVICE=<UDID> for the iPad)
+```
+
+- They land where Community Maps keeps its downloads
+  (`Documents/portal2-userdata/portal2/maps/workshop/<Workshop ID>/`), with its
+  note (title, update date), so they show as **Downloaded** with working
+  update badges. The Mac names its folders by Steam content handle: the tool
+  takes each map's Workshop ID from the `thumb<ID>.jpg` next to it and fetches
+  its details from the same keyless API as Community Maps
+  (`tools/workshop_push.py`, checked by `tests/test_workshop_push.py`).
+- A map already on the device with the same size is skipped (its note is
+  added if missing); one with another size (another version, downloaded on
+  the device) is left alone. **Nothing on the device is ever deleted**, and
+  the Mac folder is left as is.
+- Before copying, the tool launches the app for a second with
+  `P2_DEVICE_REPORT=1`: it writes `Documents/device-report.txt` (model,
+  memory, free space) and quits without starting the game, since devicectl
+  only knows the total capacity. If the maps plus 1 GB to spare don't fit, it
+  stops with a plain message. `tools/ios_device.sh space` prints that report.
 
 ## Addon folders
 

@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "backtap_ios.h"
+#include "device_defaults_ios.h"
 #include "gyro_ios.h"
 #include "icloud_saves.h"
 #include "live_settings.h"
@@ -49,6 +50,10 @@ void rt_ios_setting_set(const char *key, const char *value) {
 }
 
 void rt_ios_setting_reset(const char *key) {
+    // Picked for this device (device_defaults.txt): back to that, not the
+    // code's default for the fastest phones.
+    const char *recommended = rt_ios_device_recommended(key);
+    if (recommended) { rt_ios_setting_set(key, recommended); return; }
     [NSUserDefaults.standardUserDefaults removeObjectForKey:@(key)];
     char value[64];
     apply(key, rt_ios_setting_value(key, value, sizeof(value)));

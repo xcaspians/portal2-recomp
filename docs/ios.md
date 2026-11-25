@@ -4,6 +4,17 @@ Portal 2 runs on an iPhone 15 Pro Max (iOS 27): menus, gameplay, level
 transitions, voice lines, on-screen touch controls. Half-Life 2 has had a
 first short test on the same phone, at 60 fps; see [Half-Life 2](#half-life-2).
 
+Tested devices:
+
+| Device | Chip | Who | What |
+|---|---|---|---|
+| iPhone 15 Pro Max | A17 Pro | upstream | Portal 2 played at 60 fps; Half-Life 2 short session |
+| iPhone 17 Pro Max | A19 Pro | upstream | Portal starts and renders |
+| iPhone 18 Pro (iPhone19,2) | A20 Pro | this fork (Caspian) | the fork's device builds |
+| iPad mini (A20 Pro, iPad19,1) | A20 Pro | this fork (Caspian) | the fork's device builds |
+
+Older phones (A15, A16) have not been run yet; see [Older phones](#older-phones).
+
 ## Metal renderer (default)
 
 Instead of gl4es, the app can render through the native Direct3D 9 path
@@ -355,6 +366,43 @@ the cap follows thermal and power changes during play.
 Simulator: `xcrun simctl spawn <device> defaults write <bundle id>
 P2ResolutionScale -string 1.5`. `tests/checks_ios_settings.c` checks the
 translation and that the keys match between the code and the settings page.
+
+## Older phones
+
+The app picks its Resolution, Upscaling (MetalFX) and Frames per second from
+the device model and memory at **first launch only**, and only for the ones
+the player never set (`runtime/ios/device_defaults.c`; the marker
+`P2DefaultsFor` in the app's preferences records it was done). The table and
+thresholds are one file, **`ios/device_defaults.txt`**, copied into the app:
+tune it there and rebuild. Checked by `tests/checks_device_defaults.c`.
+
+| Tier | Devices | Resolution | MetalFX | Frames per second |
+|---|---|---|---|---|
+| weak | A13, A14 (iPhone SE 2, 12 family) | ×1 | Quality | 30 |
+| a15 | iPhone 13 and 13 mini, SE 3, iPad mini 6 (A15, 4 GB, 60 Hz) | ×1.5 | Quality | 30 |
+| a15pro | iPhone 13 Pro and Pro Max (ProMotion), 14 and 14 Plus (A15, 6 GB) | ×1.5 | Quality | 40 on ProMotion, else 30 |
+| a16 | iPhone 14 Pro, 15, 15 Plus; **any model not in the table** | ×2 | Quality | 60 |
+| strong | A17 Pro and newer (15 Pro, 16, 17, 18 families, iPad mini A17 Pro and A20 Pro) | ×2 | Off | 60 |
+
+The values are conservative guesses: nothing below an A17 Pro has been
+measured. Auto (120 Hz) is nowhere a default until a device holds ~90 fps in
+a busy chamber (round 1 rule).
+
+- **In the game:** pause > gear > Display shows "Defaults for <device>"
+  and a **Use recommended** button that applies them again (the frame rate
+  at once with OpenGL; Resolution and MetalFX on the next launch). Reset to
+  defaults goes back to these values too.
+- **Low-memory guard** (`lowmem` in the file: 4,600 MB as iOS reports it,
+  so every 4 GB device): the game also starts with `+mat_picmip 1` (textures
+  at half resolution) and lower mtld3d memory caps. `P2_NO_LOWMEM=1` turns it
+  off.
+- **Memory log:** at each level load the log (Log setting, `game.log`) gets
+  `[ios] mémoire (niveau chargé) : empreinte N Mo, pic N Mo, encore N Mo avant
+  la limite d'iOS (<model>, <RAM> Mo)`, so a crash can be diagnosed later.
+  The launch line `[ios] appareil : …` says which tier was picked.
+- Simulator: it reports the simulated model (`SIMULATOR_MODEL_IDENTIFIER`);
+  `P2_DEVICE_MODEL=iPhone14,5` and `P2_DEVICE_RAM_MB=3700` stand in for
+  another phone. It always renders at ×1 with OpenGL, whatever the table says.
 
 ## Gyro aiming
 

@@ -18,6 +18,8 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "device_defaults_ios.h"
+#include "device_ios.h"
 #include "game_ios.h"
 #include "metal_ios.h"
 #include "settings.h"
@@ -74,7 +76,21 @@ static void exclude_from_backup(const char *documents) {
 }
 
 int main(int argc, char **argv) {
+    // tools/ios_device.sh (space, workshop push, mel data push) : place libre,
+    // modèle et mémoire, écrits dans Documents/device-report.txt, puis sortie
+    // sans démarrer le jeu (devicectl ne donne que la capacité totale).
+    if (getenv("P2_DEVICE_REPORT") && getenv("HOME")) {
+        char documents[PATH_MAX], report[PATH_MAX];
+        snprintf(documents, sizeof(documents), "%s/Documents", getenv("HOME"));
+        mkdir(documents, 0755);
+        snprintf(report, sizeof(report), "%s/device-report.txt", documents);
+        return rt_ios_device_report_write(report, documents) ? 0 : 1;
+    }
     // Réglages de l'app Réglages d'iOS : avant tout le reste (P2Log pose P2_LOG_FILE).
+    // Défauts de cet appareil (ios/device_defaults.txt) : au premier lancement
+    // seulement, et jamais sur un réglage que le joueur a choisi.
+    char device[512];
+    rt_ios_device_defaults_first_launch(device, sizeof(device));
     char settings[1024];
     int applied = rt_ios_settings_load(settings, sizeof(settings));
     // Journal fiable : la console de simctl perd la fin quand le processus meurt.
@@ -97,7 +113,19 @@ int main(int argc, char **argv) {
         getrlimit(RLIMIT_NOFILE, &files);
         fprintf(stderr, "[ios] descripteurs de fichiers : %llu\n", (unsigned long long)files.rlim_cur);
     }
+    fprintf(stderr, "[ios] appareil : %s\n", device);
     fprintf(stderr, "[ios] réglages : %s\n", applied ? settings : "aucun modifié");
+    // Garde mémoire (4 Go) : plafonds de mtld3d plus bas, ajoutés après ceux
+    // de l'utilisateur pour l'emporter (la dernière clé gagne).
+    if (rt_ios_device_low_memory() && *rt_ios_device_low_memory_metal()) {
+        const char *given = getenv("MTLD3D_CONFIG");
+        char joined[1024];
+        snprintf(joined, sizeof(joined), "%s%s%s", given && *given ? given : "", given && *given ? ";" : "",
+                 rt_ios_device_low_memory_metal());
+        setenv("MTLD3D_CONFIG", joined, 1);
+        fprintf(stderr, "[ios] mémoire réduite : mtld3d %s, jeu %s\n", rt_ios_device_low_memory_metal(),
+                rt_ios_device_low_memory_args());
+    }
     const rt_ios_game *game = rt_ios_current_game();
     fprintf(stderr, "[ios] jeu : %s (mod %s, %s)\n", game->name, game->mod, game->userdata);
     // Tapes au dos coupées par défaut dans HL2 (game_ios.c) ; P2_BACKTAP=1 les rend.
@@ -166,6 +194,13 @@ int main(int argc, char **argv) {
             fprintf(stderr, "[ios] résolution %dx%d (échelle %s)\n", w, h,
                     getenv("P2_IOS_RENDER_SCALE") ? getenv("P2_IOS_RENDER_SCALE") : "par défaut");
         }
+    }
+    // Garde mémoire : réglages du moteur qui économisent la mémoire (textures
+    // à demi-résolution : +mat_picmip 1), après ceux du joueur.
+    if (rt_ios_device_low_memory()) {
+        char words[256];
+        snprintf(words, sizeof(words), "%s", rt_ios_device_low_memory_args());
+        for (char *save = NULL, *w = strtok_r(words, " \t", &save); w; w = strtok_r(NULL, " \t", &save)) push(w);
     }
     arguments[count] = NULL;
     fprintf(stderr, "[ios] %d arguments, Steam : stub iOS (%s)\n", count, exe);

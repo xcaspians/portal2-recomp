@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "device_defaults_ios.h"
 #include "icloud_saves.h"
 #include "live_settings.h"
 #include "mods_list.h"
@@ -35,7 +36,7 @@ static int menu_open, closing_hold;
 int rt_ios_settings_menu_captures_pad(void) { return menu_open || closing_hold; }
 int rt_ios_settings_menu_open(void) { return menu_open; }
 
-typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY } RowKind;
+typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED } RowKind;
 
 @interface P2MenuRow : NSObject
 @property (nonatomic) RowKind kind;
@@ -223,6 +224,7 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         const rt_menu_item *it = &rt_menu_items[i];
         if (it->section) [self addSection:@(it->section)];
         [self addSettingRow:it];
+        if (!strcmp(it->key, "P2MaxFPS")) [self addRecommendedRow];
     }
     [self addMapsSection];
     [self addSection:@""];
@@ -392,6 +394,47 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     [stack addArrangedSubview:v];
     [rows addObject:row];
     [self refresh:row];
+}
+// "Defaults for <device>": what device_defaults.txt picked here (resolution,
+// MetalFX, frame rate), and a button that applies it again.
+- (void)addRecommendedRow {
+    const rt_dd_choice *c = rt_ios_device_choice();
+    if (!c) return;
+    static const char *const scale_names[][2] = {{"native", "Native"}, {"2", "×2"}, {"1.5", "×1.5"}, {"1", "×1"}};
+    const char *scale = c->scale;
+    for (size_t i = 0; i < sizeof(scale_names) / sizeof(*scale_names); ++i)
+        if (!strcmp(scale_names[i][0], c->scale)) scale = scale_names[i][1];
+    const char *upscale = !strcmp(c->upscale, "0.75") ? "MetalFX Quality" : !strcmp(c->upscale, "0.5") ? "MetalFX Performance"
+                                                                                                         : "no MetalFX";
+    UILabel *info = label([NSString stringWithFormat:@"Defaults for %s: resolution %s, %s, %s fps%s", c->name, scale, upscale,
+                           c->fps, c->low_memory ? ", memory saving on" : ""], 13, UIFontWeightRegular, .65);
+    info.numberOfLines = 0;
+    [stack addArrangedSubview:info];
+    P2MenuRow *row = [P2MenuRow new];
+    row.kind = ROW_RECOMMENDED;
+    __weak P2SettingsMenu *weakSelf = self;
+    UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
+    conf.title = @"Use recommended";
+    conf.subtitle = @"Resolution and MetalFX apply on next launch";
+    conf.baseForegroundColor = UIColor.whiteColor;
+    conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+        (void)a; [weakSelf useRecommended];
+    }]];
+    row.view = row.button;
+    row.view.layer.cornerRadius = 12;
+    [row.button.heightAnchor constraintGreaterThanOrEqualToConstant:52].active = YES;
+    [stack addArrangedSubview:row.button];
+    [rows addObject:row];
+}
+- (void)useRecommended {
+    rt_ios_device_defaults_use_recommended();
+    for (P2MenuRow *r in rows) [self refresh:r];
+    for (P2MenuRow *r in rows) if (r.kind == ROW_RECOMMENDED) {
+        UIButtonConfiguration *conf = r.button.configuration;
+        conf.title = @"Recommended settings applied";
+        r.button.configuration = conf;
+    }
 }
 - (void)addResetRow {
     P2MenuRow *row = [P2MenuRow new];
@@ -618,6 +661,7 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     switch (row.kind) {
     case ROW_CLOSE: [self closeMenu]; return;
     case ROW_RESET: [self resetPressed]; return;
+    case ROW_RECOMMENDED: [self useRecommended]; return;
     case ROW_MAP: [self startMap:row]; return;
     case ROW_COMMUNITY: [self openCommunity]; return;
     case ROW_SETTING: break;
