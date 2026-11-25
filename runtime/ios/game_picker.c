@@ -19,9 +19,11 @@ const char *rt_picker_data_folder(const rt_picker_game *g, int which, char *out,
     }
 }
 
+int rt_picker_can_remove(const rt_picker_game *g) { return g && strcmp(g->name, "portal2") != 0; }
+
 const char *rt_picker_removable(const rt_picker_game *g, int which, char *out, size_t size) {
     static const char *const folders[] = {"game", "prep", "linux"};
-    if (which < 0 || which > 2) return NULL;
+    if (which < 0 || which > 2 || !rt_picker_can_remove(g)) return NULL;
     return in_data_dir(g, folders[which], out, size);
 }
 
