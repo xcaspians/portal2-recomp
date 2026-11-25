@@ -80,7 +80,9 @@ int rt_ios_memory_footprint(long long *now, long long *peak, long long *availabl
     *now = (long long)info.phys_footprint;
     if (count >= TASK_VM_INFO_REV2_COUNT) *peak = (long long)info.ledger_phys_footprint_peak;
 #if TARGET_OS_IPHONE
-    *available = (long long)os_proc_available_memory();   // before iOS ends the app
+    // Before iOS ends the app; 0 where there is no such limit (the simulator).
+    size_t left = os_proc_available_memory();
+    if (left) *available = (long long)left;
 #endif
     return 1;
 }
@@ -90,7 +92,8 @@ void rt_ios_memory_log(const char *why) {
     if (!rt_ios_memory_footprint(&now, &peak, &available)) return;
     char model[64];
     rt_ios_device_model(model, sizeof(model));
-    fprintf(stderr, "[ios] mémoire (%s) : empreinte %lld Mo, pic %lld Mo, encore %lld Mo avant la limite d'iOS "
-            "(%s, %u Mo)\n", why, now >> 20, peak >= 0 ? peak >> 20 : -1, available >= 0 ? available >> 20 : -1,
-            model, rt_ios_device_ram_mb());
+    char left[64] = "limite d'iOS inconnue";
+    if (available >= 0) snprintf(left, sizeof(left), "encore %lld Mo avant la limite d'iOS", available >> 20);
+    fprintf(stderr, "[ios] mémoire (%s) : empreinte %lld Mo, pic %lld Mo, %s (%s, %u Mo)\n", why, now >> 20,
+            peak >= 0 ? peak >> 20 : -1, left, model, rt_ios_device_ram_mb());
 }
