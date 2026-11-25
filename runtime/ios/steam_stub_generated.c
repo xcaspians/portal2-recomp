@@ -1242,7 +1242,7 @@ static void v_SteamGameServer012_20(void *a0, const char *a1, const char *a2) { 
 static void v_SteamGameServer012_21(void *a0, const char *a1) { (void)a0; (void)a1;  }
 static void v_SteamGameServer012_22(void *a0, const char *a1) { (void)a0; (void)a1;  }
 static void v_SteamGameServer012_23(void *a0, const char *a1) { (void)a0; (void)a1;  }
-static bool v_SteamGameServer012_24(void *a0, uint32_t a1, void *a2, uint32_t a3, void *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; return false; }
+static bool v_SteamGameServer012_24(void *a0, uint32_t a1, void *a2, uint32_t a3, void *a4) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; if (a4) *(uint64_t *)a4 = 76561197960265729ull; return true; }
 static uint64_t v_SteamGameServer012_25(void *a0) { (void)a0; return 0; }
 static void v_SteamGameServer012_26(void *a0, uint64_t a1) { (void)a0; (void)a1;  }
 static bool v_SteamGameServer012_27(void *a0, uint64_t a1, const char *a2, uint32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
@@ -1364,7 +1364,7 @@ static void *vt_SteamParties002[11] = {(void *)v_SteamParties002_0, (void *)v_St
 static int32_t v_SteamUser019_0(void *a0) { (void)a0; return 1; }
 static bool v_SteamUser019_1(void *a0) { (void)a0; return true; }
 static uint64_t v_SteamUser019_2(void *a0) { (void)a0; return 76561197960265729ull; }
-static int32_t v_SteamUser019_3(void *a0, void *a1, int32_t a2, uint64_t a3, uint32_t a4, uint16_t a5, bool a6) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; return 0; }
+static int32_t v_SteamUser019_3(void *a0, void *a1, int32_t a2, uint64_t a3, uint32_t a4, uint16_t a5, bool a6) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; return steam_stub_ticket(a1, a2); }
 static void v_SteamUser019_4(void *a0, uint32_t a1, uint16_t a2) { (void)a0; (void)a1; (void)a2;  }
 static void v_SteamUser019_5(void *a0, uint64_t a1, int32_t a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3;  }
 static bool v_SteamUser019_6(void *a0, void *a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return false; }
