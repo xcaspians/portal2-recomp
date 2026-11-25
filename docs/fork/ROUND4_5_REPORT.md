@@ -238,6 +238,28 @@ to tune and rebuild.
   - So Mel's menu on a real device is still to see: about 1.1 GB has to be
     freed first.
 
+### Update, same evening: Mel on the iPad mini
+
+After Jacksen freed space, `mel data push` copied Mel's 9.3 GB (39 copies,
+no errors; data marked complete). Then, on the device (Metal, A20 Pro):
+
+- **Main menu: yes.** The engine was up 6 seconds after launch and the menu
+  was showing (back-tap sensors stopped for the menu); it held at 59.9 fps
+  for 3 minutes.
+- **First chamber: yes, and beyond.** `Host_NewGame on map sp_a1_tramride`,
+  level loaded at 59.9 fps. The tram ride then ended by itself and the next
+  map, `sp_a1_mel_intro`, loaded too, with no crash and no missing call
+  target. The touch stick's linear response came on.
+- **Memory:** 1.85 GB after the first load, 2.5 GB after the second, with a
+  peak of 3.8 GB during the change. iOS's limit for Mel is about 5.1 GB
+  (footprint plus headroom), against about 12.3 GB for Portal 2, whose
+  profile has the increased-memory entitlement. That leaves room on the iPad,
+  but it's another reason for Mel's own App ID (Needs Jacksen 3).
+- The "No such sound" console lines come from Mel's own data: the Mac shows
+  them too.
+- Not seen by eye: picture, sound, touch controls in play. That needs a look
+  at the iPad.
+
 ### Blockers, in plain words
 
 - **Fixed: "STEAM certificate length error".**
