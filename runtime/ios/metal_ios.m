@@ -26,6 +26,7 @@
 #include "d3d9_bridge.h"
 #include "metal_ios.h"
 #include "power_ios.h"
+#include "tv_output.h"
 #include "settings.h"
 #include "rt.h"
 
@@ -140,13 +141,18 @@ int rt_ios_metal_prepare(void) {
     return 1;
 }
 
+static __weak UIView *game_view;
+void *rt_ios_metal_view(void) { return (__bridge void *)game_view; }   // tv_output_ios.m
+
 void rt_ios_metal_view_created(void *metal_view) {
     UIView *view = (__bridge UIView *)metal_view;
+    game_view = view;
     // SDL : échelle native de l'écran si la fenêtre est haute résolution, 1 sinon.
     rt_ios_view_set_scale(metal_view, rt_ios_render_scale());
     CAMetalLayer *layer = (CAMetalLayer *)view.layer;
     fprintf(stderr, "[ios] Metal view: %.0fx%.0f points, scale %.2f, drawable %.0fx%.0f\n", view.bounds.size.width,
             view.bounds.size.height, layer.contentsScale, layer.drawableSize.width, layer.drawableSize.height);
     rt_ios_request_frame_rate();
+    rt_ios_tv_watch();   // a connected TV takes the picture (round 20)
 }
 #endif

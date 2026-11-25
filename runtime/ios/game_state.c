@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "tv_output.h"
 #include "device_ios.h"
 #include "game_ios.h"
 #include "modules.h"
@@ -413,6 +414,7 @@ void rt_ios_game_state_poll(void) {
     uint64_t now = SDL_GetTicks64();
     if (now < next_query) return;
     next_query = now + 100;
+    rt_ios_tv_poll();   // a TV picture size the engine couldn't take yet (tv_output_ios.m)
     CPU *c = rt_foreign_thread_attach();   // thread invité courant : son CPU
     if (!c) return;
     if (!engine_vgui) {

@@ -1,0 +1,37 @@
+// A connected TV's picture (runtime/ios/tv_output.c, round 20): size, cap,
+// engine command and the iPad-only stand-in used for tests.
+#include "checks.h"
+#include <string.h>
+#include "../runtime/ios/tv_output.c"
+
+RT_CHECK(tv_output_sizes_follow_the_tv) {
+    int w = 0, h = 0;
+    // A 4K TV over a cable: Auto renders at 4K, the setting can lower it.
+    assert(rt_tv_render_size(3840, 2160, "auto", &w, &h) && w == 3840 && h == 2160);
+    assert(rt_tv_render_size(3840, 2160, "1080", &w, &h) && w == 1920 && h == 1080);
+    assert(rt_tv_render_size(3840, 2160, "1440", &w, &h) && w == 2560 && h == 1440);
+    // AirPlay at 1080p: 4K asked, the TV's own lines given (never upscaled).
+    assert(rt_tv_render_size(1920, 1080, "2160", &w, &h) && w == 1920 && h == 1080);
+    // A wider-than-16:9 screen keeps its shape; sizes stay even.
+    assert(rt_tv_render_size(2560, 1080, "auto", &w, &h) && w == 2560 && h == 1080);
+    assert(rt_tv_render_size(1366, 768, "auto", &w, &h) && h == 768 && w == 1366);
+    assert(rt_tv_render_size(1280, 721, "auto", &w, &h) && !(w & 1) && !(h & 1));
+    // An 8K screen: Auto stops at 2160 lines.
+    assert(rt_tv_render_size(7680, 4320, NULL, &w, &h) && w == 3840 && h == 2160);
+    // Unknown size, or a nonsense setting (treated as Auto).
+    assert(!rt_tv_render_size(0, 1080, "auto", &w, &h));
+    assert(rt_tv_render_size(1920, 1080, "720", &w, &h) && h == 1080);
+}
+
+RT_CHECK(tv_output_switch_cap_and_command) {
+    assert(rt_tv_enabled(NULL) && rt_tv_enabled("1") && !rt_tv_enabled("0") && !rt_tv_enabled("off"));
+    assert(rt_tv_frame_cap(NULL, 60) == 60 && rt_tv_frame_cap("auto", 120) == 120);
+    assert(rt_tv_frame_cap("30", 60) == 30 && rt_tv_frame_cap("120", 60) == 60);   // never above the TV
+    assert(rt_tv_frame_cap("40", 0) == 40 && rt_tv_frame_cap(NULL, 0) == 60);     // TV rate unknown
+    char line[64];
+    assert(rt_tv_mode_command(1920, 1080, line, sizeof(line)) && !strcmp(line, "mat_setvideomode 1920 1080 1"));
+    assert(!rt_tv_mode_command(0, 1080, line, sizeof(line)) && !rt_tv_mode_command(1920, 1080, line, 8));
+    int w = 0, h = 0;
+    assert(rt_tv_simulated("1920x1080", &w, &h) && w == 1920 && h == 1080);
+    assert(!rt_tv_simulated("1920", &w, &h) && !rt_tv_simulated("1920x1080x2", &w, &h) && !rt_tv_simulated("", &w, &h));
+}
