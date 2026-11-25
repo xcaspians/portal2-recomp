@@ -44,6 +44,7 @@
 // L'orientation de l'écran (paysage gauche ou droit) dit vers quel bord pointe
 // y ; à défaut, le signe de la gravité selon x.
 #include "back_tap.h"
+#include "backtap_calibrate.h"
 #include "env_ios.h"
 #include <math.h>
 #include <stdlib.h>
@@ -80,13 +81,18 @@ void rt_backtap_defaults(rt_backtap_params *p) {
     p->pre_rms_max = 0.05f;   // téléphone tenu immobile : ~0,01 g ; marche : 0,1 g et plus
     p->gravity_max = 0.12f;   // ~7° de rotation en 200 ms
     p->onset_factor = 0.5f;   // un candidat précoce cerne mieux le pic ; les faibles sont jugés « sous les seuils »
+    p->side_margin = 0;       // calibration only (backtap_calibrate.c)
 }
 
 // Anciens noms, gardés pour tools/backtap_replay.c : les lectures sont dans env_ios.h.
 float rt_backtap_env_float(const char *name, float def, float min) { return rt_ios_env_float(name, def, min); }
 int rt_backtap_env_sign(const char *name, int def) { return rt_ios_env_sign(name, def); }
-void rt_backtap_params_from_env(rt_backtap_params *p) {
+void rt_backtap_params_from_env(rt_backtap_params *p) { rt_backtap_params_from_env_calibrated(p, NULL); }
+void rt_backtap_params_from_env_calibrated(rt_backtap_params *p, const char *calibration) {
     rt_backtap_defaults(p);
+    rt_btcal_fit fit;
+    long long when;
+    if (calibration && rt_btcal_parse(calibration, &fit, &when)) rt_btcal_apply(p, &fit);
     // Sensibilité (Réglages : 0,75 / 1 / 1,33) : seuils de détection divisés
     // d'autant ; les variables par seuil, ci-dessous, priment.
     float k = rt_backtap_env_float("P2_BACKTAP_SENSITIVITY", 1, 0.1f);
@@ -243,6 +249,9 @@ static void judge(rt_backtap *d, int orient, int active, rt_backtap_report *r) {
     else if (r->gravity > p->gravity_max) r->reject = "gravité qui change";
     else if (g_now && g_now->g[2] < p->flat_z) r->reject = "téléphone à plat";
     else if (r->width > p->max_width) r->reject = "pic trop long";
+    // Calibrated wrong-side guard: too close to the line to trust the side.
+    else if (p->side_margin > 0 && r->method && !strcmp(r->method, "rotation") && fabsf(r->side_score) < p->side_margin)
+        r->reject = "côté incertain";
     else if (p->z_sign && (onset_az > 0 ? 1 : -1) != p->z_sign) r->reject = "sens z";
     else if (!r->orient) r->reject = "orientation inconnue";
     else if (!r->side) r->reject = "côté indécis";
