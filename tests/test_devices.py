@@ -56,6 +56,26 @@ class DevicesTest(unittest.TestCase):
         self.assertIn('Portal 2 first', devices.plan('workshop', tight, built, 1)[1])   # maps play in Portal 2
         self.assertIn('unknown', devices.plan('hl3', tight, built, 1)[1])
 
+    def test_plan_for_portal_and_the_games_with_their_own_app(self):
+        built = dict.fromkeys(devices.DOWNLOADS)
+        # Portal lives in the Portal app and needs no other game's data.
+        bare = {'app_installed': True, 'apps': {'portal2': True}, 'free_bytes': 50_000_000_000, 'data': {}}
+        steps, problem = devices.plan('portal1', bare, built, 4_400_000_000)
+        self.assertIsNone(problem)
+        self.assertEqual([c for _, c in steps], [['--game', 'portal1', 'data']])
+        # Half-Life 2 and Left 4 Dead 2: their own app first, then their data.
+        steps, problem = devices.plan('l4d2', bare, built, 14_000_000_000)
+        self.assertIsNone(problem)
+        self.assertEqual([c for _, c in steps], [['--game', 'l4d2', 'install'], ['--game', 'l4d2', 'data']])
+        self.assertIn('Left 4 Dead 2 app', steps[0][0])
+        with_hl2 = dict(bare, apps={'portal2': False, 'hl2': True})
+        self.assertEqual([c for _, c in devices.plan('hl2', with_hl2, built, 10_000_000_000)[0]],
+                         [['--game', 'hl2', 'data']])
+        # Not built on this Mac: the sentence, no steps.
+        self.assertEqual(devices.plan('hl2', bare, dict(built, hl2='HL2 not built'), 1), ([], 'HL2 not built'))
+        self.assertEqual(devices.app_game('portal1'), 'portal2')
+        self.assertEqual(devices.app_game('l4d2'), 'l4d2')
+
 
 class BaseGameTest(unittest.TestCase):
     def test_portal2_is_never_removable(self):

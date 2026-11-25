@@ -6,7 +6,7 @@ workshop push); this only plans it, so there is one implementation.
 
     devices.py list                                 JSON: [{udid, name, model, kind, link, ready, problem}]
     devices.py status --device UDID                 JSON: apps on it, free space, each game's data
-    devices.py plan --device UDID --game portal2|mel|workshop
+    devices.py plan --device UDID --game portal2|mel|portal1|hl2|l4d2|workshop
                                                     JSON: {steps: [{label, command}], need_bytes, problem}
 
 Every problem is a plain sentence for the window (device locked, not trusted,
@@ -26,8 +26,17 @@ import localconfig  # noqa: E402
 from ios_bundle_id import bundle_id  # noqa: E402
 
 MARGIN = 1 << 30   # kept free on the device (tools/workshop_push.py)
-DOWNLOADS = ('portal2', 'mel', 'workshop')
-TITLES = {'portal2': 'Portal 2', 'mel': 'Portal Stories: Mel', 'workshop': "Workshop maps (the Mac's)"}
+DOWNLOADS = ('portal2', 'mel', 'portal1', 'hl2', 'l4d2', 'workshop')
+TITLES = {'portal2': 'Portal 2', 'mel': 'Portal Stories: Mel', 'portal1': 'Portal', 'hl2': 'Half-Life 2',
+          'l4d2': 'Left 4 Dead 2', 'workshop': "Workshop maps (the Mac's)"}
+# Games with their own app on the device; the others live in the Portal app.
+OWN_APP = ('hl2', 'l4d2')
+SIZES = {'portal1': 'about 4.4 GB', 'hl2': 'about 10 GB', 'l4d2': 'about 14 GB'}
+
+
+def app_game(game):
+    """The game whose app holds `game` on the device: its own, or the Portal app's."""
+    return game if game in OWN_APP else 'portal2'
 # Portal 2 is the base the other games in the Portal app run on (Mel borrows
 # its files): nothing offers to remove it, on the device (game_picker.c) or here.
 BASE_GAME = 'portal2'
@@ -114,6 +123,14 @@ def mac_builds(config=None):
     mel = localconfig.game_config(config, 'mel') if (config.get('games') or {}).get('mel') else {}
     out['mel'] = None if 'mel' in in_app and mel.get('game_root') else \
         'Portal Stories: Mel isn\'t in this Mac\'s iPhone app yet: install Mel on the Mac, then build Portal 2 for iPhone again.'
+    p1 = localconfig.game_config(config, 'portal1') if (config.get('games') or {}).get('portal1') else {}
+    out['portal1'] = None if 'portal1' in in_app and p1.get('game_root') else \
+        'Portal isn\'t in this Mac\'s iPhone app yet: install Portal on the Mac, then build Portal 2 for iPhone again.'
+    for game in OWN_APP:   # their own apps (tools/build_ios.py --game hl2 | l4d2)
+        cfg = localconfig.game_config(config, game) if (config.get('games') or {}).get(game) else {}
+        built = cfg.get('game_root') and game in games_in_app(games.ios_app(games.profile(dict(cfg, game=game)), 'device'))
+        out[game] = None if built else \
+            f'{TITLES[game]} isn\'t built for iPhone on this Mac yet: build it with tools/build_ios.py --game {game}.'
     workshop = localconfig.user_dir(p2) / 'portal2/maps/workshop'
     out['workshop'] = None if any(workshop.glob('*/*.bsp')) else \
         'No Workshop maps on this Mac: subscribe to chambers in Portal 2 on the Mac first.'
@@ -129,10 +146,15 @@ def plan(game, status, built, need_bytes):
     if built.get(game):
         return [], built[game]
     steps = []
-    if not status.get('app_installed'):
-        steps.append(('Install the Portal app', ['install']))
+    owner = app_game(game)
+    installed = (status.get('apps') or {}).get(owner, status.get('app_installed') if owner == 'portal2' else False)
+    if not installed:
+        steps.append(('Install the Portal app', ['install']) if owner == 'portal2' else
+                     (f'Install the {TITLES[game]} app', ['--game', game, 'install']))
     if game == 'portal2':
         steps.append(('Copy Portal 2 (about 11.5 GB)', ['data']))
+    elif game in SIZES:   # its own data, no other game's needed
+        steps.append((f'Copy {TITLES[game]} ({SIZES[game]})', ['--game', game, 'data']))
     elif game == 'mel':
         # The slim pack (tools/mel_slim.py) reads Portal 2's archives: Portal 2 first.
         if not status.get('data', {}).get('portal2'):
@@ -150,20 +172,26 @@ def plan(game, status, built, need_bytes):
 
 
 def status(udid):
-    """{app_installed, free_bytes, data: {portal2, mel}, problem}"""
-    portal = bundle_id(game='portal2')
+    """{app_installed (the Portal app), apps: {portal2, hl2, l4d2}, free_bytes, data: {game: bool}, problem}"""
     apps, result = devicectl_json('device', 'info', 'apps', '--device', udid)
     if apps is None:
         return {'problem': plain_error(result.stderr + result.stdout)}
-    installed = any(a.get('bundleIdentifier') == portal for a in (apps.get('result') or {}).get('apps') or [])
-    out = {'app_installed': installed, 'free_bytes': None, 'data': {}, 'problem': None}
+    ids = {a.get('bundleIdentifier') for a in (apps.get('result') or {}).get('apps') or []}
+    on = {g: bundle_id(game=g) in ids for g in ('portal2', *OWN_APP)}
+    installed = on['portal2']
+    out = {'app_installed': installed, 'apps': on, 'free_bytes': None, 'data': {}, 'problem': None}
+    env = {'P2_DEVICE': udid, 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin'}
+    for game in OWN_APP:
+        if on[game]:
+            has = subprocess.run([str(ROOT / 'tools/ios_device.sh'), '--game', game, 'has-data'], env=env,
+                                 capture_output=True)
+            out['data'][game] = has.returncode == 0
     if installed:
-        env = {'P2_DEVICE': udid, 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin'}
         space = subprocess.run([str(ROOT / 'tools/ios_device.sh'), 'space'], capture_output=True, text=True, env=env)
         for line in space.stdout.splitlines():
             if line.startswith('free_bytes='):
                 out['free_bytes'] = int(line.split('=', 1)[1])
-        for game in ('portal2', 'mel'):
+        for game in ('portal2', 'mel', 'portal1'):
             has = subprocess.run([str(ROOT / 'tools/ios_device.sh'), '--game', game, 'has-data'], env=env,
                                  capture_output=True)
             out['data'][game] = has.returncode == 0
