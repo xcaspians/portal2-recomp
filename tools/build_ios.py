@@ -134,6 +134,8 @@ def main():
     (app / 'Info.plist').write_text(plist)
     # Page du jeu dans l'app Réglages d'iOS (lue par runtime/ios/settings.c).
     shutil.copytree(ROOT / 'ios/Settings.bundle', app / 'Settings.bundle', dirs_exist_ok=True)
+    # Défauts par appareil (runtime/ios/device_defaults.c), lus au lancement.
+    shutil.copy2(ROOT / 'ios/device_defaults.txt', app / 'device_defaults.txt')
     settings_for_game(app / 'Settings.bundle/Root.plist', game['name'])
     app_icon(app, config, game['icon'])
     (app / 'launch.args').write_text(''.join(f'{word}\n' for word in launch_args(game, config)))
