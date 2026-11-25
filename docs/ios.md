@@ -350,7 +350,11 @@ capability, which only a provisioning profile can grant:
    a container). `ios/signing/sign.py` then narrows the profile's iCloud
    entries to that container (`narrow_entitlements`, checked by
    `tests/test_ios_sign.py`).
-3. If that step fails with a capability error: open
+3. If that step fails with a capability error (on 24 November 2026 it turned
+   iCloud on for the identifier but attached no container: the profile had
+   iCloud with an empty container list, and the build stopped with
+   "doesn't match the entitlements file's values for ...
+   icloud-container-identifiers"): open
    `ios/signing/P2Signing.xcodeproj` in Xcode, select the Portal2 target >
    Signing & Capabilities, check that iCloud shows "iCloud Documents" with
    the container `iCloud.<identifier>` ticked, build once (⌘B), then run
