@@ -21,18 +21,22 @@
 #include "device_defaults_ios.h"
 #include "device_ios.h"
 #include "game_ios.h"
+#include "game_picker_ios.h"
 #include "metal_ios.h"
 #include "settings.h"
 
 int p2_main(int argc, char **argv);
+int rt_select_game_code(const char *name);   // runtime/rt.h, RT_MULTI_GAME (generated game_codes.c)
 
 static char *arguments[256];
 static int count;
 static void push(const char *value) { if (count < 255) arguments[count++] = strdup(value); }
 
-static void read_launch_file(const char *bundle) {
+// launch.args of a folder; in the Portal app a hosted game has its own,
+// launch-<game>.args in the app and Documents/<game>/launch.args.
+static void read_launch_file(const char *folder, const char *name) {
     char path[PATH_MAX], line[PATH_MAX];
-    snprintf(path, sizeof(path), "%s/launch.args", bundle);
+    snprintf(path, sizeof(path), "%s/%s", folder, name);
     FILE *file = fopen(path, "r");
     if (!file) return;
     while (fgets(line, sizeof(line), file)) {
@@ -48,7 +52,7 @@ static void read_launch_file(const char *bundle) {
 // joueur (<jeu>-userdata) restent sauvegardées. Attribut posé sur le dossier
 // (il vaut pour son contenu), seulement s'il manque : coût d'un stat par dossier.
 static void exclude_from_backup(const char *documents) {
-    static const char *const folders[] = {"game", "prep", "linux"};
+    static const char *const folders[] = {"game", "prep", "linux", "mel"};
     char done[64] = "", already[64] = "";
     for (size_t i = 0; i < sizeof(folders) / sizeof(*folders); ++i) {
         char path[PATH_MAX]; struct stat st;
@@ -87,6 +91,15 @@ int main(int argc, char **argv) {
         return rt_ios_device_report_write(report, documents) ? 0 : 1;
     }
     // Réglages de l'app Réglages d'iOS : avant tout le reste (P2Log pose P2_LOG_FILE).
+    // App Portal (plusieurs jeux, runtime/ios/game_picker_ios.m) : le jeu est
+    // choisi avant tout le reste, qui en dépend (réglages, dossiers, Steam).
+#ifdef RT_MULTI_GAME
+    {
+        const char *chosen = rt_ios_choose_game();
+        rt_ios_set_game(chosen);
+        if (!rt_select_game_code(chosen)) return 3;
+    }
+#endif
     // Défauts de cet appareil (ios/device_defaults.txt) : au premier lancement
     // seulement, et jamais sur un réglage que le joueur a choisi.
     char device[512];
@@ -146,13 +159,19 @@ int main(int argc, char **argv) {
     push(argc > 0 ? argv[0] : game->name);
     if (argc > 1) for (int i = 1; i < argc; ++i) push(argv[i]);
     else {
-        read_launch_file(bundle);
+        char bundled[64];
+        snprintf(bundled, sizeof(bundled), game == rt_ios_app_game() ? "launch.args" : "launch-%s.args", game->name);
+        read_launch_file(bundle, bundled);
         // Documents/launch.args (facultatif) : arguments du jeu ajoutés, par
         // exemple « +map sp_a2_laser_intro » pour démarrer dans une salle.
         if (getenv("HOME")) {
             char documents[PATH_MAX];
             snprintf(documents, sizeof(documents), "%s/Documents", getenv("HOME"));
-            read_launch_file(documents);
+            if (game->data_dir[0]) {
+                char own[PATH_MAX];
+                snprintf(own, sizeof(own), "%s/%s", documents, game->data_dir);
+                read_launch_file(own, "launch.args");
+            } else read_launch_file(documents, "launch.args");
         }
     }
     // Options du runtime absentes : dossiers de Documents (sur appareil, les
@@ -169,7 +188,11 @@ int main(int argc, char **argv) {
             int present = 0;
             for (int i = 1; i < count; ++i) present |= !strcmp(arguments[i], defaults[d].option);
             char path[PATH_MAX]; struct stat st;
-            snprintf(path, sizeof(path), "%s/%s", documents, defaults[d].folder ? defaults[d].folder : game->userdata);
+            // Données d'un jeu hébergé dans Documents/<data_dir> (celles de Portal 2 à
+            // la racine, comme toujours) ; sauvegardes dans Documents/<userdata>.
+            if (defaults[d].folder && game->data_dir[0])
+                snprintf(path, sizeof(path), "%s/%s/%s", documents, game->data_dir, defaults[d].folder);
+            else snprintf(path, sizeof(path), "%s/%s", documents, defaults[d].folder ? defaults[d].folder : game->userdata);
             if (present) continue;
             if (defaults[d].create) mkdir(path, 0755);
             else if (stat(path, &st) || !S_ISDIR(st.st_mode)) continue;

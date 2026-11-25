@@ -1,7 +1,7 @@
 #pragma once
 #include "rt.h"
 typedef struct { const char *name; uint32_t address; } GuestSymbol;
-typedef struct {
+typedef struct GuestModuleS {
     const char *name;
     uint32_t id, base, entry, init, fini;
     const uint32_t *constructors;
@@ -13,6 +13,10 @@ typedef struct {
 } GuestModule;
 extern const GuestModule rt_modules[];
 extern const size_t rt_module_count;
+#ifdef RT_MULTI_GAME   // the running game's tables (runtime/rt.h)
+#define rt_modules (rt_code->modules())
+#define rt_module_count (rt_code->module_count())
+#endif
 const GuestModule *rt_find_module(const char *name);
 uint32_t rt_module_symbol(const GuestModule *module, const char *name);
 uint32_t rt_invoke(CPU *c, uint32_t address, const uint32_t *args, size_t count);

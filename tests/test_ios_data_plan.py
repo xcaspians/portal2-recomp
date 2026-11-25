@@ -48,5 +48,25 @@ class DataPlanTest(unittest.TestCase):
                                   '--prep', str(self.prep), '--folders', 'platform']), 2)
 
 
+class HostedAndMigration(DataPlanTest):
+    def test_hosted_game_goes_under_its_own_folder(self):
+        rows = dp.plan(self.game, self.linux, self.prep, ['portal_stories'], 'Documents/mel')
+        dests = [d for _, d, _ in rows]
+        self.assertIn('Documents/mel/prep', dests)
+        self.assertIn('Documents/mel/game/portal_stories/maps', dests)
+        self.assertFalse(any(d.startswith('Documents/game') or d == 'Documents/prep' for d in dests))
+
+    def test_migration_check_needs_every_save_with_its_size(self):
+        saves = Path(self.tmp.name) / 'SAVE'
+        (saves / '7656').mkdir(parents=True)
+        (saves / '7656' / 'quick.sav').write_bytes(b'x' * 10)
+        (saves / '7656' / 'quick.tga').write_bytes(b'x' * 4)
+        listing = lambda files: {'result': {'files': [{'relativePath': p, 'metadata': {'size': n}} for p, n in files.items()]}}
+        self.assertEqual(dp.missing_after_copy(saves, listing({'7656/quick.sav': 10, '7656/quick.tga': 4})), [])
+        self.assertEqual(dp.missing_after_copy(saves, listing({'Documents/mel-userdata/portal_stories/SAVE/7656/quick.sav': 10,
+                                                                 'Documents/mel-userdata/portal_stories/SAVE/7656/quick.tga': 4})), [])
+        self.assertEqual(dp.missing_after_copy(saves, listing({'7656/quick.sav': 9})), ['7656/quick.sav', '7656/quick.tga'])
+
+
 if __name__ == '__main__':
     unittest.main()

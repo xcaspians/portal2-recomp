@@ -68,6 +68,8 @@ def main():
     games.add_argument(ap)
     ap.add_argument('--layout', type=Path, help='default: <build_dir>/prep/layout.json of the game (build/game, build/hl2)')
     ap.add_argument('--jobs', type=int, default=os.cpu_count() or 1)
+    ap.add_argument('--no-guests', action='store_true',
+                    help="the app's own game only, without the games it hosts (ios_guests of tools/games.py)")
     args = ap.parse_args()
     if args.release:
         args.opt, args.fast_memory = '2', True
@@ -100,19 +102,27 @@ def main():
     # runtime/ios/metal_ios.m s'en sert pour savoir si Metal est disponible.
     static = ['-DRT_D3D9METAL_STATIC'] if d3d9metal else []
     units = [(str(p), runtime_flags + (static if p.name == 'd3d9.c' else [])) for p in sorted(Path('runtime').glob('*.c'))]
-    units += [(str(p), runtime_flags) for p in sorted(Path('runtime/ios').glob('*.c'))]
+    # guest_glue.c: built with a hosted game's generated code only (guest_object).
+    units += [(str(p), runtime_flags) for p in sorted(Path('runtime/ios').glob('*.c')) if p.name != 'guest_glue.c']
     units += [(str(p), runtime_flags + static + ['-fobjc-arc']) for p in sorted(Path('runtime/ios').glob('*.m'))]
     units.append(('src/main.c', runtime_flags + ['-Dmain=p2_main', f'-DRT_GAME_PROGRAM="{game["program"]}"']))
     units.append(('ios/main_ios.c', runtime_flags))
-    units += [(str(sources / name), generated_flags) for name in sorted(manifest['shards'])]
-    units.append((str(sources / 'dispatch.c'), generated_flags))
-    # Greffons PE de Miles traduits (voix MP3...), comme le build macOS.
-    plugin_sources, _ = build_game.generate_plugins(config, build_dir / 'gen/pe')
-    units += [(str(p), generated_flags) for p in plugin_sources]
+    units += generated_units(config, build_dir, manifest, generated_flags)
     identity = subprocess.run(['clang', '--version'], capture_output=True, text=True, check=True).stdout
+    # Games hosted in this app (the Portal app: Mel): their generated code in
+    # one object each, the runtime built once with RT_MULTI_GAME (runtime/rt.h).
+    guests = [] if args.no_guests else hosted_games(game, args.target)
+    if guests:
+        units = [(src, flags + ['-DRT_MULTI_GAME'] if flags is runtime_flags or src in ('src/main.c', 'ios/main_ios.c')
+                  or src.startswith('runtime/') else flags) for src, flags in units]
+        table = ios_dir / 'game_codes.c'
+        write_game_codes(table, game['name'], [g['name'] for g, _ in guests])
+        units.append((str(table), runtime_flags + ['-DRT_MULTI_GAME']))
     cache = ios_dir / 'obj'
     objects, compiled, cpu = build_game.compile_units(units, cache, args.jobs, identity)
     print(f'{compiled}/{len(units)} fichiers compilés ({cpu:.0f} s CPU)')
+    for guest, guest_config in guests:
+        objects.append(guest_object(guest, guest_config, args.target, generated_flags, args.jobs, identity, ios_dir))
 
     app = games.ios_app(game, args.target)
     app.mkdir(parents=True, exist_ok=True)
@@ -139,6 +149,12 @@ def main():
     settings_for_game(app / 'Settings.bundle/Root.plist', game['name'])
     app_icon(app, config, game['icon'])
     (app / 'launch.args').write_text(''.join(f'{word}\n' for word in launch_args(game, config)))
+    shutil.rmtree(app / 'covers', ignore_errors=True)
+    if guests:   # the game picker's covers and each hosted game's arguments
+        cover(app, config, game)
+        for guest, guest_config in guests:
+            cover(app, guest_config, guest)
+            (app / f'launch-{guest["name"]}.args').write_text(''.join(f'{w}\n' for w in launch_args(guest, guest_config)))
     if args.target == 'sim':
         subprocess.run(['codesign', '-s', '-', '-f', str(app)], check=True)
     else:
@@ -146,6 +162,105 @@ def main():
     size = (app / game['ios_executable']).stat().st_size
     print(f'{app} : exécutable {size / 1e6:.0f} Mo, {time.time() - started:.0f} s au total')
     print(f'rendu Metal : {d3d9metal}' if d3d9metal else 'rendu Metal : absent (OpenGL seulement, voir --d3d9metal)')
+
+
+def generated_units(config, build_dir, manifest, flags):
+    """A game's generated code: its shards, dispatch.c and the Miles PE plugins."""
+    sources = build_dir / 'gen/src'
+    units = [(str(sources / name), flags) for name in sorted(manifest['shards'])]
+    units.append((str(sources / 'dispatch.c'), flags))
+    # Greffons PE de Miles traduits (voix MP3...), comme le build macOS.
+    plugin_sources, _ = build_game.generate_plugins(config, build_dir / 'gen/pe')
+    return units + [(str(p), flags) for p in plugin_sources]
+
+
+GUEST_EXPORTS = ('rt_load_images', 'rt_export', 'rt_lookup', 'rt_import_name', 'rt_modules', 'rt_module_count')
+
+
+def hosted_games(game, target):
+    """[(profile, config)] of the games this app hosts (ios_guests) that are set up
+    on this Mac (game data and a gameprep); a missing one is left out, with a line."""
+    out = []
+    for name in game.get('ios_guests', ()):
+        config = localconfig.for_game(name)
+        profile = games.profile(config)
+        layout = Path(profile['build_dir']) / 'prep/layout.json'
+        if not config.get('game_root') or not layout.is_file():
+            print(f'{profile["ios_name"]} : pas préparé sur ce Mac (gameprep --game {name}), app sans lui')
+            continue
+        out.append((profile, config))
+    return out
+
+
+def guest_object(guest, config, target, generated_flags, jobs, identity, ios_dir):
+    """A hosted game's generated code, compiled in its own cache, linked into one
+    relocatable object whose only exports are <name>_rt_... (runtime/ios/guest_glue.c):
+    its fn_<address> functions never meet the host game's."""
+    build_dir = Path(guest['build_dir'])
+    layout = json.loads((build_dir / 'prep/layout.json').read_text())
+    manifest, _ = build_game.generate(build_dir / 'prep/layout.json', layout, build_game.roots(layout, guest['roots']),
+                                      build_dir / 'gen', jobs=jobs)
+    units = generated_units(config, build_dir, manifest, generated_flags)
+    units.append(('runtime/ios/guest_glue.c', generated_flags + [f'-DRT_GUEST_PREFIX={guest["name"]}']))
+    objects, compiled, cpu = build_game.compile_units(units, Path(guest['ios_dir']) / target / 'obj', jobs, identity)
+    print(f'{guest["ios_name"]} : {compiled}/{len(units)} fichiers compilés ({cpu:.0f} s CPU)')
+    out = ios_dir / f'guest-{guest["name"]}.o'
+    exports = ios_dir / f'guest-{guest["name"]}.exports'
+    exports.write_text(''.join(f'_{guest["name"]}_{n}\n' for n in GUEST_EXPORTS))
+    response = ios_dir / f'guest-{guest["name"]}.rsp'
+    build_game.write_link_response(response, objects)
+    platform = TARGETS[target]['platform']
+    subprocess.run(['xcrun', 'ld', '-r', '-arch', 'arm64', '-platform_version', platform, '17.0', '18.0',
+                    '-exported_symbols_list', str(exports), '-o', str(out), f'@{response}'], check=True)
+    return out
+
+
+def write_game_codes(path, host, guests):
+    """The app's games for the runtime (rt_game_codes, runtime/rt.h): the host's
+    own generated code first, then each hosted game's <name>_rt_... functions."""
+    lines = ['/* Generated by tools/build_ios.py: the games of this app (runtime/rt.h, RT_MULTI_GAME). */',
+             '#include "rt.h"', '#include "modules.h"', '#include <string.h>',
+             '#undef rt_load_images', '#undef rt_export', '#undef rt_lookup', '#undef rt_import_name',
+             '#undef rt_modules', '#undef rt_module_count',
+             'static const struct GuestModuleS *host_modules(void) { return rt_modules; }',
+             'static size_t host_module_count(void) { return rt_module_count; }']
+    for g in guests:
+        lines += [f'int {g}_rt_load_images(const char *directory);', f'uint32_t {g}_rt_export(const char *name);',
+                  f'gfn {g}_rt_lookup(uint32_t target);', f'const char *{g}_rt_import_name(uint32_t target);',
+                  f'const struct GuestModuleS *{g}_rt_modules(void);', f'size_t {g}_rt_module_count(void);']
+    lines.append('const RtGameCode rt_game_codes[] = {')
+    lines.append(f'    {{"{host}", rt_load_images, rt_export, rt_lookup, rt_import_name, host_modules, host_module_count}},')
+    for g in guests:
+        lines.append(f'    {{"{g}", {g}_rt_load_images, {g}_rt_export, {g}_rt_lookup, {g}_rt_import_name, '
+                     f'{g}_rt_modules, {g}_rt_module_count}},')
+    lines += ['};', 'const size_t rt_game_code_count = sizeof(rt_game_codes) / sizeof(*rt_game_codes);',
+              'const RtGameCode *rt_code = &rt_game_codes[0];',
+              'int rt_select_game_code(const char *name) {',
+              '    for (size_t i = 0; i < rt_game_code_count; ++i)',
+              '        if (!strcmp(rt_game_codes[i].name, name)) { rt_code = &rt_game_codes[i]; return 1; }',
+              '    return 0;', '}', '']
+    text = '\n'.join(lines)
+    if not path.exists() or path.read_text() != text:   # unchanged: same object (cache key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+
+def cover(app, config, game):
+    """covers/<name>.png for the game picker: 512 px from the game's own icon on this Mac."""
+    work = app.parent / 'cover-work'
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    probe = work / 'probe.app'
+    probe.mkdir()
+    app_icon(probe, config, game['icon'])
+    largest = probe / 'AppIcon60x60@3x.png'
+    source = max(work.glob('icon/game.iconset/icon_*.png'), key=lambda p: p.stat().st_size, default=None) \
+        or (work / 'icon/game.png' if (work / 'icon/game.png').is_file() else None) or (largest if largest.is_file() else None)
+    if source:
+        (app / 'covers').mkdir(exist_ok=True)
+        subprocess.run(['sips', '-z', '512', '512', str(source), '--out', str(app / 'covers' / f'{game["name"]}.png')],
+                       check=True, capture_output=True)
+    shutil.rmtree(work, ignore_errors=True)
 
 
 # Version of Jacksen's fork, shown at the bottom of the in-game settings menu

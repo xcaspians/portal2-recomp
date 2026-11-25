@@ -6,6 +6,7 @@
 // DefaultValue du Settings.bundle doit lui correspondre
 // (tests/checks_ios_settings.c vérifie que les clés concordent).
 #include "settings.h"
+#include "game_ios.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -92,7 +93,8 @@ int rt_ios_metal_keys(char *out, size_t size, int max_fps, const char *upscale, 
 // des listes, nombre au besoin.
 static int preference(void *ctx, const char *key, char *out, size_t size) {
     (void)ctx;
-    CFStringRef name = CFStringCreateWithCString(NULL, key, kCFStringEncodingUTF8);
+    char own[160];   // the running game's key (game_ios.c: Mel's under "mel.")
+    CFStringRef name = CFStringCreateWithCString(NULL, rt_ios_pref_key(key, own, sizeof(own)), kCFStringEncodingUTF8);
     CFPropertyListRef v = CFPreferencesCopyAppValue(name, kCFPreferencesCurrentApplication);
     CFRelease(name);
     if (!v) return 0;

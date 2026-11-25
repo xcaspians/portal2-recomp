@@ -126,6 +126,11 @@ static const CGFloat kButtonSize = 54;   // boutons : touch_layout.c
 static const float kStickLook = 90;      // comptes de souris par image, stick à fond (≈ 360°/s à la sensibilité 3 du jeu)
 static const float kTrackpadLook = 3.5f; // comptes de souris par point de glissement
 static NSString *const kTrackpadKey = @"P2TouchTrackpad";
+// The running game's preference key (game_ios.c: a hosted game's under "<game>.").
+static NSString *game_key(NSString *key) {
+    char own[160];
+    return @(rt_ios_pref_key(key.UTF8String, own, sizeof(own)));
+}
 static float look_speed_cache;   // 0 : à relire (réglage changé en jeu)
 static float look_speed(void) {
     if (!look_speed_cache) look_speed_cache = rt_ios_env_float("P2_TOUCH_LOOK", 1, 1e-6f);   // > 0
@@ -281,7 +286,7 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
         windowID = SDL_GetWindowID(window);
         self.multipleTouchEnabled = YES; self.backgroundColor = UIColor.clearColor; self.opaque = NO;
         fingers = [NSMapTable strongToStrongObjectsMapTable];
-        trackpad = [NSUserDefaults.standardUserDefaults boolForKey:kTrackpadKey];
+        trackpad = [NSUserDefaults.standardUserDefaults boolForKey:game_key(kTrackpadKey)];
         NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
         for (NSNotificationName name in @[GCControllerDidConnectNotification, GCControllerDidDisconnectNotification,
                                           GCKeyboardDidConnectNotification, GCKeyboardDidDisconnectNotification])
@@ -480,7 +485,7 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
 }
 - (void)toggleLookMode {
     trackpad = !trackpad;
-    [NSUserDefaults.standardUserDefaults setBool:trackpad forKey:kTrackpadKey];
+    [NSUserDefaults.standardUserDefaults setBool:trackpad forKey:game_key(kTrackpadKey)];
     lookCarry[0] = lookCarry[1] = 0;
     [self invalidateLayout];   // l'icône du mode change
 }
@@ -780,7 +785,7 @@ static void backtap_touches(NSSet<UITouch *> *touches) {
         // dans les réglages (clé P2ShowFPS de la page Réglages).
         if (CGRectContainsPoint([self fpsCorner], f.start)) {
             fpsHidden = !fpsHidden;
-            [NSUserDefaults.standardUserDefaults setBool:!fpsHidden forKey:@"P2ShowFPS"];
+            [NSUserDefaults.standardUserDefaults setBool:!fpsHidden forKey:game_key(@"P2ShowFPS")];
             fps = 0; fpsAt = 0;
             [self setNeedsRender];
             continue;

@@ -46,7 +46,8 @@ static void set_status(NSString *text) {
 void rt_ios_icloud_status(char *out, size_t size) {
     NSString *text;
     @synchronized(kLastSync) { text = status; }
-    NSDate *last = [NSUserDefaults.standardUserDefaults objectForKey:kLastSync];
+    char own[64];
+    NSDate *last = [NSUserDefaults.standardUserDefaults objectForKey:@(rt_ios_pref_key(kLastSync.UTF8String, own, sizeof(own)))];
     if ([text isEqualToString:@"Synced"] && [last isKindOfClass:NSDate.class]) {
         NSDateFormatter *f = [NSDateFormatter new];
         f.doesRelativeDateFormatting = YES;
@@ -57,8 +58,10 @@ void rt_ios_icloud_status(char *out, size_t size) {
 }
 
 static int wanted_here(void) {
-    // Portal 2 only for now: Half-Life 2 and Portal keep their saves on the device.
-    return !strcmp(rt_ios_current_game()->mod, "portal2") && rt_ios_env_flag("P2_ICLOUD_SAVES", 1);
+    // Portal 2, and Portal Stories: Mel in the same app (its own folder in
+    // iCloud: remote_folder). Half-Life 2 and Portal keep their saves on the device.
+    const char *name = rt_ios_current_game()->name;
+    return (!strcmp(name, "portal2") || !strcmp(name, "mel")) && rt_ios_env_flag("P2_ICLOUD_SAVES", 1);
 }
 static NSString *userdata(void) {
     NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
@@ -278,7 +281,11 @@ static void sync_now(const char *why) {
         return;
     }
     set_status(@"Syncing…");
-    NSURL *remote_root = [container URLByAppendingPathComponent:@"Documents/SAVE" isDirectory:YES];
+    // Portal 2's saves where they have always been (Documents/SAVE); a game
+    // hosted in the same app in its own folder (Documents/mel/SAVE).
+    const char *data_dir = rt_ios_current_game()->data_dir;
+    NSString *remote_path = data_dir[0] ? [NSString stringWithFormat:@"Documents/%s/SAVE", data_dir] : @"Documents/SAVE";
+    NSURL *remote_root = [container URLByAppendingPathComponent:remote_path isDirectory:YES];
     NSURL *local = local_root();
     [files createDirectoryAtURL:remote_root withIntermediateDirectories:YES attributes:nil error:nil];
     [files createDirectoryAtURL:local withIntermediateDirectories:YES attributes:nil error:nil];
@@ -344,7 +351,9 @@ static void sync_now(const char *why) {
     NSData *json = [NSJSONSerialization dataWithJSONObject:record options:NSJSONWritingPrettyPrinted error:nil];
     [json writeToFile:record_path() atomically:YES];
     seen_print = fingerprint();
-    if (!failed) [NSUserDefaults.standardUserDefaults setObject:NSDate.date forKey:kLastSync];
+    char own[64];
+    if (!failed) [NSUserDefaults.standardUserDefaults setObject:NSDate.date
+                                                         forKey:@(rt_ios_pref_key(kLastSync.UTF8String, own, sizeof(own)))];
     set_status(failed ? @"Some saves couldn't be copied (is iCloud or this device full?). Trying again later."
                : waiting ? @"Waiting for files from iCloud…" : @"Synced");
     fprintf(stderr, "[ios] iCloud (%s) : %d envoyées, %d reçues, %d conflits gardés en double, %d en attente, %d échecs\n",
