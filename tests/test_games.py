@@ -47,7 +47,8 @@ class GameProfiles(unittest.TestCase):
         self.assertEqual(game['mod'], 'portal_stories')
         self.assertEqual((game['steam_appid'], game['depot_id']), (317400, 317404))
         self.assertEqual(game['roots'], 'config/mel-roots.json')
-        self.assertFalse(game['ios'])
+        self.assertTrue(game['ios'])
+        self.assertEqual(game['ios_app'], 'PortalStoriesMel.app')
 
     def test_build_paths(self):
         # Portal 2 keeps the paths of single-game checkouts; other games live under build/<game>.

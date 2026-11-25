@@ -743,6 +743,12 @@ if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
     for id in "${IOS_SELECTED[@]}"; do
         game_info "$id"
         BUNDLE_ID=$(python3 tools/ios_bundle_id.py --game "$id")
+        if [ "$id" = mel ]; then
+            # Portal Stories: Mel (phase 1): signed with the team's wildcard profile
+            # (ios/signing/sign.py), so no App ID is registered for it on the account
+            # (docs/fork/MEL_IOS_PLAN.md). The wildcard has no increased memory limit.
+            step "$TITLE: signing with the team's wildcard profile (no new App ID)"
+        else
         step "Getting a provisioning profile for $BUNDLE_ID ($TITLE)"
         # iCloud saves (Portal 2): "ios_icloud": true in config/local.json asks Apple for
         # iCloud Documents on this identifier (ios/signing/project-icloud.yml).
@@ -753,6 +759,7 @@ if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
                 -allowProvisioningUpdates DEVELOPMENT_TEAM="$TEAM" build >/dev/null) \
             || die "Xcode could not create a profile. Connect and unlock the iPhone, enable Developer Mode
   (Settings > Privacy & Security), trust this Mac, then re-run."
+        fi
         step "Building the $TITLE iPhone app (about 10 minutes the first time)"
         python3 tools/build_ios.py --game "$id" --target device --release --deps "$IOS_DEPS/device"
         IOS_APPS+=("$(eval "$(python3 tools/ios_game.py --game "$id" --target device)"; echo "$IOS_APP")")
@@ -762,7 +769,7 @@ if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
             # The marker lives on the iPhone: a reinstalled app has an empty container.
             # Older Portal 2 setups only left a local marker; trust it if the game folder is there.
             OLD_MARK="build/ios/device/data-copied-$DEVICE"
-            SIZE="about 11.5 GB"; [ "$id" = hl2 ] && SIZE="about 10 GB"; [ "$id" = portal1 ] && SIZE="about 4 GB"
+            SIZE="about 11.5 GB"; [ "$id" = hl2 ] && SIZE="about 10 GB"; [ "$id" = portal1 ] && SIZE="about 4 GB"; [ "$id" = mel ] && SIZE="about 9 GB"
             if P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" has-data; then :
             elif [ "$id" = portal2 ] && [ -f "$OLD_MARK" ] &&
                  ! P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" has-mark &&

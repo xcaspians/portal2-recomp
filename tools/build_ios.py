@@ -192,7 +192,7 @@ def settings_for_game(root_plist, game):
     """Half-Life 2 has no portals: the Portals group of the settings page (back
     taps, portal buttons, vibration when firing) is left out, back taps stay
     off (runtime/ios/game_ios.c), and gyro aiming is shown on, its default there."""
-    if game in ('portal2', 'portal1'):
+    if game in ('portal2', 'portal1', 'mel'):   # Mel plays like Portal 2: portals and back taps
         return
     with open(root_plist, 'rb') as f:
         root = plistlib.load(f)
@@ -221,8 +221,13 @@ def app_icon(app, config, relative):
         return
     work = app.parent / 'icon'
     shutil.rmtree(work, ignore_errors=True)
-    subprocess.run(['iconutil', '-c', 'iconset', '-o', str(work / 'game.iconset'), str(icns)], check=True)
-    largest = max((work / 'game.iconset').glob('icon_*.png'), key=lambda p: p.stat().st_size)
+    if icns.suffix.lower() == '.ico':   # Portal Stories: Mel ships portal2.ico (largest image read by sips)
+        work.mkdir(parents=True)
+        largest = work / 'game.png'
+        subprocess.run(['sips', '-s', 'format', 'png', str(icns), '--out', str(largest)], check=True, capture_output=True)
+    else:
+        subprocess.run(['iconutil', '-c', 'iconset', '-o', str(work / 'game.iconset'), str(icns)], check=True)
+        largest = max((work / 'game.iconset').glob('icon_*.png'), key=lambda p: p.stat().st_size)
     for name, size in (('AppIcon60x60@2x.png', 120), ('AppIcon60x60@3x.png', 180), ('AppIcon76x76@2x~ipad.png', 152),
                        ('AppIcon83.5x83.5@2x~ipad.png', 167)):
         subprocess.run(['sips', '-z', str(size), str(size), str(largest), '--out', str(app / name)],
