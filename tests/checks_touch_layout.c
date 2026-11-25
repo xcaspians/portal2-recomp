@@ -203,3 +203,51 @@ RT_CHECK(ios_hosted_game_data_and_preference_keys) {
     assert(rt_ios_set_game("mel") == mel && !strcmp(rt_ios_pref_key("P2TouchSize", key, sizeof(key)), "mel.P2TouchSize"));
     rt_ios_set_game("portal2");
 }
+
+// ---- Button layout editor (rt_touch_custom_*) ----
+RT_CHECK(touch_editor_clamp_keeps_buttons_on_screen_and_off_the_sticks) {
+    double w = 852, h = 393, stick[2][2];   // an iPhone's safe area, landscape
+    rt_touch_stick_rests(RT_IOS_LAYOUT_PORTAL2, stick);
+    double r_stick = 59;
+    // Dragged past the corner: back inside, whole.
+    double cx = -40, cy = 900;
+    rt_touch_custom_clamp(&cx, &cy, 60, w, h, stick, 2, r_stick, 8);
+    assert(cx >= 30 && cy <= h - 30);
+    // Dropped on the move stick's rest: pushed out of it.
+    cx = stick[0][0] * w; cy = stick[0][1] * h;
+    rt_touch_custom_clamp(&cx, &cy, 60, w, h, stick, 2, r_stick, 8);
+    assert(hypot(cx - stick[0][0] * w, cy - stick[0][1] * h) >= r_stick * .8 + 30 - 1e-6);
+    // Grid: 8 points; a spot far from everything stays where snapped.
+    cx = 403; cy = 101;
+    rt_touch_custom_clamp(&cx, &cy, 60, w, h, stick, 2, r_stick, 8);
+    assert(cx == 400 && cy == 104);
+}
+
+RT_CHECK(touch_editor_layouts_save_and_load) {
+    rt_touch_custom_layout l, back;
+    memset(&l, 0, sizeof(l));
+    l.b[RT_TOUCH_JUMP] = (rt_touch_custom){1, .93f, .60f, 1.1f};
+    l.b[RT_TOUCH_USE] = (rt_touch_custom){1, .50f, .95f, .8f};
+    char text[512];
+    assert(rt_touch_custom_format(&l, text, sizeof(text)));
+    assert(!strcmp(text, "v1 jump=0.930,0.600,1.10 use=0.500,0.950,0.80"));
+    assert(rt_touch_custom_parse(text, &back) == 2);
+    assert(back.b[RT_TOUCH_JUMP].set && fabsf(back.b[RT_TOUCH_JUMP].fx - .93f) < 1e-3f && !back.b[RT_TOUCH_CROUCH].set);
+    // Damaged or unknown entries are skipped, the rest kept; no text: nothing custom.
+    assert(rt_touch_custom_parse("v1 jump=2,0.5,1 use=0.5,0.5,1.0 laser=0.1,0.1,1", &back) == 1 && back.b[RT_TOUCH_USE].set);
+    assert(!back.b[RT_TOUCH_JUMP].set);
+    assert(!rt_touch_custom_parse(NULL, &back) && !rt_touch_custom_parse("v2 jump=0.5,0.5,1", &back));
+    // Placed with the Button size slider on top, inside the area.
+    int n;
+    const rt_touch_button *b = rt_touch_layout(RT_IOS_LAYOUT_PORTAL2, &n);
+    const rt_touch_button *jump = NULL;
+    for (int i = 0; i < n; ++i) if (b[i].action == RT_TOUCH_JUMP) jump = &b[i];
+    assert(jump);
+    double cx, cy, size;
+    rt_touch_place_custom(jump, &l.b[RT_TOUCH_JUMP], 1.2, 10, 20, 800, 400, &cx, &cy, &size);
+    assert(fabs(size - jump->size * 1.1 * 1.2) < 1e-3 && cx <= 10 + 800 - size / 2 && fabs(cy - (20 + 400 * .60)) < 1e-3);
+    rt_touch_place_custom(jump, NULL, 1.0, 10, 20, 800, 400, &cx, &cy, &size);   // no entry: the built-in place
+    double ex, ey;
+    rt_touch_place_scaled(jump, 1.0, 10, 20, 800, 400, &ex, &ey);
+    assert(cx == ex && cy == ey && size == jump->size);
+}
