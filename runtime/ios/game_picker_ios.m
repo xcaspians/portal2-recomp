@@ -108,10 +108,11 @@ static const CGFloat kCardW = 190, kCardH = 300, kArt = 166, kSeriesW = 270, kSe
 static const CGFloat kFeatureH = 210, kFocusScale = 1.06;
 static const double kStickRepeat = .22;   // seconds between focus moves while a stick is held
 
+static CGFloat fit = 1;   // below 1 when a screen's content is taller than the view (a TV's 16:9)
 static CGFloat launcher_scale(void) {
     const char *v = getenv("P2_LAUNCHER_SCALE");
     double s = v ? atof(v) : 1;
-    return s >= .5 && s <= 2 ? (CGFloat)s : 1;
+    return (s >= .5 && s <= 2 ? (CGFloat)s : 1) * fit;
 }
 static UIImage *cover_of(const char *name) {
     NSString *path = [NSBundle.mainBundle pathForResource:[@"covers/" stringByAppendingString:@(name)] ofType:@"png"];
@@ -226,6 +227,15 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     page = [[UIView alloc] initWithFrame:scroll.bounds];
     cards = [NSMutableArray array];
     CGFloat height = s ? [self buildSeries:s] : [self buildMain];
+    // Taller than the view (a TV's 16:9, a small iPhone): shrink to fit, down to 60 %.
+    CGFloat room = scroll.bounds.size.height;
+    if (room > 0 && height > room + 1 && fit > .61) {
+        fit = MAX(.6, fit * room / height);
+        [page removeFromSuperview];
+        page = [[UIView alloc] initWithFrame:scroll.bounds];
+        cards = [NSMutableArray array];
+        height = s ? [self buildSeries:s] : [self buildMain];
+    }
     page.frame = CGRectMake(0, 0, scroll.bounds.size.width, height);
     scroll.contentSize = page.frame.size;
     [scroll addSubview:page];
