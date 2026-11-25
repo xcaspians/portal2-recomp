@@ -182,6 +182,20 @@ class Left4Dead2Profile(unittest.TestCase):
         self.assertNotIn('P2_STEAM_OFFLINE', launch.environment({}, dict(games.GAMES['portal2']), base={}))
 
 
+class IosSteamStub(unittest.TestCase):
+    def test_stub_answers_every_flat_function_the_bridge_looks_up(self):
+        # runtime/steam.c looks each of these up in Valve's dylib on the Mac and in
+        # the app's own stub on iOS (runtime/ios/steam_stub.c): a missing one stops
+        # the game at launch on iOS only (Left 4 Dead 2: SteamAPI_Init, round 15).
+        import re
+        root = Path(__file__).resolve().parent.parent
+        steam = (root / 'runtime/steam.c').read_text()
+        stub = (root / 'runtime/ios/steam_stub.c').read_text()
+        looked_up = set(re.findall(r'FLAT\([^"]*"(\w+)"\)', steam)) | {'SteamAPI_Init', 'SteamAPI_InitSafe'}
+        defined = set(re.findall(r'EXPORT [^(]*?\b(\w+)\(', stub))
+        self.assertEqual(sorted(looked_up - defined), [])
+
+
 if __name__ == '__main__':
     unittest.main()
 
