@@ -19,6 +19,19 @@ emulator. `setup.sh` downloads that dylib inside the Steamworks.NET package
   and `client.so` asks the same set. It uses Steamworks.NET 2024.8.0 and the
   same generated table as Half-Life 2 (`tools/gen_steam.py`, `VERSIONS_HL2`);
   the Timeline interface of 1.61 is generated but not asked for.
+- **Portal Stories: Mel**: asks for SDK 1.40 interfaces (`SteamClient017`,
+  `SteamUser019`, `SteamFriends015`, `SteamUtils009`,
+  `STEAMUSERSTATS_INTERFACE_VERSION011`, `STEAMREMOTESTORAGE_INTERFACE_VERSION014`,
+  `STEAMUGC_INTERFACE_VERSION010`, `STEAMHTTP_INTERFACE_VERSION002`,
+  `SteamController005`, `SteamGameServer012`, `SteamNetworking005`). No arm64
+  dylib exists for SDK 1.40, so it runs against Valve's Steamworks.NET 20.1.0
+  `libsteam_api.dylib` (same as Portal 2), while `tools/gen_steam.py` extracts
+  each interface's vtable slots from the i386 flat functions of Mel's own
+  `libsteam_api.so` (`disassemble_i386`, cross-checking stack word counts
+  against Steamworks.NET 20.1.0 signatures) and calls the host object's slot
+  directly. `SteamClient017::GetISteamUnifiedMessages` (slot 24, removed from
+  newer SDKs) and `SteamUtils009::GetCSERIPPort` (slot 7) are handled in
+  `virtual_bridge`.
 - **iPhone**: there is no Steam client. `runtime/ios/steam_stub.c` answers the
   same flat functions offline (a logged-in owner, no achievements, cloud or
   multiplayer).

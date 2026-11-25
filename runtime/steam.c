@@ -366,9 +366,23 @@ static int virtual_bridge(CPU *c, const char *name, uint32_t table, long iface) 
         steam_pop_hidden_pointer(c);
         return 1;
     }
-    if (!strcmp(name, "SteamUtils010::slot7")) {
+    if (!strcmp(name, "SteamClient017::GetISteamUnifiedMessages")) {
+        // ISteamUnifiedMessages (SDK 1.40, Portal Stories: Mel) was removed from
+        // later SDKs, so it has no flat function: slot 24 of the client, same
+        // arguments as the other GetISteam* accessors (hUser, hPipe, version).
+        uint32_t object = R32(c->esp + 4), args = c->esp + 8;
+        void *host = object && R32(object) == table ? steam_proxy_host(object) : NULL;
+        if (!host) fail(c, "Steam: %s called on an object that is not a %s proxy", name, interface_version((size_t)iface));
+        const char *version = steam_in_string(c, R32(args + 8));
+        typedef void *(*Get)(void *, int32_t, int32_t, const char *);
+        void *result = ((Get)(*(void ***)host)[24])(host, (int32_t)R32(args), (int32_t)R32(args + 4), version);
+        c->eax = steam_proxy(c, result, version);
+        return 1;
+    }
+    if (!strcmp(name, "SteamUtils010::slot7") || !strcmp(name, "SteamUtils009::GetCSERIPPort")) {
         // GetCSERIPPort(uint32 *ip, uint16 *port) -> bool : obsolète, sans
-        // fonction flat, toujours dans la vtable du client (lu au chargement de carte).
+        // fonction flat, toujours dans la vtable du client (lu au chargement de carte),
+        // au même emplacement 7 dans SteamUtils009 (Portal Stories: Mel).
         uint32_t object = R32(c->esp + 4), args = c->esp + 8;
         void *host = object && R32(object) == table ? steam_proxy_host(object) : NULL;
         if (!host) fail(c, "Steam: %s called on an object that is not a %s proxy", name, interface_version((size_t)iface));

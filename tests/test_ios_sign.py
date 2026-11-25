@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,34 @@ class PickIdentity(unittest.TestCase):
         with self.assertRaises(SystemExit):
             sign.pick_identity(FIND_IDENTITY, [b'another certificate'])
 
+
+
+class ChooseProfile(unittest.TestCase):
+    NOW = datetime(2026, 11, 24, tzinfo=timezone.utc)
+
+    @staticmethod
+    def profile(app_id, created, expires=2027):
+        return {'Entitlements': {'application-identifier': app_id}, 'CreationDate': datetime(created, 1, 1),
+                'ExpirationDate': datetime(expires, 1, 1, tzinfo=timezone.utc)}
+
+    def test_exact_profile_wins_over_the_team_wildcard(self):
+        exact, wild = self.profile('T.local.portal2recomp.t', 2025), self.profile('T.*', 2026)
+        got = sign.choose_profile([('w', wild), ('e', exact)], 'local.portal2recomp.t', self.NOW)
+        self.assertEqual(got[0], 'e')   # Portal 2 keeps its own profile (increased memory, iCloud)
+
+    def test_wildcard_signs_an_app_without_its_own_profile(self):
+        wild = self.profile('T.*', 2026)
+        got = sign.choose_profile([('e', self.profile('T.local.portal2recomp.t', 2025)), ('w', wild)],
+                                  'local.melrecomp.t', self.NOW)
+        self.assertEqual(got[0], 'w')
+        self.assertEqual(sign.app_entitlements(wild['Entitlements'], 'local.melrecomp.t')['application-identifier'],
+                         'T.local.melrecomp.t')
+
+    def test_expired_profiles_and_none(self):
+        self.assertIsNone(sign.choose_profile([('w', self.profile('T.*', 2024, expires=2025))], 'x.y', self.NOW))
+        self.assertIsNone(sign.choose_profile([], 'x.y', self.NOW))
+        exact = {'application-identifier': 'T.x.y'}
+        self.assertEqual(sign.app_entitlements(exact, 'x.y'), exact)
 
 if __name__ == '__main__':
     unittest.main()

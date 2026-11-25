@@ -12,7 +12,7 @@
 // __value = bits déjà décodés.
 //
 // SHIMS: wcslen wcscpy wcsncpy wcscat wcsncat wcscmp wcsncmp wcschr wcsrchr wcsstr
-// SHIMS: wcstoll __wcsncpy_chk __wcscat_chk __wcstombs_chk
+// SHIMS: wcstoll __wcscpy_chk __wcsncpy_chk __wcscat_chk __wcsncat_chk __wcstombs_chk
 // SHIMS: wcscoll __wcscoll_l __wcsxfrm_l wcstol wcstod wcstof
 // SHIMS: wmemchr wmemcmp wmemcpy wmemmove wmemset
 // SHIMS: towlower towupper iswalnum iswalpha iswblank iswcntrl iswdigit iswgraph iswlower
@@ -246,15 +246,31 @@ static int wchar_shim(CPU *c, const char *name) {
         if (b) W32(b, end == text ? a : start + 4 * (uint32_t)(end - text));
         free(text);
         c->eax = (uint32_t)(uint64_t)value; c->edx = (uint32_t)((uint64_t)value >> 32);
-    } else if (!strcmp(name, "__wcsncpy_chk") || !strcmp(name, "__wcscat_chk") || !strcmp(name, "__wcstombs_chk")) {
+    } else if (!strcmp(name, "__wcscpy_chk") || !strcmp(name, "__wcsncpy_chk") ||
+               !strcmp(name, "__wcscat_chk") || !strcmp(name, "__wcsncat_chk") || !strcmp(name, "__wcstombs_chk")) {
         // _FORTIFY_SOURCE : taille de destination en wchar_t (en octets pour wcstombs), puis
         // l'opération normale ; les arguments de tête ont la même place.
-        uint32_t room = rt_arg32(c, !strcmp(name, "__wcscat_chk") ? 2 : 3), need;
-        if (!strcmp(name, "__wcsncpy_chk")) need = rt_arg32(c, 2);
+        int two = !strcmp(name, "__wcscpy_chk") || !strcmp(name, "__wcscat_chk");
+        uint64_t room = rt_arg32(c, two ? 2 : 3), need;
+        if (!strcmp(name, "__wcscpy_chk")) need = (uint64_t)wlen(c, rt_arg32(c, 1)) + 1;
+        else if (!strcmp(name, "__wcsncpy_chk")) need = rt_arg32(c, 2);
         else if (!strcmp(name, "__wcstombs_chk")) need = rt_arg32(c, 0) ? rt_arg32(c, 2) : 0;
-        else { uint32_t end = wlen(c, rt_arg32(c, 0)), add = wlen(c, rt_arg32(c, 1)); need = end + add + 1; }
+        else if (!strcmp(name, "__wcsncat_chk")) {
+            uint32_t limit = rt_arg32(c, 2), src = rt_arg32(c, 1), add = 0;
+            if (limit && !src) rt_trap(c, c->eip, "null guest wide string");
+            while (add < limit) {
+                if ((uint64_t)src + 4 * (uint64_t)add + 3 > UINT32_MAX) rt_trap(c, c->eip, "unterminated guest wide string");
+                if (!R32(src + 4 * add)) break;
+                ++add;
+            }
+            need = (uint64_t)wlen(c, rt_arg32(c, 0)) + add + 1;
+        } else {
+            need = (uint64_t)wlen(c, rt_arg32(c, 0)) + wlen(c, rt_arg32(c, 1)) + 1;
+        }
         if (room < need) rt_trap(c, c->eip, "*** buffer overflow detected ***: terminated (__chk_fail)");
-        return rt_shim(c, !strcmp(name, "__wcsncpy_chk") ? "wcsncpy" : !strcmp(name, "__wcscat_chk") ? "wcscat" : "wcstombs");
+        const char *base = !strcmp(name, "__wcscpy_chk") ? "wcscpy" : !strcmp(name, "__wcsncpy_chk") ? "wcsncpy"
+                         : !strcmp(name, "__wcscat_chk") ? "wcscat" : !strcmp(name, "__wcsncat_chk") ? "wcsncat" : "wcstombs";
+        return rt_shim(c, base);
     } else if (!strcmp(name, "wcstod") || !strcmp(name, "wcstof")) {
         a = rt_arg32(c, 0); b = rt_arg32(c, 1);
         uint32_t start; char *text = narrow_number(c, a, &start), *end;

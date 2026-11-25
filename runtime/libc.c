@@ -1,5 +1,6 @@
 // Explicit guest handles and i386 layouts: no native FILE/DIR/timeval pointer
 // or structure is ever cast to the guest ABI.
+// SHIMS: _IO_getc _IO_putc
 #include "posix.h"
 #include <dirent.h>
 #include <pthread.h>
@@ -407,6 +408,7 @@ enum {
 typedef struct { const char *name; int op; } LibcName;
 // Triée par strcmp ('_' précède les lettres) ; vérifiée au démarrage.
 static const LibcName libc_names[] = {
+    {"_IO_getc", OP_FGETC}, {"_IO_putc", OP_FPUTC},
     {"__errno_location", OP_ERRNO_LOCATION}, {"__open64_2", OP_OPEN_2}, {"__open_2", OP_OPEN_2},
     {"access", OP_ACCESS}, {"chdir", OP_CHDIR}, {"clearerr", OP_CLEARERR}, {"clock_gettime", OP_CLOCK_GETTIME},
     {"close", OP_CLOSE}, {"closedir", OP_CLOSEDIR}, {"fclose", OP_FCLOSE}, {"feof", OP_FEOF}, {"ferror", OP_FERROR},

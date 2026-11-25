@@ -42,6 +42,8 @@ class SetupScriptTests(unittest.TestCase):
                               (['--game=quake'], 'unknown game quake'),
                               (['--game', 'all', '/a'], 'paths are for one game'),
                               (['--game', 'hl2', '--puzzle-maker'], '--puzzle-maker is for Portal 2'),
+                              (['--game', 'mel', '--puzzle-maker'], '--puzzle-maker is for Portal 2'),
+                              (['--game', 'mel', '--ios'], '--ios is not yet supported for Portal Stories: Mel'),
                               (['/a', '/b', '/c'], 'too many arguments')):
             result = run_setup(*args)
             self.assertEqual(result.returncode, 2, args)
@@ -94,6 +96,14 @@ class GameDetectionTests(unittest.TestCase):
         if depot:
             linux = self.steam / 'steamapps/content/app_220/depot_224'
             self.touch(linux / 'hl2_linux', linux / 'bin/engine.so', linux / 'hl2_complete/bin/server.so')
+        return game
+
+    def install_mel(self, depot=True):
+        game = self.steam / 'steamapps/common/Portal Stories Mel'
+        self.touch(game / 'portal_stories/gameinfo.txt', game / 'portal_stories/bin/server.so', game / 'platform/x')
+        if depot:
+            linux = self.steam / 'steamapps/content/app_317400/depot_317404'
+            self.touch(linux / 'portal2_linux', linux / 'bin/engine.so', linux / 'bin/shaderapivk.so')
         return game
 
     def detect(self, *args, config=None):
@@ -151,10 +161,19 @@ class GameDetectionTests(unittest.TestCase):
         self.install_portal2()
         self.install_hl2()
         self.install_portal1()
-        self.assert_builds(self.detect(), 'portal2 hl2 portal1')
-        self.assert_builds(self.detect('--game', 'all'), 'portal2 hl2 portal1')
+        self.install_mel()
+        self.assert_builds(self.detect(), 'portal2 hl2 portal1 mel')
+        self.assert_builds(self.detect('--game', 'all'), 'portal2 hl2 portal1 mel')
         self.assert_builds(self.detect('--game', 'hl2'), 'hl2')
         self.assert_builds(self.detect('--game', 'portal1'), 'portal1')
+        self.assert_builds(self.detect('--game', 'mel'), 'mel')
+
+    def test_mel_alone_is_built(self):
+        self.install_mel()
+        self.assert_builds(self.detect(), 'mel')
+        game = self.steam / 'steamapps/common/Portal Stories Mel'
+        linux = self.steam / 'steamapps/content/app_317400/depot_317404'
+        self.assert_builds(self.detect(str(game), str(linux)), 'mel')
 
     def test_portal1_alone_is_built(self):
         self.install_portal1()

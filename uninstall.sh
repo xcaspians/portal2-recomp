@@ -1,7 +1,8 @@
 #!/bin/bash
 # Removes what setup.sh / tools/make_app.py installed outside this folder, for
-# each game (Portal 2, Half-Life 2, Portal): its app ("Portal 2 Natif.app",
-# "Half-Life 2 Natif.app", "Portal Natif.app"), its log and, only if you confirm separately, its
+# each game (Portal 2, Half-Life 2, Portal, Portal Stories: Mel): its app
+# ("Portal 2 Natif.app", "Half-Life 2 Natif.app", "Portal Natif.app",
+# "Portal Stories Mel Natif.app"), its log and, only if you confirm separately, its
 # saves and settings; then the installer app's build folder, on its own yes.
 # Everything is moved to the Trash, not erased.
 #
@@ -21,13 +22,14 @@ SUPPORT_ROOT="$H/Library/Application Support"
 BUILD_DIR="$SUPPORT_ROOT/Portal 2 Natif Build"
 TRASH="$H/.Trash"
 SYSTEM_APPS="${P2_UNINSTALL_HOME:+$H/system}/Applications"   # tests never see /Applications
-GAME_IDS=(portal2 hl2 portal1)
+GAME_IDS=(portal2 hl2 portal1 mel)
 
 game_info() {  # game id -> TITLE NAME LOG GAME_SIZE DEPOT (tools/games.py)
     case "$1" in
         portal2) TITLE="Portal 2"; LOG_NAME=Portal2Natif.log; GAME_SIZE=" (about 12 GB)"; DEPOT="depot 661 (about 90 MB)" ;;
         hl2) TITLE="Half-Life 2"; LOG_NAME=HalfLife2Natif.log; GAME_SIZE=""; DEPOT="depot 224 (about 320 MB)" ;;
         portal1) TITLE="Portal"; LOG_NAME=PortalNatif.log; GAME_SIZE=" (about 4 GB)"; DEPOT="depot 404 (about 150 MB)" ;;
+        mel) TITLE="Portal Stories Mel"; LOG_NAME=PortalStoriesMelNatif.log; GAME_SIZE=" (about 8.6 GB)"; DEPOT="depot 317404 (about 90 MB)" ;;
     esac
     NAME="$TITLE Natif"
     SUPPORT="$SUPPORT_ROOT/$NAME"
@@ -70,8 +72,8 @@ size() { du -sh "$1" 2>/dev/null | cut -f1 | tr -d ' '; }
 
 # Every game's executable (tools/games.py EXECUTABLES). Tests use a fake home:
 # a game running for real does not concern it.
-if [ -z "${P2_UNINSTALL_HOME:-}" ] && pgrep -qx 'portal2-native|hl2-native|portal1-native' 2>/dev/null; then
-    echo "A recompiled game (portal2-native, hl2-native or portal1-native) is running: quit it first." >&2
+if [ -z "${P2_UNINSTALL_HOME:-}" ] && pgrep -qx 'portal2-native|hl2-native|portal1-native|mel-native' 2>/dev/null; then
+    echo "A recompiled game (portal2-native, hl2-native, portal1-native or mel-native) is running: quit it first." >&2
     exit 1
 fi
 

@@ -52,6 +52,17 @@ VERSIONS_HL2 = {
     'ISteamNetworkingMessages': 'SteamNetworkingMessages002',
 }
 VERSIONS_TIMELINE = {'ISteamTimeline': 'STEAMTIMELINE_INTERFACE_V004'}
+# Versions demandées par Portal Stories: Mel (SDK 1.40 de 2017, plus anciennes que celles de
+# Portal 2) ; les autres interfaces qu'il demande ont la même version que Portal 2. Aucune
+# dylib arm64 de ce SDK n'existe : les emplacements viennent des fonctions flat i386 de son
+# propre libsteam_api.so (dépôt Linux 317404), les signatures de Steamworks.NET 20.1.0.
+VERSIONS_MEL = {
+    'ISteamClient': 'SteamClient017', 'ISteamUser': 'SteamUser019', 'ISteamFriends': 'SteamFriends015',
+    'ISteamUtils': 'SteamUtils009', 'ISteamUserStats': 'STEAMUSERSTATS_INTERFACE_VERSION011',
+    'ISteamRemoteStorage': 'STEAMREMOTESTORAGE_INTERFACE_VERSION014', 'ISteamUGC': 'STEAMUGC_INTERFACE_VERSION010',
+    'ISteamHTTP': 'STEAMHTTP_INTERFACE_VERSION002', 'ISteamController': 'SteamController005',
+    'ISteamGameServer': 'SteamGameServer012', 'ISteamNetworking': 'SteamNetworking005',
+}
 DOWNLOADS = ROOT.parent / 'work/downloads'
 # (dossier Steamworks.NET dépaqueté, versions tirées de sa dylib). Une version déjà produite
 # par une source précédente n'est pas reprise : sa disposition de vtable ne change jamais.
@@ -59,6 +70,10 @@ SOURCES = [
     ('steamworks', VERSIONS_PORTAL2),          # Steamworks.NET 20.1.0, SDK 1.53a
     ('steamworks-2024.8.0', VERSIONS_HL2),      # SDK 1.60
     ('steamworks-2025.161.0', VERSIONS_TIMELINE),  # SDK 1.61
+]
+# Sources dont les emplacements viennent d'un libsteam_api.so i386 (signatures : premier paquet).
+GUEST_SOURCES = [
+    ('mel', VERSIONS_MEL),   # Portal Stories: Mel, SDK 1.40
 ]
 # Scalaires C# -> (type C, octets sur la pile i386).
 SCALARS = {'int': ('int32_t', 4), 'uint': ('uint32_t', 4), 'short': ('int16_t', 4), 'ushort': ('uint16_t', 4),
@@ -182,6 +197,76 @@ def disassemble(dylib):
         if a == ('ldr', 'x8, [x0]') and b[0] == 'ldr' and m and c == ('br', f'x{m.group(1)}'):
             slots[name] = (int(m.group(2) or '0', 16) // 8, int(m.group(1)))
     return slots, set(bodies)
+
+
+I386_LOADS8 = ('movsd', 'movq', 'fldl')
+# Noms flat des anciens SDK -> nom actuel. Les surcharges y étaient numérotées dans l'ordre de
+# déclaration (GetStat, GetStat0) ; le SDK 1.53a leur donne des noms distincts aux mêmes
+# emplacements (vérifié : GetStat/GetStatInt32 en 1, GetStat0/GetStatFloat en 2, etc.).
+OLD_FLAT_NAMES = {
+    **{f'SteamAPI_ISteamUserStats_{old}': f'SteamAPI_ISteamUserStats_{new}' for old, new in {
+        'GetStat': 'GetStatInt32', 'GetStat0': 'GetStatFloat', 'SetStat': 'SetStatInt32', 'SetStat0': 'SetStatFloat',
+        'GetUserStat': 'GetUserStatInt32', 'GetUserStat0': 'GetUserStatFloat',
+        'GetGlobalStat': 'GetGlobalStatInt64', 'GetGlobalStat0': 'GetGlobalStatDouble',
+        'GetGlobalStatHistory': 'GetGlobalStatHistoryInt64', 'GetGlobalStatHistory0': 'GetGlobalStatHistoryDouble',
+    }.items()},
+    'SteamAPI_ISteamGameServer_EnableHeartbeats': 'SteamAPI_ISteamGameServer_SetAdvertiseServerActive',
+    'SteamAPI_ISteamGameServer_SendUserConnectAndAuthenticate': 'SteamAPI_ISteamGameServer_SendUserConnectAndAuthenticate_DEPRECATED',
+    'SteamAPI_ISteamGameServer_SendUserDisconnect': 'SteamAPI_ISteamGameServer_SendUserDisconnect_DEPRECATED',
+    'SteamAPI_ISteamUser_InitiateGameConnection': 'SteamAPI_ISteamUser_InitiateGameConnection_DEPRECATED',
+    'SteamAPI_ISteamUser_TerminateGameConnection': 'SteamAPI_ISteamUser_TerminateGameConnection_DEPRECATED',
+    'SteamAPI_ISteamUGC_CreateQueryAllUGCRequest': 'SteamAPI_ISteamUGC_CreateQueryAllUGCRequestPage',
+}
+# Paramètres ajoutés à la fin depuis l'ancien SDK (nombre retiré de la signature actuelle) :
+# ActivateGameOverlayToWebPage gagne eMode en 1.46.
+OLD_TRAILING_PARAMS = {'SteamAPI_ISteamFriends_ActivateGameOverlayToWebPage': 1}
+
+
+def disassemble_i386(elf):
+    """Flat functions of an i386 libsteam_api.so -> (slot, 4-byte argument words).
+
+    Each one loads `this` from its first argument, reads the vtable (`movl (%eA), %eB`) and calls
+    or jumps through `*off(%eB)`: the slot is off/4. The argument words are the highest stack
+    argument the function reads (frame-pointer or esp-relative, tracking sub/push), a cross-check
+    of the signature taken from Steamworks.NET."""
+    text = subprocess.run(['objdump', '-d', str(elf)], check=True, capture_output=True, text=True).stdout
+    bodies, current = {}, None
+    for line in text.splitlines():
+        m = re.match(r'^[0-9a-f]+ <(\w+)>:', line)
+        if m:
+            current = m.group(1); bodies[current] = []; continue
+        parts = line.split('\t')
+        if current and len(parts) >= 2:
+            bodies[current].append((parts[1].strip(), parts[2].strip() if len(parts) > 2 else ''))
+    result = {}
+    for name, body in bodies.items():
+        if not name.startswith('SteamAPI_ISteam'):
+            continue
+        delta, frame, words, vreg, slot = 0, False, 1, None, None
+        for op, args in body:
+            if op == 'subl' and args.endswith(', %esp'):
+                delta += int(args.split(',')[0].lstrip('$'), 16)
+            elif op == 'pushl':
+                delta += 4
+            elif op == 'movl' and args == '%esp, %ebp':
+                frame = True
+            source = args.split(', ')[0] if ', ' in args else args
+            m = re.fullmatch(r'(0x[0-9a-f]+)?\(%(esp|ebp)\)', source)
+            if m and op not in ('calll', 'jmpl') and not op.startswith('lea'):
+                off = int(m.group(1) or '0', 16)
+                first = 8 if m.group(2) == 'ebp' and frame else delta + 4 if m.group(2) == 'esp' else None
+                if first is not None and off >= first:
+                    words = max(words, (off - first) // 4 + (2 if op in I386_LOADS8 else 1))
+            m = re.fullmatch(r'\(%(e(?:[a-d]x|si|di))\), %(e(?:[a-d]x|si|di))', args)
+            if op == 'movl' and m and vreg is None:
+                vreg = m.group(2)
+            m = re.fullmatch(r'\*(0x[0-9a-f]+)?\(%(e(?:[a-d]x|si|di))\)', args)
+            if op in ('calll', 'jmpl') and m and vreg and m.group(2) == vreg:
+                slot = int(m.group(1) or '0', 16) // 4
+                break
+        if slot is not None:
+            result[name] = (slot, words)
+    return result
 
 
 def native_methods(files):
@@ -322,20 +407,37 @@ def plan_method(flat, method, ret, params, wrapper, types, gprs, slot, structs=N
     return body, sret
 
 
-def generate(sources):
-    """sources: [(dossier du paquet, dylib, {classe: version})], dans l'ordre de priorité."""
+def generate(sources, guest_sources=()):
+    """sources: [(dossier du paquet, dylib, {classe: version})], dans l'ordre de priorité ;
+    guest_sources: [(dossier du paquet, libsteam_api.so i386, {classe: version})]."""
     methods, interfaces, stats = [], [], {}
     for pkg, dylib, versions in sources:
         wanted = {k: v for k, v in versions.items() if v not in {i[0] for i in interfaces}}
         generate_source(pkg, dylib, wanted, methods, interfaces, stats, direct=bool(interfaces))
+    for pkg, elf, versions in guest_sources:
+        wanted = {k: v for k, v in versions.items() if v not in {i[0] for i in interfaces}}
+        generate_source(pkg, None, wanted, methods, interfaces, stats, direct=True, guest_elf=elf)
     return emit(methods, interfaces), stats, methods
 
 
-def generate_source(pkg, dylib, versions, methods, interfaces, stats, direct):
+def i386_words(params, types):
+    """4-byte stack words of `this` plus the C# parameters."""
+    words = 1
+    for kind, _ in params:
+        if kind in ('CSteamID', 'CGameID'):
+            words += 2
+            continue
+        size = SCALARS.get(types.get(kind, kind))
+        words += 2 if size and size[1] == 8 else 1
+    return words
+
+
+def generate_source(pkg, dylib, versions, methods, interfaces, stats, direct, guest_elf=None):
     files = sdk_files(pkg)
     types = typedefs(files)
     structs = struct_sizes(files, types)
-    slots, symbols = disassemble(dylib)
+    guest_words = disassemble_i386(guest_elf) if guest_elf else None
+    slots = {f: (slot, None) for f, (slot, _) in guest_words.items()} if guest_words else disassemble(dylib)[0]
     natives = native_methods(files)
     wrappers = wrapper_returns(files)
     # ISteamController : signatures empruntées à ISteamInput (voir docstring).
@@ -366,9 +468,25 @@ def generate_source(pkg, dylib, versions, methods, interfaces, stats, direct):
                 methods.append(entry)
                 continue
             try:
-                if flat not in natives:
+                if OLD_FLAT_NAMES.get(flat, flat) not in natives:
                     raise Unsupported('signature absente de Steamworks.NET')
-                ret, params = natives[flat]
+                if guest_words is not None:
+                    current = OLD_FLAT_NAMES.get(flat, flat)
+                    if current not in natives:
+                        raise Unsupported('signature absente de Steamworks.NET')
+                    ret, params = natives[current]
+                    params = params[:len(params) - OLD_TRAILING_PARAMS.get(flat, 0)]
+                    wrappers.setdefault(flat, wrappers.get(current))
+                else:
+                    ret, params = natives[flat]
+                if guest_words is not None:
+                    # SDK i386 : vérifier le nombre de mots de pile, puis passer à plan_method le
+                    # nombre d'entiers qu'il attend (aucune dylib arm64 à comparer).
+                    found, expected = guest_words[flat][1], i386_words(params, types)
+                    if found != expected:
+                        raise Unsupported(f'signature C# ({expected} mots de pile) != libsteam_api.so ({found})')
+                    gprs = 1 + sum(1 for kind, _ in params
+                                   if (SCALARS.get(types.get(kind, kind)) or ('',))[0] not in ('float', 'double'))
                 entry['body'], entry['sret'] = plan_method(flat, method, ret, params, wrappers.get(flat), types, gprs, slot if direct else None, structs)
             except Unsupported as exc:
                 entry['why'] = str(exc)
@@ -379,7 +497,8 @@ def generate_source(pkg, dylib, versions, methods, interfaces, stats, direct):
 def emit(methods, interfaces):
     methods.sort(key=lambda m: m['name'])
     out = ['/* Généré par tools/gen_steam.py depuis les libsteam_api.dylib officielles (SDK 1.53a, 1.60,',
-           ' * 1.61) et Steamworks.NET 20.1.0, 2024.8.0, 2025.161.0 (MIT). Ne pas modifier : relancer',
+           ' * 1.61), le libsteam_api.so i386 de Portal Stories: Mel (SDK 1.40, emplacements seulement)',
+           ' * et Steamworks.NET 20.1.0, 2024.8.0, 2025.161.0 (MIT). Ne pas modifier : relancer',
            ' * le générateur. */',
            '#include "steam.h"', '']
     out.extend(f'void {fn}(CPU *c, void *self, uint32_t args, uint32_t sret);' for fn in sorted(set(MANUAL.values())))
@@ -405,15 +524,31 @@ def emit(methods, interfaces):
     return '\n'.join(out) + '\n'
 
 
+def mel_steam_api():
+    try:
+        config = json.loads((ROOT / 'config/local.json').read_text())
+        return Path(config['games']['mel']['linux_root']) / 'bin/libsteam_api.so'
+    except (OSError, ValueError, KeyError):
+        return None
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--downloads', type=Path, default=DOWNLOADS,
                         help='folder holding the unpacked Steamworks.NET packages of SOURCES')
     parser.add_argument('--out', type=Path, default=ROOT / 'runtime/steam_generated.c')
+    parser.add_argument('--mel-steam-api', type=Path,
+                        help='libsteam_api.so of Portal Stories: Mel (bin/ of its Linux depot 317404); '
+                             'default: linux_root of the "mel" game in config/local.json')
     args = parser.parse_args()
     sources = [(args.downloads / name / 'pkg', args.downloads / name / 'steam_api.bundle/Contents/MacOS/libsteam_api.dylib',
                 versions) for name, versions in SOURCES]
-    code, stats, methods = generate(sources)
+    mel = args.mel_steam_api or mel_steam_api()
+    if not mel or not Path(mel).is_file():
+        raise SystemExit('libsteam_api.so of Portal Stories: Mel not found: pass --mel-steam-api '
+                         '(download_depot 317400 317404, then <depot>/bin/libsteam_api.so)')
+    guest_sources = [(args.downloads / SOURCES[0][0] / 'pkg', Path(mel), versions) for _, versions in GUEST_SOURCES]
+    code, stats, methods = generate(sources, guest_sources)
     args.out.write_text(code)
     total = sum(s[0] for s in stats.values()); done = sum(s[1] for s in stats.values())
     for version, (n, ok, slots) in stats.items():

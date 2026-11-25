@@ -707,10 +707,42 @@ const void *d3d9_shader(CPU *c, uint32_t guest) {
     return rt_span(c, guest, 4ull * (i + 1));
 }
 // D3DVERTEXELEMENT9 (8 octets) jusqu'à D3DDECL_END (Stream 0xff), 64 éléments au plus + la fin.
+// Portal Stories: Mel (Linux 2021, DXVK natif de l'époque) compile ses en-têtes D3D9 avec
+// un WORD de 32 bits : éléments de 12 octets {Stream, Offset sur 32 bits, Type, Method,
+// Usage, UsageIndex}. Reconnus à leur fin {0xff, 0, D3DDECLTYPE_UNUSED} au pas de 12 et
+// recopiés au format de 8 octets ; GetDeclaration rend alors ce même format.
+static _Atomic int decl_word32;
+static _Thread_local uint8_t decl_copy[65 * 8];
+static const void *scan_decl8(CPU *c, uint32_t guest) {
+    for (uint32_t i = 0; i <= 64; ++i) {
+        if (R16(guest + 8 * i) == 0xff && R16(guest + 8 * i + 2) == 0 && R8(guest + 8 * i + 4) == 17) {
+            decl_word32 = 0;
+            return rt_span(c, guest, 8ull * (i + 1));
+        }
+    }
+    return NULL;
+}
+static const void *scan_decl12(CPU *c, uint32_t guest) {
+    for (uint32_t i = 0; i <= 64; ++i) {
+        if (R32(guest + 12 * i) != 0xff || R32(guest + 12 * i + 4) != 0 || R8(guest + 12 * i + 8) != 17) continue;
+        rt_span(c, guest, 12ull * (i + 1));
+        for (uint32_t e = 0; e <= i; ++e) {
+            uint32_t from = guest + 12 * e;
+            uint16_t stream = (uint16_t)R32(from), offset = (uint16_t)R32(from + 4);
+            memcpy(decl_copy + 8 * e, &stream, 2);
+            memcpy(decl_copy + 8 * e + 2, &offset, 2);
+            memcpy(decl_copy + 8 * e + 4, GPTR(from + 8), 4);
+        }
+        decl_word32 = 1;
+        return decl_copy;
+    }
+    return NULL;
+}
 const void *d3d9_decl(CPU *c, uint32_t guest) {
     if (!guest) return NULL;
-    for (uint32_t i = 0; i <= 64; ++i)
-        if (R16(guest + 8 * i) == 0xff) return rt_span(c, guest, 8ull * (i + 1));
+    const void *result = decl_word32 ? scan_decl12(c, guest) : scan_decl8(c, guest);
+    if (!result) result = decl_word32 ? scan_decl8(c, guest) : scan_decl12(c, guest);
+    if (result) return result;
     rt_trapf(c, "D3D9 bridge: vertex declaration at %#x has no D3DDECL_END", guest);
 }
 // RGNDATA : en-tête de 32 octets (nCount en +8) puis nCount RECT.
@@ -872,7 +904,17 @@ void d3d9_manual_IDirect3DVertexDeclaration9_GetDeclaration(CPU *c, void *self, 
     uint32_t elements = R32(a), count_at = R32(a + 4), count = 0;
     if (count_at) rt_write_span(c, count_at, 4);
     int32_t hr = get(self, NULL, &count);
-    if (hr >= 0 && elements) hr = get(self, rt_write_span(c, elements, 8ull * count), &count);
+    if (hr >= 0 && elements && decl_word32 && count <= 65) {
+        uint8_t host[65 * 8];
+        hr = get(self, host, &count);
+        uint8_t *guest = rt_write_span(c, elements, 12ull * count);
+        for (uint32_t e = 0; hr >= 0 && e < count; ++e) {
+            uint16_t stream, offset;
+            memcpy(&stream, host + 8 * e, 2); memcpy(&offset, host + 8 * e + 2, 2);
+            uint32_t wide[2] = {stream, offset};
+            memcpy(guest + 12 * e, wide, 8); memcpy(guest + 12 * e + 8, host + 8 * e + 4, 4);
+        }
+    } else if (hr >= 0 && elements) hr = get(self, rt_write_span(c, elements, 8ull * count), &count);
     if (count_at) W32(count_at, count);
     c->eax = (uint32_t)hr;
 }

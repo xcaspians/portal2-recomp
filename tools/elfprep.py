@@ -103,8 +103,10 @@ class Elf:
         return out
 
     def exports(self):
+        # Bindings GLOBAL (1), WEAK (2) and GNU_UNIQUE (10): libstdc++ exports some
+        # template statics (std::string's empty representation...) as unique objects.
         if not hasattr(self, '_export_cache'):
-            self._export_cache = {s['name']: s for s in self.dynsyms if s['shndx'] != 0 and s['name'] and s['bind'] in (1, 2) and s['visibility'] in (0, 3)}
+            self._export_cache = {s['name']: s for s in self.dynsyms if s['shndx'] != 0 and s['name'] and s['bind'] in (1, 2, 10) and s['visibility'] in (0, 3)}
         return self._export_cache
 
 
@@ -269,14 +271,16 @@ def main():
         if 26 in m.dyn:
             fini_array = [m.u32(m.dyn[26] + 4 * i) for i in range(m.dyn[28] // 4)]
         entries.update(x for x in init_array + fini_array if x not in (0, 0xffffffff))
-        # pointeurs vers .text présents dans les données (vtables, tables de fonctions)
+        # pointeurs vers le code présents dans les données (vtables, tables de fonctions)
         tlo, thi = m.base + text['addr'], m.base + text['addr'] + text['size']
+        code_secs = [(s['addr'], s['addr'] + s['size']) for s in m.secs.values()
+                     if (s['flags'] & 4) and s['name'] not in ('.init', '.fini') and not s['name'].startswith('.plt')]
+        in_code = lambda a: any(lo <= a < hi for lo, hi in code_secs)
         ptrs = set()
         for off, typ, si in rels:
             if typ in (R_386_RELATIVE, R_386_32):
                 v = m.u32(off)
-                in_text = text['addr'] <= off < text['addr'] + text['size']
-                if tlo <= v < thi and not in_text:
+                if in_code(v - m.base) and not in_code(off):
                     ptrs.add(v)
         # ET_EXEC callback/vtable pointers are already absolute and have no
         # dynamic relocations. Include allocated non-code tables as roots too.
@@ -286,7 +290,7 @@ def main():
                 first = (-section['addr']) & 3
                 for at in range(first, section['size'] - 3, 4):
                     value = struct.unpack_from('<I', m.data, section['off'] + at)[0]
-                    if tlo <= value < thi: ptrs.add(value)
+                    if in_code(value - m.base): ptrs.add(value)
         exports = {n: m.base + s['value'] for n, s in m.exports().items()}
         md = dict(name=m.name, modid=m.modid, base=m.base, image=img,
                   gotplt=m.base + m.dyn.get(3, 0), entry=m.base + m.e_entry,

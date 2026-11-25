@@ -129,6 +129,37 @@ GAMES = {
         # Sound, voices included, works on an iPhone whose data starts empty.
         ios_data=('platform', 'portal', 'hl2'),
     ),
+    # Portal Stories: Mel (Steam app 317400): a Portal 2 mod shipped with its own
+    # copy of the Portal 2 engine (2021 Linux build, bin/*.so, shaderapivk/DXVK
+    # like Portal 2's), Linux binaries in depot 317404. Its game libraries
+    # (portal_stories/bin) are in the shared data depot, hence game_lib_dirs,
+    # relative to the game folder. Steamworks: SDK 1.40 interfaces (docs/mel.md).
+    # Experimental, see docs/mel.md.
+    'mel': dict(
+        program='portal2_linux',
+        lib_dirs=('bin',),
+        game_lib_dirs=('portal_stories/bin',),
+        system_libs=('libstdc++.so.6', 'libgcc_s.so.1'),
+        mod='portal_stories',
+        excluded=_COMMON_EXCLUDED | {'puzzlemaker_dll.so', 'libsteam_api_linux.so', 'libtcmalloc_minimal.so.4'},
+        roots='config/mel-roots.json',
+        steam_appid=317400,
+        depot_id=317404,
+        app_name='Portal Stories Mel Natif',
+        log_name='PortalStoriesMelNatif.log',
+        bundle_id='fr.kanapitsas.mel-native',
+        icon='portal2.ico',
+        renderer=None,   # Metal when libd3d9metal is there, as for Portal 2
+        build_dir='build/mel',
+        binary='build/mel/mel-native',
+        executable='mel-native',
+        ios_dir='build/mel/ios',
+        ios=True,   # phase 1: builds and reaches its menu in the simulator (docs/fork/MEL_IOS_PLAN.md)
+        ios_name='Portal Stories Mel',
+        ios_executable='mel',
+        ios_app='PortalStoriesMel.app',
+        ios_data=('bin', 'platform', 'portal2', 'portal2_dlc2', 'portal_stories'),
+    ),
 }
 
 

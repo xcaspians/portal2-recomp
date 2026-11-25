@@ -2,10 +2,11 @@
 # One-shot setup and build: checks the tools, downloads Valve's macOS
 # libsteam_api.dylib (inside Steamworks.NET), writes config/local.json,
 # recompiles each game and creates its app in ~/Applications:
-# "Portal 2 Natif.app", "Half-Life 2 Natif.app" and/or "Portal Natif.app"
-# (the last two experimental: docs/hl2.md, docs/portal1.md).
-# With --ios, also builds, signs and installs the iPhone app of each of those
-# games (build/ios/device/Portal2.app, build/hl2/ios/device/HalfLife2.app,
+# "Portal 2 Natif.app", "Half-Life 2 Natif.app", "Portal Natif.app" and/or
+# "Portal Stories Mel Natif.app" (the last three experimental: docs/hl2.md,
+# docs/portal1.md, docs/mel.md).
+# With --ios, also builds, signs and installs the iPhone app of each iOS-enabled
+# game (build/ios/device/Portal2.app, build/hl2/ios/device/HalfLife2.app,
 # build/portal1/ios/device/Portal.app).
 # Host libraries (SDL2, FreeType, Fontconfig) come from Homebrew when it has
 # them all, else from a prebuilt bundle downloaded from this project's GitHub
@@ -14,20 +15,22 @@
 # is built when Rust (https://rustup.rs) is installed, else taken prebuilt from
 # the same bundle. P2_NO_METAL=1 skips it: the game then uses OpenGL.
 #
-# usage: ./setup.sh [--game portal2|hl2|portal1|all] [--ios] [--puzzle-maker]
+# usage: ./setup.sh [--game portal2|hl2|portal1|mel|all] [--ios] [--puzzle-maker]
 #        ./setup.sh [--ios] ["/path/to/Portal 2" ["/path/to/depot_661"]]
 #        ./setup.sh --game hl2 ["/path/to/Half-Life 2" ["/path/to/depot_224"]]
 #        ./setup.sh --game portal1 ["/path/to/Portal" ["/path/to/depot_404"]]
+#        ./setup.sh --game mel ["/path/to/Portal Stories Mel" ["/path/to/depot_317404"]]
 #        ./setup.sh --detect [--game ...]   prints the games it would build, changes nothing
 #
 # Without --game, every game found on this Mac is built: the ones already in
 # config/local.json, and the ones where Steam puts them (the game installed by
 # Steam, and its Linux binaries fetched with the Steam console's
-# download_depot command). --game all requires both. One checkout holds both
+# download_depot command). --game all requires all of them. One checkout holds all
 # games (build/game for Portal 2, build/hl2 for Half-Life 2, build/portal1 for
-# Portal 1): adding one never rebuilds another. Paths are for one game; without
-# --game, a folder with hl2_complete/ is taken for Half-Life 2, one with
-# portal/gameinfo.txt for Portal 1, anything else for Portal 2.
+# Portal 1, build/mel for Portal Stories: Mel): adding one never rebuilds another.
+# Paths are for one game; without --game, a folder with hl2_complete/ is taken for
+# Half-Life 2, portal/gameinfo.txt for Portal 1, portal_stories/ for Mel, anything
+# else for Portal 2.
 #
 # --puzzle-maker also builds Portal 2's map compilers (VBSP, VVIS, VRAD), which
 # the Puzzle Maker needs to build a chamber: about ten more minutes and 220 MB
@@ -63,7 +66,7 @@ while [ $# -gt 0 ]; do
         --ios) IOS=1 ;;
         --detect) DETECT=1 ;;
         --puzzle-maker) PUZZLE_MAKER=1 ;;
-        --game) [ $# -gt 0 ] || { echo "--game needs a value: portal2, hl2, portal1 or all" >&2; exit 2; }
+        --game) [ $# -gt 0 ] || { echo "--game needs a value: portal2, hl2, portal1, mel or all" >&2; exit 2; }
                 GAME_OPT="$1"; shift ;;
         --game=*) GAME_OPT="${a#--game=}" ;;
         -h|--help) awk 'NR > 1 && !/^#/ {exit} NR > 1 {sub(/^# ?/, ""); print}' "$0"; exit 0 ;;  # leading comment block
@@ -75,14 +78,17 @@ GIVEN_GAME="${ARGS[0]:-}"
 GIVEN_LINUX="${ARGS[1]:-}"
 [ ${#ARGS[@]} -le 2 ] || { echo "too many arguments: at most the game folder and the Linux binaries folder" >&2; exit 2; }
 case "$GAME_OPT" in
-    ""|portal2|hl2|portal1|all) ;;
-    *) echo "unknown game $GAME_OPT: use --game portal2, hl2, portal1 or all" >&2; exit 2 ;;
+    ""|portal2|hl2|portal1|mel|all) ;;
+    *) echo "unknown game $GAME_OPT: use --game portal2, hl2, portal1, mel or all" >&2; exit 2 ;;
 esac
 case "$PUZZLE_MAKER$GAME_OPT" in
-    1hl2|1portal1) echo "--puzzle-maker is for Portal 2: drop it or the --game $GAME_OPT" >&2; exit 2 ;;
+    1hl2|1portal1|1mel) echo "--puzzle-maker is for Portal 2: drop it or the --game $GAME_OPT" >&2; exit 2 ;;
 esac
+if [ "$IOS" = 1 ] && [ "$GAME_OPT" = mel ]; then
+    echo "--ios is not yet supported for Portal Stories: Mel (macOS only)" >&2; exit 2
+fi
 if [ "$GAME_OPT" = all ] && [ -n "$GIVEN_GAME" ]; then
-    echo "paths are for one game: use --game portal2, --game hl2 or --game portal1 with them" >&2; exit 2
+    echo "paths are for one game: use --game portal2, --game hl2, --game portal1 or --game mel with them" >&2; exit 2
 fi
 
 # Per game: title, Steam app and depots (tools/games.py), and the
@@ -101,6 +107,10 @@ game_info() {  # game id -> TITLE APPID LINUX_DEPOT STEAMWORKS_* APP_NAME LOG_NA
         TITLE="Portal"; APPID=400; LINUX_DEPOT=404
         STEAMWORKS_VERSION=2024.8.0   # SDK 1.60: engine.so asks SteamUser023/SteamClient021 (docs/steam.md)
         STEAMWORKS_SHA256="0a8e9b8c95760e81fcb16477a8962a4c230ea887b3731b1f9bc0690677f6f087" ;;
+    mel)
+        TITLE="Portal Stories Mel"; APPID=317400; LINUX_DEPOT=317404
+        STEAMWORKS_VERSION=20.1.0
+        STEAMWORKS_SHA256="3be79e6bdf53c86210267bf39f46362bb839130896006aec26364c5efc37e314" ;;
     esac
     APP_NAME="$TITLE Natif"
     LOG_NAME="$(printf '%s' "$TITLE" | tr -d ' -')Natif.log"
@@ -180,9 +190,10 @@ unescape_path() {
 }
 [ -n "$GIVEN_GAME" ] && GIVEN_GAME="$(unescape_path "$GIVEN_GAME")"
 [ -n "$GIVEN_LINUX" ] && GIVEN_LINUX="$(unescape_path "$GIVEN_LINUX")"
-# Paths without --game: a Half-Life 2 folder has hl2_complete/.
+# Paths without --game: inspect the mod folder.
 if [ -z "$GAME_OPT" ] && [ -n "$GIVEN_GAME" ]; then
     if [ -d "$GIVEN_GAME/hl2_complete" ]; then GAME_OPT=hl2
+    elif [ -d "$GIVEN_GAME/portal_stories" ]; then GAME_OPT=mel
     elif [ -d "$GIVEN_GAME/portal" ] && [ -d "$GIVEN_GAME/platform" ]; then GAME_OPT=portal1
     else GAME_OPT=portal2
     fi
@@ -225,7 +236,7 @@ locate() {  # game id [game folder [Linux folder]] -> FOUND_GAME FOUND_LINUX (em
                     && { FOUND_LINUX="$c"; break; }
             done
         fi
-    else   # portal1: Steam install or data depot 401, Linux binaries from depot 404
+    elif [ "$1" = portal1 ]; then   # portal1: Steam install or data depot 401, Linux binaries from depot 404
         if [ -z "$FOUND_GAME" ]; then
             for c in "$(config_get portal1 game_root)" "$STEAM_SUPPORT/steamapps/common/Portal" "$(find_depot 400 401)"; do
                 [ -n "$c" ] && [ -f "$c/portal/gameinfo.txt" ] && { FOUND_GAME="$c"; break; }
@@ -235,6 +246,19 @@ locate() {  # game id [game folder [Linux folder]] -> FOUND_GAME FOUND_LINUX (em
             for c in "$(config_get portal1 linux_root)" "$(find_depot 400 404)"; do
                 [ -n "$c" ] && [ -f "$c/hl2_linux" ] && [ -f "$c/bin/engine.so" ] \
                     && [ -f "$c/portal/bin/server.so" ] && [ -f "$c/bin/shaderapivk.so" ] \
+                    && { FOUND_LINUX="$c"; break; }
+            done
+        fi
+    else   # mel: Steam install or data depot 317401, Linux binaries from depot 317404
+        if [ -z "$FOUND_GAME" ]; then
+            for c in "$(config_get mel game_root)" "$STEAM_SUPPORT/steamapps/common/Portal Stories Mel" "$(find_depot 317400 317401)"; do
+                [ -n "$c" ] && [ -f "$c/portal_stories/gameinfo.txt" ] && [ -f "$c/portal_stories/bin/server.so" ] \
+                    && { FOUND_GAME="$c"; break; }
+            done
+        fi
+        if [ -z "$FOUND_LINUX" ]; then
+            for c in "$(config_get mel linux_root)" "$(find_depot 317400 317404)"; do
+                [ -n "$c" ] && [ -f "$c/portal2_linux" ] && [ -f "$c/bin/engine.so" ] && [ -f "$c/bin/shaderapivk.so" ] \
                     && { FOUND_LINUX="$c"; break; }
             done
         fi
@@ -278,7 +302,7 @@ check_game() {  # game id -> dies unless FOUND_GAME and FOUND_LINUX are that gam
         for f in mssmp3.asi binkawin.asi mssmixer.mix; do
             [ -f "$FOUND_LINUX/bin/linux32/$f" ] || warn "$FOUND_LINUX/bin/linux32/$f is missing: some audio may be silent"
         done
-    else   # portal1
+    elif [ "$1" = portal1 ]; then   # portal1
         [ -n "$FOUND_GAME" ] || die "Portal data not found. Install Portal with Steam (the version with portal/ and platform/),
   pass the game folder, or fetch it:
   open steam://open/console, type: download_depot 400 401, wait for
@@ -300,6 +324,22 @@ check_game() {  # game id -> dies unless FOUND_GAME and FOUND_LINUX are that gam
         for f in mssmp3.asi binkawin.asi mssmixer.mix; do
             [ -f "$FOUND_LINUX/bin/linux32/$f" ] || warn "$FOUND_LINUX/bin/linux32/$f is missing: some audio may be silent"
         done
+    else   # mel
+        [ -n "$FOUND_GAME" ] || die "Portal Stories: Mel data not found. Install Portal Stories: Mel with Steam,
+  pass the game folder, or fetch it:
+  open steam://open/console, type: download_depot 317400 317401   (about 8.6 GB), wait for
+  'Depot download complete', then re-run."
+        [ -f "$FOUND_GAME/portal_stories/gameinfo.txt" ] && [ -f "$FOUND_GAME/portal_stories/bin/server.so" ] && [ -d "$FOUND_GAME/platform" ] \
+            || die "$FOUND_GAME does not look like Portal Stories: Mel (needs portal_stories/gameinfo.txt, portal_stories/bin/server.so and platform/)"
+        [ -n "$FOUND_LINUX" ] || die "Portal Stories: Mel's Linux binaries not found. Fetch them with your Steam account:
+  open steam://open/console, type: download_depot 317400 317404   (about 90 MB), wait for
+  'Depot download complete', then re-run (or pass that folder as the second argument)."
+        [ -f "$FOUND_LINUX/portal2_linux" ] && [ -f "$FOUND_LINUX/bin/engine.so" ] && [ -f "$FOUND_LINUX/bin/shaderapivk.so" ] \
+            || die "$FOUND_LINUX does not look like depot 317404 (needs portal2_linux, bin/engine.so and bin/shaderapivk.so)"
+        for f in mssmp3.asi binkawin.asi; do
+            [ -f "$FOUND_GAME/bin/linux32/$f" ] || [ -f "$FOUND_LINUX/bin/linux32/$f" ] \
+                || warn "$f is missing from bin/linux32/: some audio may be silent"
+        done
     fi
     return 0
 }
@@ -309,8 +349,8 @@ check_game() {  # game id -> dies unless FOUND_GAME and FOUND_LINUX are that gam
 # warning, unless it is the only one found (then the error says what to fetch).
 SELECTED=(); GAME_DIRS=(); LINUX_DIRS=(); SKIPPED=()
 case "$GAME_OPT" in
-    portal2|hl2|portal1) WANTED=("$GAME_OPT") ;;
-    all) WANTED=(portal2 hl2 portal1) ;;
+    portal2|hl2|portal1|mel) WANTED=("$GAME_OPT") ;;
+    all) WANTED=(portal2 hl2 portal1 mel) ;;
     *) WANTED=() ;;
 esac
 if [ ${#WANTED[@]} -gt 0 ]; then
@@ -320,7 +360,7 @@ if [ ${#WANTED[@]} -gt 0 ]; then
         SELECTED+=("$id"); GAME_DIRS+=("$FOUND_GAME"); LINUX_DIRS+=("$FOUND_LINUX")
     done
 else
-    for id in portal2 hl2 portal1; do
+    for id in portal2 hl2 portal1 mel; do
         locate "$id"
         if [ -n "$FOUND_GAME" ] && [ -n "$FOUND_LINUX" ] && { [ "$id" != portal2 ] || portal2_data_ready "$FOUND_GAME"; }; then
             check_game "$id"
@@ -332,7 +372,7 @@ else
     if [ ${#SELECTED[@]} -eq 0 ]; then
         id="${SKIPPED[0]:-portal2}"
         locate "$id"
-        [ -n "$FOUND_GAME" ] || die "no game found. Install Portal 2, Half-Life 2 or Portal with Steam and fetch its Linux binaries
+        [ -n "$FOUND_GAME" ] || die "no game found. Install Portal 2, Half-Life 2, Portal or Portal Stories: Mel with Steam and fetch its Linux binaries
   (README.md), or pass the game folder: ./setup.sh \"/path/to/Portal 2\" \"/path/to/depot_661\""
         check_game "$id"   # says what is missing
     fi
@@ -356,8 +396,14 @@ for id in ${SKIPPED[@]+"${SKIPPED[@]}"}; do
     fi
     warn "$SKIPPED_NOTE"
 done
+IOS_SELECTED=()
+for id in "${SELECTED[@]}"; do
+    [ "$id" = mel ] || IOS_SELECTED+=("$id")
+done
 if [ $DETECT = 1 ]; then
-    [ $IOS = 0 ] || echo "iPhone apps: ${SELECTED[*]}"
+    if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
+        echo "iPhone apps: ${IOS_SELECTED[*]}"
+    fi
     echo "would build: ${SELECTED[*]}"
     exit 0
 fi
@@ -367,7 +413,7 @@ steam_dylib() {  # game id -> DYLIB, Valve's libsteam_api.dylib for that game
     game_info "$1"
     local default bundle sw got t d p rel
     DYLIB="$(config_get "$1" steam_api_dylib)"
-    if [ "$1" = portal2 ]; then
+    if [ "$1" = portal2 ] || [ "$1" = mel ]; then
         default="$REPO/../work/downloads/steamworks/steam_api.bundle/Contents/MacOS/libsteam_api.dylib"
         bundle="$DEPS/steam_api.bundle"
     else
@@ -404,6 +450,56 @@ DYLIBS=()
 for id in "${SELECTED[@]}"; do
     steam_dylib "$id"
     DYLIBS+=("$DYLIB")
+done
+
+# --- Linux i386 system libraries for Portal Stories: Mel (libstdc++, libgcc_s)
+# Mel's Linux binaries link dynamically against libstdc++.so.6 and libgcc_s.so.1
+# (Portal 2 links them statically). Extracted from Debian bullseye's gcc-10 i386
+# packages (SHA-256 checked) into deps/debian-i386/lib.
+DEBIAN_GCC10_URL="https://deb.debian.org/debian/pool/main/g/gcc-10"
+DEBIAN_LIBSTDCXX_DEB="libstdc++6_10.2.1-6_i386.deb"
+DEBIAN_LIBSTDCXX_SHA256="ef9b1f03163ad32c8f940b9a9e417773ff3d2f08ad2044d9c28fed5b81de3b7e"
+DEBIAN_LIBGCC_DEB="libgcc-s1_10.2.1-6_i386.deb"
+DEBIAN_LIBGCC_SHA256="0a52edec5d626f8d9acf1998248d276760aff3950f44a308d27d4a2a488fe18d"
+SYSTEM_LIB_DIR=""
+fetch_debian_i386() {
+    local c dest deb deb_path sha url got t found spec
+    for c in "$(config_get mel system_lib_dir)" "$REPO/../work/downloads/debian-i386/lib" "$DEPS/debian-i386/lib"; do
+        if [ -n "$c" ] && [ -f "$c/libstdc++.so.6" ] && [ -f "$c/libgcc_s.so.1" ]; then
+            SYSTEM_LIB_DIR="$c"
+            return 0
+        fi
+    done
+    step "Downloading Debian bullseye i386 libstdc++.so.6 and libgcc_s.so.1 (for Portal Stories: Mel)"
+    need ar "It comes with the Xcode command line tools: xcode-select --install"
+    dest="$DEPS/debian-i386/lib"
+    mkdir -p "$DEPS/debian-i386" "$dest"
+    for spec in \
+        "$DEBIAN_LIBSTDCXX_DEB:$DEBIAN_LIBSTDCXX_SHA256:libstdc++.so.6" \
+        "$DEBIAN_LIBGCC_DEB:$DEBIAN_LIBGCC_SHA256:libgcc_s.so.1"; do
+        deb="${spec%%:*}"; spec="${spec#*:}"; sha="${spec%%:*}"; lib="${spec#*:}"
+        url="$DEBIAN_GCC10_URL/$deb"
+        deb_path="$(cd "$DEPS/debian-i386" && pwd)/$deb"
+        if [ ! -f "$deb_path" ]; then
+            curl -fsSL --retry 3 -o "$deb_path.part" "$url" && mv "$deb_path.part" "$deb_path" \
+                || { rm -f "$deb_path.part"; die "could not download $url"; }
+        fi
+        got=$(shasum -a 256 "$deb_path" | cut -d' ' -f1)
+        [ "$got" = "$sha" ] || die "$deb_path: SHA-256 $got, expected $sha (delete it and re-run)"
+        t=$(mktemp -d)
+        (cd "$t" && ar x "$deb_path" && tar -xf data.tar.*)
+        found=$(find "$t" -name "$lib" \( -type f -o -type l \) | head -1)
+        [ -n "$found" ] || { rm -rf "$t"; die "$lib not found in $deb"; }
+        cp -L "$found" "$dest/$lib"
+        rm -rf "$t"
+    done
+    SYSTEM_LIB_DIR="$dest"
+}
+for id in "${SELECTED[@]}"; do
+    if [ "$id" = mel ]; then
+        fetch_debian_i386
+        break
+    fi
 done
 
 # --- Prebuilt host libraries (when Homebrew's or Rust are missing) --------
@@ -530,6 +626,7 @@ step "Writing config/local.json"
 mkdir -p "$REPO/config"
 GAME_ARGS=()
 for i in "${!SELECTED[@]}"; do GAME_ARGS+=("${SELECTED[$i]}" "${GAME_DIRS[$i]}" "${LINUX_DIRS[$i]}" "${DYLIBS[$i]}"); done
+export P2_SETUP_SYSTEM_LIB_DIR="$SYSTEM_LIB_DIR"
 python3 - "$REPO/tools" "$CONFIG" "$TEAM" "$D3D9METAL" "$D3D9METAL_IOS" "$METAL_OFF" "$HOST_PREFIX" "${GAME_ARGS[@]}" <<'EOF'
 import json, os, sys
 from pathlib import Path
@@ -570,11 +667,14 @@ for i in range(0, len(game_args), 4):
         target = sections.setdefault(name, {})
     target.update(game_root=os.path.normpath(game), linux_root=os.path.normpath(linux),
                   steam_api_dylib=os.path.normpath(dylib))
+    sys_lib_dir = os.environ.get('P2_SETUP_SYSTEM_LIB_DIR')
+    if sys_lib_dir and games.GAMES[name].get('system_libs'):
+        target['system_lib_dir'] = os.path.normpath(sys_lib_dir)
     target.setdefault('steam_appid', games.GAMES[name]['steam_appid'])
     target.setdefault('depot_id', games.GAMES[name]['depot_id'])
     if not known:   # each game its own folder (tools/localconfig.py)
         target.setdefault('user_dir', str(localconfig.support_dir({'game': name}) / 'userdata'))
-    if team and not localconfig.game_config(config, name).get('ios_bundle_id'):
+    if team and games.GAMES[name].get('ios', True) and not localconfig.game_config(config, name).get('ios_bundle_id'):
         # The game's iPhone app. Unique to the team: free accounts cannot reuse
         # an identifier taken elsewhere. Portal 2 keeps its identifier; another
         # game gets its own, so that it does not replace Portal 2's app.
@@ -595,7 +695,7 @@ APP_DIR="${P2_APP_DIR:-$HOME/Applications}"
 for i in "${!SELECTED[@]}"; do
     id=${SELECTED[$i]}
     game_info "$id"
-    MINUTES=10; [ "$id" = hl2 ] && MINUTES=20
+    MINUTES=10; [ "$id" = hl2 ] && MINUTES=20; [ "$id" = mel ] && MINUTES=15
     step "Preparing the Linux modules of $TITLE"
     python3 tools/gameprep.py --game "$id"
     step "Recompiling $TITLE (about $MINUTES minutes the first time, seconds afterwards)"
@@ -620,7 +720,7 @@ for i in "${!SELECTED[@]}"; do
 done
 
 # --- iOS ------------------------------------------------------------------
-if [ $IOS = 1 ]; then
+if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
     IOS_DEPS="$DEPS/ios-deps"
     [ -f "$REPO/../work/ios-deps/device/lib/libgl4es.a" ] && [ -z "${P2_DEPS:-}" ] && IOS_DEPS="$REPO/../work/ios-deps"
     if [ ! -f "$IOS_DEPS/device/lib/libgl4es.a" ]; then
@@ -634,15 +734,21 @@ if [ $IOS = 1 ]; then
     [ -n "$DEVICE" ] || warn "no iPhone connected: a free account needs one registered for its first profile"
     # One identifier per game, or installing one app replaces the other (and
     # its data marker would skip the second copy): P2_BUNDLE_ID applies to all.
-    IOS_IDS=$(for id in "${SELECTED[@]}"; do python3 tools/ios_bundle_id.py --game "$id"; done)
-    [ "$(printf '%s\n' "$IOS_IDS" | sort -u | wc -l)" -eq ${#SELECTED[@]} ] ||
-        die "the iPhone apps of ${SELECTED[*]} would share the identifier $(printf '%s\n' "$IOS_IDS" | sort | uniq -d | head -1)
+    IOS_IDS=$(for id in "${IOS_SELECTED[@]}"; do python3 tools/ios_bundle_id.py --game "$id"; done)
+    [ "$(printf '%s\n' "$IOS_IDS" | sort -u | wc -l)" -eq ${#IOS_SELECTED[@]} ] ||
+        die "the iPhone apps of ${IOS_SELECTED[*]} would share the identifier $(printf '%s\n' "$IOS_IDS" | sort | uniq -d | head -1)
   (P2_BUNDLE_ID, or the same ios_bundle_id in config/local.json): unset P2_BUNDLE_ID, give each game its own
   ios_bundle_id, or build one game with --game."
     IOS_APPS=()
-    for id in "${SELECTED[@]}"; do
+    for id in "${IOS_SELECTED[@]}"; do
         game_info "$id"
         BUNDLE_ID=$(python3 tools/ios_bundle_id.py --game "$id")
+        if [ "$id" = mel ]; then
+            # Portal Stories: Mel (phase 1): signed with the team's wildcard profile
+            # (ios/signing/sign.py), so no App ID is registered for it on the account
+            # (docs/fork/MEL_IOS_PLAN.md). The wildcard has no increased memory limit.
+            step "$TITLE: signing with the team's wildcard profile (no new App ID)"
+        else
         step "Getting a provisioning profile for $BUNDLE_ID ($TITLE)"
         # iCloud saves (Portal 2): "ios_icloud": true in config/local.json asks Apple for
         # iCloud Documents on this identifier (ios/signing/project-icloud.yml).
@@ -653,6 +759,7 @@ if [ $IOS = 1 ]; then
                 -allowProvisioningUpdates DEVELOPMENT_TEAM="$TEAM" build >/dev/null) \
             || die "Xcode could not create a profile. Connect and unlock the iPhone, enable Developer Mode
   (Settings > Privacy & Security), trust this Mac, then re-run."
+        fi
         step "Building the $TITLE iPhone app (about 10 minutes the first time)"
         python3 tools/build_ios.py --game "$id" --target device --release --deps "$IOS_DEPS/device"
         IOS_APPS+=("$(eval "$(python3 tools/ios_game.py --game "$id" --target device)"; echo "$IOS_APP")")
@@ -662,7 +769,7 @@ if [ $IOS = 1 ]; then
             # The marker lives on the iPhone: a reinstalled app has an empty container.
             # Older Portal 2 setups only left a local marker; trust it if the game folder is there.
             OLD_MARK="build/ios/device/data-copied-$DEVICE"
-            SIZE="about 11.5 GB"; [ "$id" = hl2 ] && SIZE="about 10 GB"; [ "$id" = portal1 ] && SIZE="about 4 GB"
+            SIZE="about 11.5 GB"; [ "$id" = hl2 ] && SIZE="about 10 GB"; [ "$id" = portal1 ] && SIZE="about 4 GB"; [ "$id" = mel ] && SIZE="about 9 GB"
             if P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" has-data; then :
             elif [ "$id" = portal2 ] && [ -f "$OLD_MARK" ] &&
                  ! P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" has-mark &&
@@ -695,12 +802,12 @@ done
 cat <<EOF
 - Renderer: ${RENDERER}
 - Each app carries its own copy of the game binary, libraries and prepared
-  modules; after a rebuild, run python3 tools/make_app.py [--game hl2|portal1] to update it.
+  modules; after a rebuild, run python3 tools/make_app.py [--game hl2|portal1|mel] to update it.
   The game files stay where Steam put them.
 - Keep the builds to yourself: they are made from Valve's games.
 - To remove the apps (and, if you confirm, the saves): ./uninstall.sh
 EOF
-if [ $IOS = 1 ]; then
+if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
     # Same lookup as tools/build_ios.py: the library it linked, if any.
     METAL_IOS_LIB=$(python3 -c 'import json,sys; e=json.load(open(sys.argv[1])).get("d3d9metal_ios"); print(e.get("device") or "" if isinstance(e, dict) else "")' "$CONFIG")
     if [ -n "$METAL_IOS_LIB" ]; then IOS_RENDERER="Metal (libd3d9metal)"
@@ -709,8 +816,8 @@ if [ $IOS = 1 ]; then
     elif ! command -v rustup >/dev/null 2>&1; then IOS_RENDERER="OpenGL (Metal needs Rust from https://rustup.rs: Homebrew's rust has no iOS target)"
     else IOS_RENDERER="OpenGL (libd3d9metal for iOS did not build: see the warning above)"; fi
     echo "- iPhone renderer: ${IOS_RENDERER}"
-    for i in "${!SELECTED[@]}"; do
-        game_info "${SELECTED[$i]}"
+    for i in "${!IOS_SELECTED[@]}"; do
+        game_info "${IOS_SELECTED[$i]}"
         if [ -n "$DEVICE" ]; then
             cat <<EOF
 - iPhone: on the phone, Settings > General > VPN & Device Management, trust your
@@ -718,7 +825,7 @@ if [ $IOS = 1 ]; then
 EOF
         else
             echo "- $TITLE iPhone app built in ${IOS_APPS[$i]}; connect the phone and run:"
-            echo "  tools/ios_device.sh --game ${SELECTED[$i]} install && tools/ios_device.sh --game ${SELECTED[$i]} data"
+            echo "  tools/ios_device.sh --game ${IOS_SELECTED[$i]} install && tools/ios_device.sh --game ${IOS_SELECTED[$i]} data"
         fi
     done
     echo "- A free account's profile lasts 7 days: re-run ./setup.sh --ios to renew it."

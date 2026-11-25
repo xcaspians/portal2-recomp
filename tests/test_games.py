@@ -38,16 +38,30 @@ class GameProfiles(unittest.TestCase):
         self.assertNotIn('bin', game['ios_data'])
         self.assertIn('portal', game['ios_data'])
 
+    def test_mel_profile(self):
+        game = games.profile({'game': 'mel'})
+        self.assertEqual(game['program'], 'portal2_linux')
+        self.assertEqual(game['lib_dirs'], ('bin',))
+        self.assertEqual(game['game_lib_dirs'], ('portal_stories/bin',))
+        self.assertEqual(game['system_libs'], ('libstdc++.so.6', 'libgcc_s.so.1'))
+        self.assertEqual(game['mod'], 'portal_stories')
+        self.assertEqual((game['steam_appid'], game['depot_id']), (317400, 317404))
+        self.assertEqual(game['roots'], 'config/mel-roots.json')
+        self.assertTrue(game['ios'])
+        self.assertEqual(game['ios_app'], 'PortalStoriesMel.app')
+
     def test_build_paths(self):
-        # Portal 2 keeps the paths of single-game checkouts; HL2 and Portal 1 live under build/<game>.
-        portal2, hl2, portal1 = games.GAMES['portal2'], games.GAMES['hl2'], games.GAMES['portal1']
+        # Portal 2 keeps the paths of single-game checkouts; other games live under build/<game>.
+        portal2, hl2, portal1, mel = (games.GAMES[k] for k in ('portal2', 'hl2', 'portal1', 'mel'))
         self.assertEqual((portal2['build_dir'], portal2['binary'], portal2['ios_dir'], portal2['executable']),
                          ('build/game', 'build/portal2-native', 'build/ios', 'portal2-native'))
         self.assertEqual((hl2['build_dir'], hl2['binary'], hl2['ios_dir'], hl2['executable']),
                          ('build/hl2', 'build/hl2/hl2-native', 'build/hl2/ios', 'hl2-native'))
         self.assertEqual((portal1['build_dir'], portal1['binary'], portal1['ios_dir'], portal1['executable']),
                          ('build/portal1', 'build/portal1/portal1-native', 'build/portal1/ios', 'portal1-native'))
-        self.assertEqual(games.EXECUTABLES, ('portal2-native', 'hl2-native', 'portal1-native'))
+        self.assertEqual((mel['build_dir'], mel['binary'], mel['ios_dir'], mel['executable']),
+                         ('build/mel', 'build/mel/mel-native', 'build/mel/ios', 'mel-native'))
+        self.assertEqual(games.EXECUTABLES, ('portal2-native', 'hl2-native', 'portal1-native', 'mel-native'))
         # No two games share a build tree, binary or data folder.
         for key in ('build_dir', 'binary', 'ios_dir', 'executable', 'app_name', 'log_name', 'bundle_id'):
             self.assertEqual(len({g[key] for g in games.GAMES.values()}), len(games.GAMES), key)
@@ -108,8 +122,9 @@ class IosProfiles(unittest.TestCase):
 
     def test_every_game_has_an_ios_profile(self):
         table = self.c_table()
-        self.assertEqual(set(table), set(games.GAMES))
-        for name, game in games.GAMES.items():
+        ios_games = {k: g for k, g in games.GAMES.items() if g.get('ios', True)}
+        self.assertEqual(set(table), set(ios_games))
+        for name, game in ios_games.items():
             row = table[name]
             self.assertEqual(row[1], game['mod'])
             self.assertEqual(int(row[3]), game['steam_appid'])
@@ -155,3 +170,15 @@ class IosProfiles(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class MelSteamStub(unittest.TestCase):
+    """The iOS Steam stub answers Mel's SDK 1.40 slots like Portal 2's flat
+    functions: a non-empty ticket to join the local server (else "STEAM
+    certificate length error! 0/2048" when a map loads), and the server accepts
+    the player."""
+    def test_pre_rename_methods_get_the_answers(self):
+        text = (Path(__file__).resolve().parent.parent / 'runtime/ios/steam_stub_generated.c').read_text()
+        line = lambda name: next(l for l in text.splitlines() if l.startswith(f'static ') and f' {name}(' in l)
+        self.assertIn('steam_stub_ticket(a1, a2)', line('v_SteamUser019_3'))          # InitiateGameConnection
+        self.assertIn('return true;', line('v_SteamGameServer012_24'))                  # SendUserConnectAndAuthenticate

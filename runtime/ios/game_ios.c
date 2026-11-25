@@ -29,6 +29,11 @@ static const rt_ios_game games[] = {
     // portail, que le pistolet double de Portal 1 utilise aussi. Tapes au dos :
     // le tir du portail, comme Portal 2.
     {"portal1", "portal", "portal-userdata", "400", 1, RT_IOS_LAYOUT_PORTAL2, "VEngineCvar004", 10},
+    // Portal Stories: Mel : son propre moteur Portal 2 (version Linux de 2021),
+    // mêmes interfaces que Portal 2 (VEngineCvar007, VEngineClient015 et
+    // VEngineVGui001 dans ses engine.so et libvstdlib.so) ; joue comme Portal 2
+    // (disposition tactile, tapes au dos). Sauvegardes à part : mel-userdata.
+    {"mel", "portal_stories", "mel-userdata", "317400", 1, RT_IOS_LAYOUT_PORTAL2, "VEngineCvar007", 13},
 };
 
 const rt_ios_game *rt_ios_game_named(const char *name) {

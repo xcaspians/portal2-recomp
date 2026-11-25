@@ -5,6 +5,7 @@
 // vivent dans format.c, à côté du moteur de formatage.
 // SHIMS: __memcpy_chk __memmove_chk __memset_chk __strcpy_chk __strncpy_chk
 // SHIMS: __strcat_chk __strncat_chk __stack_chk_fail __fdelt_chk __stpcpy_chk __fread_chk
+// SHIMS: __recv_chk
 #include "rt.h"
 
 __attribute__((noreturn)) static void chk_fail(CPU *c) {
@@ -71,6 +72,10 @@ static int rt_fortify_shim(CPU *c, const char *name) {
         memmove(to, GPTR(src), count);
         to[count] = 0;
         c->eax = dst;
+    } else if (!strcmp(name, "__recv_chk")) {   // (fd, buf, n, buflen, flags)
+        if (rt_arg32(c, 2) > rt_arg32(c, 3)) chk_fail(c);
+        W32(c->esp + 16, rt_arg32(c, 4));
+        return rt_shim(c, "recv");
     } else return 0;
     return 1;
 }

@@ -85,6 +85,9 @@ let allGames = [
     Game(id: "portal1", title: "Portal", appID: 400, dataDepot: 401, linuxDepot: 404, linuxSize: "about 150 MB",
          marker: "portal", markerFile: "portal/gameinfo.txt", installFolder: "Portal",
          linuxFiles: ["hl2_linux", "bin/engine.so", "portal/bin/server.so", "bin/shaderapivk.so"], minutes: 10),
+    Game(id: "mel", title: "Portal Stories Mel", appID: 317400, dataDepot: 317401, linuxDepot: 317404, linuxSize: "about 90 MB",
+         marker: "portal_stories", markerFile: "portal_stories/bin/server.so", installFolder: "Portal Stories Mel",
+         linuxFiles: ["portal2_linux", "bin/engine.so", "bin/shaderapivk.so"], minutes: 15),
 ]
 
 // MARK: - Detection (same rules as setup.sh)
@@ -684,6 +687,9 @@ func snapshot(to path: String, state: String) {
                                             selected: state != "missing")
         model.states["hl2"] = GameState(game: steamSupport.appendingPathComponent("steamapps/common/Half-Life 2"),
                                         linux: state == "missing" ? nil : URL(fileURLWithPath: "/depot_224"), selected: state != "missing")
+        model.states["mel"] = GameState(game: steamSupport.appendingPathComponent("steamapps/common/Portal Stories Mel"),
+                                        linux: state == "missing" ? nil : URL(fileURLWithPath: "/depot_317404"),
+                                        selected: state != "missing")
     }
     switch state {
     case "incomplete":
@@ -694,7 +700,7 @@ func snapshot(to path: String, state: String) {
         model.step = "Recompiling Portal 2 (about 10 minutes the first time, seconds afterwards)"; model.progress = 0.25
         model.showLog = true; model.log = ["==> Preparing the Linux modules of Portal 2", "[lift] engine.so: 41 233 functions", "[cc] 312/1024"]
     case "done": model.phase = .done
-        for id in ["portal2", "hl2", "portal1"] { model.states[id]?.built = true }
+        for id in ["portal2", "hl2", "portal1", "mel"] { model.states[id]?.built = true }
     case "failed": model.phase = .failed("Half-Life 2: lib/libSDL2.dylib not found")
     default: break
     }

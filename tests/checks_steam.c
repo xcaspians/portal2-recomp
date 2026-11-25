@@ -86,12 +86,17 @@ RT_CHECK(steam_generated_table_is_consistent) {
         for (size_t j = 0; j < i; ++j) assert(steam_methods[j].iface != m->iface || steam_methods[j].slot != m->slot);
     }
     // Les 25 versions servies par la dylib parmi les 27 demandées par Portal 2, plus les 11
-    // de Half-Life 2 (SDK 1.60, et ISteamTimeline V004 du SDK 1.61).
-    assert(steam_interface_count == 36);
+    // de Half-Life 2 (SDK 1.60, et ISteamTimeline V004 du SDK 1.61) et les 11 de Portal
+    // Stories: Mel (SDK 1.40).
+    assert(steam_interface_count == 47);
     assert(method("SteamUser023::GetSteamID")->slot == 2 && method("SteamUser023::GetSteamID")->sret);
     assert(method("STEAMTIMELINE_INTERFACE_V004::SetTimelineTooltip") && method("STEAMUGC_INTERFACE_VERSION020::CreateItem"));
     assert(method("SteamUser021::GetSteamID")->slot == 2 && method("SteamUser021::GetSteamID")->sret);
     assert(!method("SteamUser021::BLoggedOn")->sret && method("SteamUser021::BLoggedOn")->slot == 1);
+    assert(method("SteamUser019::GetSteamID")->slot == 2 && method("SteamUser019::GetSteamID")->sret);
+    assert(method("SteamGameServer012::EnableHeartbeats")->fn && method("SteamGameServer012::EnableHeartbeats")->slot == 39);
+    assert(method("SteamClient017::GetISteamUnifiedMessages")->slot == 24);
+    assert(method("SteamUtils009::GetCSERIPPort")->slot == 7);
 }
 
 RT_CHECK(steam_ids_are_masked_in_logs) {
