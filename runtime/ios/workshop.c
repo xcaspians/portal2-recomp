@@ -103,6 +103,19 @@ static int hex4(const char *p, unsigned *v) {
     }
     return 1;
 }
+// Length of the valid UTF-8 sequence at p (at most avail bytes), 0 if invalid.
+static int utf8_length(const unsigned char *p, int avail) {
+    unsigned c = p[0];
+    int len = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 0;
+    if (!len || len > avail) return 0;
+    for (int k = 1; k < len; ++k) if ((p[k] & 0xC0) != 0x80) return 0;
+    unsigned cp = len == 1 ? c : len == 2 ? (c & 31u) << 6 | (p[1] & 63u)
+                : len == 3 ? (c & 15u) << 12 | (p[1] & 63u) << 6 | (p[2] & 63u)
+                : (c & 7u) << 18 | (p[1] & 63u) << 12 | (p[2] & 63u) << 6 | (p[3] & 63u);
+    if ((len == 2 && cp < 0x80) || (len == 3 && cp < 0x800) || (len == 4 && cp < 0x10000) || cp > 0x10FFFF ||
+        (cp >= 0xD800 && cp < 0xE000)) return 0;
+    return len;
+}
 // Appends a code point; 0 when it doesn't fit (nothing half-written).
 static int put_utf8(char *out, size_t size, size_t *n, unsigned cp) {
     char b[4]; size_t k;
@@ -136,16 +149,21 @@ int rt_json_text(const char *js, const rt_json_tok *t, char *out, size_t size) {
                     hex4(js + i + 3, &low) && low >= 0xDC00 && low < 0xE000) {
                     cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
                     i += 6;
-                }
+                } else if (cp >= 0xD800 && cp < 0xE000) cp = 0xFFFD;   // lone surrogate
                 break;
             default: cp = (unsigned char)e; break;
             }
             if (!put_utf8(out, size, &n, cp)) { out[n] = 0; return 0; }
             continue;
         }
-        // Raw byte: a UTF-8 sequence is copied whole or not at all.
-        int len = cp < 0x80 ? 1 : (cp & 0xE0) == 0xC0 ? 2 : (cp & 0xF0) == 0xE0 ? 3 : (cp & 0xF8) == 0xF0 ? 4 : 1;
-        if (i + len > t->end || n + (size_t)len >= size) { out[n] = 0; return 0; }
+        // Raw bytes: a valid UTF-8 sequence is copied whole or not at all;
+        // anything else (stray byte, overlong form, surrogate) becomes U+FFFD.
+        int len = utf8_length((const unsigned char *)js + i, t->end - i);
+        if (!len) {
+            if (!put_utf8(out, size, &n, 0xFFFD)) { out[n] = 0; return 0; }
+            continue;
+        }
+        if (n + (size_t)len >= size) { out[n] = 0; return 0; }
         memcpy(out + n, js + i, (size_t)len); n += (size_t)len; i += len - 1;
     }
     out[n] = 0;
@@ -361,8 +379,12 @@ int rt_ws_collection_body(char *out, size_t size, unsigned long long id) {
 }
 
 int rt_ws_parse_link(const char *text, unsigned long long *id) {
-    const char *p = text ? strstr(text, "id=") : NULL;
+    // "id=" as its own parameter (after ? or &), not the end of "appid=".
+    const char *p = NULL;
+    for (const char *q = text ? strstr(text, "id=") : NULL; q; q = strstr(q + 1, "id="))
+        if (q > text && (q[-1] == '?' || q[-1] == '&')) { p = q; break; }
     if (p) p += 3;
+    else if (text && strstr(text, "id=")) return 0;
     else {
         while (text && isspace((unsigned char)*text)) ++text;
         p = text;
