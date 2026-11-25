@@ -29,6 +29,11 @@ rt64_shim rt64_find_shim(const char *name) {
     for (RT64ShimTable *t = tables; t; t = t->next)
         for (const RT64Shim *s = t->shims; s && s->name; ++s)
             if (!strcmp(s->name, name)) return s->fn;
+    // Steam runtime builds link some file functions with --wrap (P2CE's
+    // launcher: __wrap_access, __wrap_fopen, __wrap_open, __wrap___xstat64...),
+    // whose wrappers fix the case of paths for Linux. macOS file systems ignore
+    // case by default: the plain function answers (round 23).
+    if (!strncmp(name, "__wrap_", 7) && name[7]) return rt64_find_shim(name + 7);
     return NULL;
 }
 
