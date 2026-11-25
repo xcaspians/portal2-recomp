@@ -27,6 +27,10 @@ RT_CHECK(game_picker_remove_keeps_saves_and_other_games) {
     // Portal 2 is the base the other games run on: nothing of it is removable.
     assert(!rt_picker_can_remove(&p2) && rt_picker_can_remove(&mel));
     for (int i = -1; i < 4; ++i) assert(!rt_picker_removable(&p2, i, out, sizeof(out)));
+    // Its size still counts its folders (the picker showed Portal 2 at 0 KB).
+    assert(!strcmp(rt_picker_owned(&p2, 0, out, sizeof(out)), "game") &&
+           !strcmp(rt_picker_owned(&p2, 2, out, sizeof(out)), "linux") && !rt_picker_owned(&p2, 3, out, sizeof(out)));
+    assert(!strcmp(rt_picker_owned(&mel, 1, out, sizeof(out)), "mel/prep"));
     assert(!strcmp(rt_picker_removable(&mel, 0, out, sizeof(out)), "mel/game"));
 }
 

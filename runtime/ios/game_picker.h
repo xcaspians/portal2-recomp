@@ -31,6 +31,10 @@ int rt_picker_playable(int installed, int slim, int base_present);
 // that game's data folder (never its userdata, never another game's folders).
 // `which` 0..2; NULL past the end, and always NULL for the base game.
 const char *rt_picker_removable(const rt_picker_game *g, int which, char *out, size_t size);
+// The same folders whatever the game (its size on the device): Portal 2's too,
+// which nothing removes (its size read 0 KB when it was counted through
+// rt_picker_removable).
+const char *rt_picker_owned(const rt_picker_game *g, int which, char *out, size_t size);
 // The game that starts without the picker: `forced` (P2_GAME_CHOICE) if it is
 // one of `names`; else `remembered` if remember is on and it is installed; else
 // the only installed game when just one is, and `names` has one entry; else
