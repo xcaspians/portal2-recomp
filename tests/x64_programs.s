@@ -279,6 +279,166 @@ x64_sse:
     movapd xmm0, xmm1
     ret
 
+# SSSE3/SSE4.1 and the rest of SSE2 (round B of docs/fork/P2CE_PLAN.md).
+.globl x64_simd
+.type x64_simd, @function
+x64_simd:
+    lea rdi, [rip + x64_out]
+    movdqa xmm0, xmmword ptr [rip + x64_v1]
+    movdqa xmm1, xmmword ptr [rip + x64_shuf]
+    pshufb xmm0, xmm1                         # 0, 0, 1, ..., 14
+    movdqu xmmword ptr [rdi], xmm0
+    movdqa xmm0, xmmword ptr [rip + x64_v1]
+    movdqa xmm2, xmmword ptr [rip + x64_v2]
+    palignr xmm2, xmm0, 4                     # 4, ..., 15, 16, ..., 19
+    movdqu xmmword ptr [rdi + 16], xmm2
+    pmovzxbd xmm3, dword ptr [rip + x64_v1 + 12]   # 12, 13, 14, 15 as dwords
+    movdqu xmmword ptr [rdi + 32], xmm3
+    movdqa xmm4, xmmword ptr [rip + x64_i32]
+    packssdw xmm4, xmm4                       # -5, 7, 32767, -2, twice
+    movdqu xmmword ptr [rdi + 48], xmm4
+    movdqa xmm5, xmmword ptr [rip + x64_i32]
+    psrad xmm5, 1                             # -3, 3, 50000, -1
+    movdqu xmmword ptr [rdi + 64], xmm5
+    movdqa xmm6, xmmword ptr [rip + x64_i32]
+    pxor xmm1, xmm1
+    pminsd xmm6, xmm1                         # -5, 0, 0, -2
+    movdqu xmmword ptr [rdi + 80], xmm6
+    movaps xmm7, xmmword ptr [rip + x64_f4]
+    movaps xmm8, xmmword ptr [rip + x64_f4b]
+    cmpltps xmm7, xmm8                        # all ones, 0, 0, 0
+    movdqu xmmword ptr [rdi + 96], xmm7
+    movaps xmm9, xmmword ptr [rip + x64_f4]
+    insertps xmm9, xmm8, 0x58                 # 1.5, -3.0, 3.0, 0
+    movups xmmword ptr [rdi + 112], xmm9
+    movaps xmm10, xmmword ptr [rip + x64_f4]
+    blendps xmm10, xmm8, 0x5                  # 2.0, -2.5, 3.0, 4.0
+    movups xmmword ptr [rdi + 128], xmm10
+    movsd xmm11, qword ptr [rip + x64_d25]
+    roundsd xmm11, xmm11, 0                   # to nearest even: 2.0
+    movsd qword ptr [rdi + 144], xmm11
+    movsd xmm12, qword ptr [rip + x64_d25]
+    roundsd xmm12, xmm12, 2                   # up: 3.0
+    movsd qword ptr [rdi + 152], xmm12
+    movdqa xmm13, xmmword ptr [rip + x64_v1]
+    ptest xmm13, xmm13
+    setz byte ptr [rdi + 160]                 # 0
+    pxor xmm14, xmm14
+    ptest xmm14, xmm13
+    setz byte ptr [rdi + 161]                 # 1
+    setc byte ptr [rdi + 162]                 # 0
+    movdqa xmm15, xmmword ptr [rip + x64_i16]
+    pmaddwd xmm15, xmm15                      # 5, 25, 61, 113
+    movdqu xmmword ptr [rdi + 176], xmm15
+    movdqa xmm0, xmmword ptr [rip + x64_i16]
+    punpckhwd xmm0, xmmword ptr [rip + x64_i16]   # 5, 5, 6, 6, 7, 7, 8, 8
+    movdqu xmmword ptr [rdi + 192], xmm0
+    ret
+
+# x87 (doubles, 80-bit memory) and MMX.
+.globl x64_x87
+.type x64_x87, @function
+x64_x87:
+    lea rdi, [rip + x64_out]
+    fld qword ptr [rip + x64_d25]
+    fild dword ptr [rip + x64_int3]
+    fmulp st(1), st                           # 7.5
+    fld st(0)
+    fadd st, st(1)                            # 15.0
+    fstp qword ptr [rdi]
+    fistp dword ptr [rdi + 8]                 # 7.5 to nearest even: 8
+    fld qword ptr [rip + x64_d25]
+    fstp tbyte ptr [rdi + 16]
+    fld tbyte ptr [rdi + 16]
+    fld1
+    fcomip st, st(1)                          # 1.0 < 2.5: CF = 1
+    setb byte ptr [rdi + 32]
+    fstp st(0)
+    fnstcw word ptr [rdi + 34]                # 0x37f
+    movq mm0, qword ptr [rip + x64_i16]
+    movq mm1, qword ptr [rip + x64_i16 + 8]
+    paddw mm0, mm1                            # 6, 8, 10, 12
+    movq qword ptr [rdi + 40], mm0
+    packuswb mm0, mm1                         # 6, 8, 10, 12, 5, 6, 7, 8
+    movq qword ptr [rdi + 48], mm0
+    pshufw mm2, mm1, 0x1b                     # 8, 7, 6, 5
+    movq qword ptr [rdi + 56], mm2
+    emms
+    ret
+
+# BMI1/BMI2, POPCNT, LZCNT/TZCNT, LOOP.
+.globl x64_bmi
+.type x64_bmi, @function
+x64_bmi:
+    lea rdi, [rip + x64_out]
+    mov rax, 0xf0
+    mov ecx, 4
+    shrx rdx, rax, rcx                        # 0xf
+    mov qword ptr [rdi], rdx
+    mov rbx, 0xff
+    andn rdx, rax, rbx                        # 0x0f
+    mov qword ptr [rdi + 8], rdx
+    blsr rdx, rax                             # 0xe0
+    mov qword ptr [rdi + 16], rdx
+    mov rsi, 0xff00
+    pdep rdx, rax, rsi                        # 0xf000
+    mov qword ptr [rdi + 24], rdx
+    popcnt rdx, rax                           # 4
+    mov qword ptr [rdi + 32], rdx
+    mov ecx, 5
+    xor eax, eax
+2:  add eax, ecx
+    loop 2b                                   # 15
+    mov qword ptr [rdi + 40], rax
+    tzcnt rdx, rax                            # 0
+    mov qword ptr [rdi + 48], rdx
+    lzcnt edx, eax                            # 28
+    mov qword ptr [rdi + 56], rdx
+    ret
+
+# PUSHFQ/POPFQ, XLATB, SYSCALL (getpid), MASKMOVDQU, MOVNTQ.
+.globl x64_misc
+.type x64_misc, @function
+x64_misc:
+    lea rdi, [rip + x64_out]
+    stc
+    pushfq
+    pop rax
+    and eax, 1
+    mov qword ptr [rdi], rax                  # CF seen through RFLAGS: 1
+    push 0x40                                 # ZF only
+    popfq
+    setz byte ptr [rdi + 8]                   # 1
+    setc byte ptr [rdi + 9]                   # 0
+    lea rbx, [rip + x64_v2]
+    mov eax, 5
+    xlatb                                     # al = x64_v2[5] = 21
+    mov byte ptr [rdi + 10], al
+    push rdi
+    mov eax, 39                               # getpid
+    syscall
+    pop rdi
+    mov qword ptr [rdi + 16], rax
+    movdqa xmm0, xmmword ptr [rip + x64_v1]
+    movdqa xmm1, xmmword ptr [rip + x64_shuf] # byte 0 has bit 7: only byte 0 stored
+    lea rdi, [rip + x64_out + 32]
+    maskmovdqu xmm0, xmm1
+    lea rdi, [rip + x64_out]
+    movq mm0, qword ptr [rip + x64_i16]
+    movntq qword ptr [rdi + 48], mm0
+    emms
+    ret
+
+# A stray byte in .text (data, as compilers and hand-written code leave):
+# a linear disassembly reads 0xe8 as a CALL and swallows the start of the
+# next function; the lifter decodes again from the function's own address.
+    .byte 0xe8
+.globl x64_after_data
+.type x64_after_data, @function
+x64_after_data:
+    mov eax, 0x5a5a
+    ret
+
 .section .rodata
 .p2align 2
 .Ltable:
@@ -291,6 +451,16 @@ x64_minus2: .quad -2
 x64_three: .double 3.0
 x64_half: .double 0.5
 x64_two: .double 2.0
+x64_d25: .double 2.5
+x64_int3: .long 3
+.p2align 4
+x64_v1: .byte 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
+x64_v2: .byte 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31
+x64_shuf: .byte 0x80, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
+x64_i32: .long -5, 7, 100000, -2
+x64_i16: .short 1, 2, 3, 4, 5, 6, 7, 8
+x64_f4: .float 1.5, -2.5, 3.0, 4.0
+x64_f4b: .float 2.0, -3.0, 3.0, 1.0
 
 .data
 .p2align 3

@@ -12,7 +12,7 @@
 #include <string.h>
 
 typedef union {
-    uint8_t b[16]; uint16_t w[8]; uint32_t d[4]; int32_t i[4];
+    uint8_t b[16]; int8_t sb[16]; uint16_t w[8]; int16_t sw[8]; uint32_t d[4]; int32_t i[4];
     uint64_t q[2]; int64_t s[2]; float f[4]; double g[2];
 } XMM64;
 
@@ -30,8 +30,17 @@ typedef struct CPU64 {
     uint32_t df;           // direction flag (0/1)
     uint32_t mxcsr;
     uint64_t fs_base, gs_base;
-    XMM64 xmm[16];
+    XMM64 xmm[18];         // 16 and 17: scratch for MMX instructions lowered as SSE2
+    double st[8];          // x87 stack in doubles (tools/x87_64.py)
+    uint32_t ftop;
+    uint16_t fcw, fsw;
+    uint64_t mm[8];        // MMX registers, separate from st[]
+    uint32_t transferred;  // set by a shim that moved rip/rsp itself (longjmp): no RET emulation
 } CPU64;
+
+#define ST(i) (c->st[(c->ftop + (i)) & 7])
+#define FPUSH(cpu, v) do { double fpush_ = (v); (cpu)->ftop = ((cpu)->ftop - 1) & 7; (cpu)->st[(cpu)->ftop] = fpush_; } while (0)
+#define FPOP(cpu) ((cpu)->ftop = ((cpu)->ftop + 1) & 7)
 
 typedef void (*gfn64)(CPU64 *);
 
@@ -50,6 +59,9 @@ RT64_ALWAYS_INLINE void rt64_w16(uint64_t a, uint64_t v) { uint16_t x = (uint16_
 RT64_ALWAYS_INLINE void rt64_w32(uint64_t a, uint64_t v) { uint32_t x = (uint32_t)v; memcpy((void *)(uintptr_t)a, &x, 4); }
 RT64_ALWAYS_INLINE void rt64_w64(uint64_t a, uint64_t v) { memcpy((void *)(uintptr_t)a, &v, 8); }
 RT64_ALWAYS_INLINE void rt64_wx(uint64_t a, XMM64 v) { memcpy((void *)(uintptr_t)a, &v, 16); }
+RT64_ALWAYS_INLINE XMM64 rt64_xq(uint64_t v) { XMM64 x; x.q[0] = v; x.q[1] = 0; return x; }
+// Saturation of a wide intermediate to [lo, hi] (packs, saturating adds).
+RT64_ALWAYS_INLINE int64_t rt64_sat(int64_t v, int64_t lo, int64_t hi) { return v < lo ? lo : v > hi ? hi : v; }
 #define R8(a)  rt64_r8(a)
 #define R16(a) rt64_r16(a)
 #define R32(a) rt64_r32(a)
@@ -135,6 +147,17 @@ RT64_ALWAYS_INLINE uint64_t f64_imul(FL64 *f, uint64_t a, uint64_t b, int n) {
     uint64_t rr = (uint64_t)r & MSK64(n);
     f->cf = f->of = r != (__int128)(int64_t)sx64(rr, n); f->af = 0; szp64(f, rr, n); return rr;
 }
+// BMI2 PDEP/PEXT: deposit/extract the bits of a under the mask.
+RT64_ALWAYS_INLINE uint64_t rt64_pdep(uint64_t a, uint64_t mask, int n) {
+    uint64_t r = 0; mask &= MSK64(n);
+    for (uint64_t bit = 1; mask; bit <<= 1) { uint64_t low = mask & (0 - mask); if (a & bit) r |= low; mask &= mask - 1; }
+    return r;
+}
+RT64_ALWAYS_INLINE uint64_t rt64_pext(uint64_t a, uint64_t mask, int n) {
+    uint64_t r = 0; mask &= MSK64(n);
+    for (uint64_t bit = 1; mask; bit <<= 1) { uint64_t low = mask & (0 - mask); if (a & low) r |= bit; mask &= mask - 1; }
+    return r;
+}
 RT64_ALWAYS_INLINE int parity64(uint32_t v) { return !__builtin_parity(v & 0xff); }
 
 enum { CC_O, CC_NO, CC_B, CC_AE, CC_E, CC_NE, CC_BE, CC_A, CC_S, CC_NS, CC_P, CC_NP, CC_L, CC_GE, CC_LE, CC_G };
@@ -165,8 +188,18 @@ RT64_ALWAYS_INLINE uint64_t rt64_cvtt(double v, int n) {
 // Guest entry points and module tables (rt64.c).
 typedef struct { uint64_t offset; gfn64 fn; } RT64Function;
 typedef struct { const char *name; uint64_t offset; } RT64Export;
-enum { RT64_REL_BASE, RT64_REL_IMPORT, RT64_REL_CONST };
+// Relocations, applied by rt64_load (loader64.c) once the load address is known.
+enum {
+    RT64_REL_BASE,        // base + addend
+    RT64_REL_IMPORT,      // address of import[index] + addend (another module's export, a shim, data)
+    RT64_REL_CONST,       // addend
+    RT64_REL_MODID,       // this module's TLS module id (DTPMOD64)
+    RT64_REL_TPOFF,       // offset of this module's static TLS block from the thread pointer + addend
+    RT64_REL_IMPORT_TLS,  // TLS symbol of another module: index = import, addend = 0 module id, 1 TP offset, 2 offset
+};
 typedef struct { uint64_t offset; uint32_t kind, index; int64_t addend; } RT64Reloc;
+enum { RT64_IMPORT_WEAK = 1, RT64_IMPORT_OBJECT = 2 };
+typedef struct { const char *name; uint32_t flags; } RT64Import;
 typedef struct RT64Module {
     const char *name;
     const char *image_path;        // flat memory image written by tools/elfprep64.py
@@ -174,12 +207,53 @@ typedef struct RT64Module {
     uint64_t *base;                // the module's load address, read by its lifted code
     const RT64Function *functions; size_t function_count;   // sorted by offset
     const RT64Reloc *relocs; size_t reloc_count;
-    const char *const *imports; size_t import_count;
+    const RT64Import *imports; size_t import_count;
     const RT64Export *exports; size_t export_count;
+    uint64_t init, fini;                                     // DT_INIT, DT_FINI (0: none)
+    const uint64_t *init_array; size_t init_count;          // module offsets
+    const uint64_t *fini_array; size_t fini_count;
+    uint64_t tls_vaddr, tls_filesz, tls_memsz, tls_align;   // PT_TLS (memsz 0: none)
+    const char *const *needed; size_t needed_count;         // DT_NEEDED
+    uint64_t entry;                                          // e_entry (_start of a program)
 } RT64Module;
 
-int rt64_load(const RT64Module *module, const char *image_path);   // 0 on success
+// Modules (loader64.c). Each generated module registers itself at start-up;
+// rt64_open loads one by name with its DT_NEEDED modules first (Linux's
+// breadth-first global scope), applies relocations, sets up its TLS and runs
+// its constructors, like dlopen.
+void rt64_register(const RT64Module *module);
+const RT64Module *rt64_registered(const char *name);     // by soname or path basename
+typedef struct RT64Loaded RT64Loaded;
+RT64Loaded *rt64_open(CPU64 *c, const char *name);       // NULL if unknown or failed
+int rt64_load(const RT64Module *module, const char *image_path);   // load without constructors; 0 on success
+void rt64_run_constructors(CPU64 *c, const RT64Module *module);
+// Runs a lifted program like the kernel and ld.so do: argc, argv, envp and
+// an auxiliary vector on a fresh guest stack, then its _start (which calls
+// __libc_start_main, cxa64.c). Returns main's status (or exit()'s).
+int rt64_run_program(const RT64Module *program, int argc, char **argv, char **envp);
+// The main thread's CPU; threads made by pthread_create have their own.
+CPU64 *rt64_main_cpu(void);
+void rt64_program_exit(CPU64 *c, int status);   // exit(): ends rt64_run_program
 uint64_t rt64_export(const RT64Module *module, const char *name);  // 0 if unknown
+uint64_t rt64_lookup_global(const char *name);           // first definition in load order, 0 if none
+const RT64Module *rt64_module_at(uint64_t address, uint64_t *base);  // module containing address
+size_t rt64_loaded_count(void);
+const RT64Module *rt64_loaded_module(size_t index, uint64_t *base);
+uint64_t rt64_import_address(const RT64Module *module, size_t index);
+uint64_t rt64_dynamic_import(const char *name);
+// Memory handed to the guest that it may free: from the guest's malloc.
+uint64_t rt64_guest_malloc(CPU64 *c, size_t size);
+uint64_t rt64_guest_strdup(CPU64 *c, const char *text);          // guest address of a shim (dlsym), 0 if none
+void rt64_set_main_arguments(int argc, char **argv, char **envp);   // for constructors and main
+// Thread-local storage: every module's PT_TLS block is static TLS (glibc
+// variant II, below the thread pointer). rt64_thread_tls gives a CPU its
+// thread pointer (fs_base), with fs:0 = itself and the stack guard at fs:0x28.
+void rt64_thread_tls(CPU64 *c);
+uint64_t rt64_tls_get_addr(CPU64 *c, uint64_t module_id, uint64_t offset);
+// atexit/__cxa_atexit handlers and module destructors, newest first.
+void rt64_add_exit_handler(uint64_t function, uint64_t argument, uint64_t dso, int with_argument);
+void rt64_run_exit_handlers(CPU64 *c, uint64_t dso);
+
 void rt64_cpu_init(CPU64 *c, uint64_t stack_top);
 // Host -> guest call: pushes a sentinel return address and runs `target`.
 void rt64_call(CPU64 *c, uint64_t target);
@@ -187,14 +261,44 @@ void rt64_call(CPU64 *c, uint64_t target);
 void rt64_dispatch(CPU64 *c, uint64_t target);
 __attribute__((noreturn)) void rt64_trap(CPU64 *c, uint64_t pc, const char *why);
 __attribute__((noreturn)) void rt64_bad_return(CPU64 *c, uint64_t expected);
-uint64_t rt64_import_address(const RT64Module *module, size_t index);
 void rt64_cpuid(CPU64 *c);
+void rt64_syscall(CPU64 *c);                        // the SYSCALL instruction (posix64.c)
+RT64_ALWAYS_INLINE uint64_t rt64_get_rflags(CPU64 *c, const FL64 *f) {
+    return f->cf | ((uint64_t)parity64(f->pf) << 2) | (f->af << 4) | (f->zf << 6) | (f->sf << 7) | ((uint64_t)c->df << 10)
+         | (f->of << 11) | 0x202;
+}
+RT64_ALWAYS_INLINE void rt64_set_rflags(CPU64 *c, FL64 *f, uint64_t v) {
+    f->cf = v & 1; f->pf = (v >> 2) & 1 ? 0 : 1; f->af = (v >> 4) & 1; f->zf = (v >> 6) & 1; f->sf = (v >> 7) & 1;
+    c->df = (v >> 10) & 1; f->of = (v >> 11) & 1;
+}
 uint64_t rt64_rdtsc(void);
 void rt64_div(CPU64 *c, uint64_t divisor, int width, int is_signed, uint64_t pc);
+double rt64_ld80(uint64_t address);                 // x87 80-bit memory -> double
+void rt64_st80(uint64_t address, double value);
+double rt64_x87_round(CPU64 *c, double value);      // rounding of the x87 control word
+// FNSTENV (0), FLDENV (1), FNSAVE (2), FRSTOR (3), FXSAVE (4), FXRSTOR (5).
+void rt64_fpu_state(CPU64 *c, uint64_t address, int kind);
 
-// Import shims (shims64.c): a guest call to an import runs the host
-// function registered under its name, which reads its arguments from the
-// System V registers (rdi, rsi, rdx, rcx, r8, r9, xmm0-7) and returns in rax
-// or xmm0. NULL when no shim exists.
+// Import shims: a guest call to an import runs the host function registered
+// under its name, which reads its arguments from the System V registers
+// (rdi, rsi, rdx, rcx, r8, r9, xmm0-7) and returns in rax or xmm0. One
+// runtime/x64/<domain>64.c file per domain registers its table with
+// RT64_SHIMS(table); a data import (stdout, environ...) is a host object
+// whose address the guest reads through its GOT (RT64_DATA(table)).
 typedef void (*rt64_shim)(CPU64 *c);
+typedef struct { const char *name; rt64_shim fn; } RT64Shim;
+typedef struct { const char *name; void *address; } RT64Data;
+typedef struct RT64ShimTable { const RT64Shim *shims; const RT64Data *data; struct RT64ShimTable *next; } RT64ShimTable;
+void rt64_add_shims(RT64ShimTable *table);
+#define RT64_SHIMS(shim_array, data_array) \
+    static RT64ShimTable rt64_table_ = {shim_array, data_array, 0}; \
+    __attribute__((constructor)) static void rt64_register_table_(void) { rt64_add_shims(&rt64_table_); }
 rt64_shim rt64_find_shim(const char *name);
+void *rt64_find_data(const char *name);
+// Linux errno values (guest view) of the host's errno, and the guest's errno slot.
+int rt64_linux_errno(int host_errno);
+void rt64_set_errno(int host_errno);
+int *rt64_errno_slot(void);
+#define ARG(c, i) ((c)->r[(const int[]){RDI, RSI, RDX, RCX, R8, R9}[i]])
+#define PTR(c, i) ((void *)(uintptr_t)ARG(c, i))
+#define RET(c, v) ((c)->r[RAX] = (uint64_t)(v))
