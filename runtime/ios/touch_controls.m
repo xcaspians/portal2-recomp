@@ -52,6 +52,7 @@
 #include "backtap_ios.h"
 #include "env_ios.h"
 #include "fps_overlay.h"
+#include "power_ios.h"
 #include "game_ios.h"
 #include "gyro_ios.h"
 #include "touch_layout.h"
@@ -235,7 +236,7 @@ static BOOL sensors_wanted(CFTimeInterval *idle_since, BOOL playing, CFTimeInter
 @end
 
 // Ce que montre le compteur : comparé avant de construire textes et bitmap.
-typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; } FpsKey;
+typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, hz, cap; } FpsKey;
 
 @interface P2TouchControls : UIView
 - (instancetype)initWithWindow:(SDL_Window *)window;
@@ -309,7 +310,7 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
         [self readLooks];
         [center addObserver:self selector:@selector(settingsChanged:) name:@"P2SettingsChanged" object:nil];
         dataTaps = -1;
-        fpsHidden = !rt_ios_env_flag("P2_SHOW_FPS", 1);   // posée par les Réglages (runtime/ios/settings.c)
+        fpsHidden = !rt_ios_env_flag("P2_SHOW_FPS", 0);   // gear menu > FPS counter (off by default; settings.c)
         rt_ios_backtap_start();
         rt_ios_gyro_start(rt_ios_current_game()->layout == RT_IOS_LAYOUT_HL2);
         [self setupLayers];
@@ -347,6 +348,8 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
 // A setting changed in game (live_settings_ios.m): caches read again, layout redone.
 - (void)settingsChanged:(NSNotification *)note {
     (void)note;
+    BOOL hide = !rt_ios_env_flag("P2_SHOW_FPS", 0);   // FPS counter switched in the gear menu: at once
+    if (hide != fpsHidden) { fpsHidden = hide; fps = 0; fpsAt = 0; [self setNeedsRender]; }
     look_speed_cache = 0; wanted = -1;   // relus au prochain usage
     [self readLooks];
     [self invalidateLayout];
@@ -797,9 +800,9 @@ static Sint16 axis_value(CGFloat speed, int response) {
     for (UITouch *t in touches) {
         P2Finger *f = [P2Finger new];
         f.start = f.at = [t locationInView:self];
-        // Coin haut gauche : affiche ou masque le compteur d'images, choix gardé
-        // dans les réglages (clé P2ShowFPS de la page Réglages).
-        if (CGRectContainsPoint([self fpsCorner], f.start)) {
+        // A tap on the shown counter hides it (gear menu > FPS counter shows it
+        // again; the choice is the shared P2ShowFPS setting).
+        if (!fpsHidden && CGRectContainsPoint([self fpsCorner], f.start)) {
             fpsHidden = !fpsHidden;
             [NSUserDefaults.standardUserDefaults setBool:!fpsHidden forKey:game_key(@"P2ShowFPS")];
             fps = 0; fpsAt = 0;
@@ -880,7 +883,9 @@ static Sint16 axis_value(CGFloat speed, int response) {
     BOOL lit = now - flagAt < 1;
     BOOL data = taps != dataTaps || fixes != dataFixes || reported != dataReported || lit != flagLit;
     dataTaps = taps; dataFixes = fixes; dataReported = reported; flagLit = lit;
-    if (value != fps || data) { fps = value; [self setNeedsRender]; }
+    if (value != fps || data || (int)lround(rt_ios_display_hz()) != fpsKey.hz || rt_ios_max_fps() != fpsKey.cap) {
+        fps = value; [self setNeedsRender];
+    }
 }
 // Police pixel 5×7 du compteur F3 (runtime/fps_overlay.c), kPixel points par
 // pixel de glyphe, dessinée sans lissage.
@@ -898,19 +903,24 @@ static void fill_text(CGContextRef c, const char *text, CGPoint at) {
 // signalées ; X : signalées par le bouton ✗, comptées 4,8 s après le candidat).
 - (CGRect)fpsBox:(NSString *)renderer fps:(NSString *)text data:(NSString *)data {
     CGRect a = self.area;
-    CGFloat margin = 2 * kPixel;
-    NSUInteger chars = MAX(MAX(renderer.length, text.length), data.length);
-    return CGRectMake(round(CGRectGetMinX(a) + 8), round(CGRectGetMinY(a) + 8),
-                      (chars * 6 - 1) * kPixel + 2 * margin, (data.length ? 25 : 16) * kPixel + 2 * margin);
+    NSUInteger chars = MAX(MAX(renderer.length, text.length), MAX(data.length, [self rateText].length));
+    double x, y, w, h;   // touch_layout.c: checked clear of every button
+    rt_touch_fps_box(rt_ios_current_game()->layout, CGRectGetWidth(a), (int)chars, data.length ? 4 : 3, kPixel, &x, &y, &w, &h);
+    return CGRectMake(round(CGRectGetMinX(a) + x), round(CGRectGetMinY(a) + y), w, h);
+}
+// Third line: the display's current refresh rate as the system reports it,
+// and the frame cap the game asks for ("120 HZ CAP 120").
+- (NSString *)rateText {
+    return [NSString stringWithFormat:@"%.0f HZ CAP %d", rt_ios_display_hz(), rt_ios_max_fps()];
 }
 - (NSString *)dataText {
     return dataTaps < 0 ? @"" : [NSString stringWithFormat:@"DATA %ld/%ld X%ld", dataTaps, dataFixes, dataReported];
 }
-// Zone qui bascule le compteur : le coin jusqu'au compteur le plus large, et
-// un peu plus (le doigt couvre mal un si petit carré).
+// Where a tap hides the counter: the counter itself, and a little more (a
+// finger covers such a small box badly), never reaching a button.
 - (CGRect)fpsCorner {
     CGRect box = [self fpsBox:@"OPENGL" fps:@"000 FPS" data:dataTaps < 0 ? @"" : @"DATA 0000/000 X00"];
-    return CGRectMake(0, 0, CGRectGetMaxX(box) + 20, CGRectGetMaxY(box) + 20);
+    return CGRectInset(box, -6, -6);
 }
 // Compteur dans le contexte c, aux coordonnées de la vue (cadre box).
 - (void)drawFPSIn:(CGContextRef)c box:(CGRect)box renderer:(NSString *)renderer fps:(NSString *)text data:(NSString *)data {
@@ -929,7 +939,13 @@ static void fill_text(CGContextRef c, const char *text, CGPoint at) {
     fill_text(c, text.UTF8String, CGPointMake(below.x + kPixel / 3, below.y + kPixel / 3));
     CGContextSetFillColorWithColor(c, UIColor.whiteColor.CGColor);
     fill_text(c, renderer.UTF8String, at);
-    CGPoint third = CGPointMake(at.x, below.y + 9 * kPixel);
+    CGPoint rate = CGPointMake(at.x, below.y + 9 * kPixel);
+    NSString *rateText = [self rateText];
+    CGContextSetFillColorWithColor(c, UIColor.blackColor.CGColor);
+    fill_text(c, rateText.UTF8String, CGPointMake(rate.x + kPixel / 3, rate.y + kPixel / 3));
+    CGContextSetFillColorWithColor(c, [UIColor colorWithWhite:.85 alpha:1].CGColor);
+    fill_text(c, rateText.UTF8String, rate);
+    CGPoint third = CGPointMake(at.x, rate.y + 9 * kPixel);
     if (data.length) {
         CGContextSetFillColorWithColor(c, UIColor.blackColor.CGColor);
         fill_text(c, data.UTF8String, CGPointMake(third.x + kPixel / 3, third.y + kPixel / 3));
@@ -1040,6 +1056,7 @@ static void set_circle(CAShapeLayer *l, CGFloat diameter) {
     memset(&key, 0, sizeof(key));   // rembourrage à zéro : comparée par memcmp
     key.taps = dataTaps; key.fixes = dataFixes; key.reported = dataReported; key.area = self.area;
     key.fps = fps; key.metal = rt_ios_metal_active != 0; key.lit = flagLit;
+    key.hz = (int)lround(rt_ios_display_hz()); key.cap = rt_ios_max_fps();
     if (!memcmp(&key, &fpsKey, sizeof(key))) return;
     fpsKey = key;
     NSString *text = [NSString stringWithFormat:@"%d FPS", fps];
