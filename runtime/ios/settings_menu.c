@@ -18,7 +18,9 @@ const rt_menu_item rt_menu_items[] = {
     {"P2TouchOpacity", "On-screen buttons", "Button opacity", RT_MENU_SLIDER, "1", 0, 1, .05, 100, "%.0f %%", NULL, NULL, 0},
     {"P2TouchSize", NULL, "Button size", RT_MENU_SLIDER, "1", .75, 1.5, .05, 100, "%.0f %%", NULL, NULL, 0},
     {"P2PortalButtons", NULL, "Show portal buttons", RT_MENU_CHOICE, "auto", 0, 0, 0, 0, NULL, portal_values, portal_labels, 0},
-    {"P2BackTapSensitivity", "Back taps", "Tap sensitivity", RT_MENU_SLIDER, "1", .5, 3, .05, 1, "%.2f", NULL, NULL, 0},
+    // Same switch as the Settings app's (P2BackTap): off brings the portal buttons back.
+    {"P2BackTap", "Back taps", "Back taps", RT_MENU_TOGGLE, "1", 0, 0, 0, 0, NULL, NULL, NULL, 0},
+    {"P2BackTapSensitivity", NULL, "Tap sensitivity", RT_MENU_SLIDER, "1", .5, 3, .05, 1, "%.2f", NULL, NULL, 0},
     {"P2BackTapInvert", NULL, "Swap left and right", RT_MENU_TOGGLE, "0", 0, 0, 0, 0, NULL, NULL, NULL, 0},
     {"P2Haptics", NULL, "Vibrate when firing", RT_MENU_TOGGLE, "1", 0, 0, 0, 0, NULL, NULL, NULL, 0},
     {"P2TouchLook", "Camera", "Camera speed", RT_MENU_CHOICE, "1", 0, 0, 0, 0, NULL, look_values, look_labels, 0},

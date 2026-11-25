@@ -23,6 +23,8 @@
 #include "device_defaults_ios.h"
 #include "game_ios.h"
 #include "game_picker_ios.h"
+#include "backtap_calibration_ios.h"
+#include "backtap_ios.h"
 #include "icloud_saves.h"
 #include "live_settings.h"
 #include "mods_list.h"
@@ -38,7 +40,7 @@ static int menu_open, closing_hold;
 int rt_ios_settings_menu_captures_pad(void) { return menu_open || closing_hold; }
 int rt_ios_settings_menu_open(void) { return menu_open; }
 
-typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED, ROW_SWITCH_GAME } RowKind;
+typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED, ROW_SWITCH_GAME, ROW_CALIBRATE } RowKind;
 
 @interface P2MenuRow : NSObject
 @property (nonatomic) RowKind kind;
@@ -78,6 +80,7 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     CFTimeInterval resetArmedUntil, switchArmedUntil;
     NSString *padName;        // localized name of the options button, for the gear
     UIView *community;        // Community Maps browser (workshop_ios.m), over the panel while open
+    UIView *calibration;      // "Calibrate back taps" (backtap_calibration_ios.m), over the panel while open
     UILabel *icloudStatus;    // "Last synced ..." under the iCloud switch
     CFTimeInterval icloudShownAt;
 }
@@ -231,6 +234,7 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         if (it->section) [self addSection:@(it->section)];
         [self addSettingRow:it];
         if (!strcmp(it->key, "P2MaxFPS")) [self addRecommendedRow];
+        if (!strcmp(it->key, "P2BackTapSensitivity") && rt_ios_current_game()->back_taps) [self addCalibrateRow];
     }
     if (portal2) [self addMapsSection];
     [self addSection:@""];
@@ -275,7 +279,8 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     menu_open = 0;
     closing_hold = [self padActive];   // the B that closed it stays away from the game
     [dim removeFromSuperview]; [panel removeFromSuperview];
-    dim = panel = header = nil; scroll = nil; stack = nil; rows = nil; icloudStatus = nil; community = nil;
+    [calibration removeFromSuperview];
+    dim = panel = header = nil; scroll = nil; stack = nil; rows = nil; icloudStatus = nil; community = nil; calibration = nil;
     focus = -1;
     resetArmedUntil = 0;
 }
@@ -449,6 +454,42 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
 // process, so switching means a new launch. First press: what will happen;
 // second press: the remembered choice is forgotten and the app closes, and
 // the picker shows when it is opened again.
+// "Calibrate back taps" (backtap_calibration_ios.m): its screen over the panel.
+- (void)addCalibrateRow {
+    P2MenuRow *row = [P2MenuRow new];
+    row.kind = ROW_CALIBRATE;
+    __weak P2SettingsMenu *weakSelf = self;
+    UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
+    char summary[96];
+    conf.title = @"Calibrate back taps";
+    conf.subtitle = @(rt_ios_backtap_calibration_summary(summary, sizeof(summary)));
+    conf.image = [UIImage systemImageNamed:@"hand.tap"];
+    conf.imagePadding = 8;
+    conf.baseForegroundColor = UIColor.whiteColor;
+    conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    conf.contentInsets = NSDirectionalEdgeInsetsMake(10, 14, 10, 14);
+    row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+        (void)a; [weakSelf openCalibration];
+    }]];
+    row.button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+    row.view = row.button;
+    row.view.layer.cornerRadius = 12;
+    [stack addArrangedSubview:row.button];
+    [rows addObject:row];
+}
+static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx calibrationClosed]; }
+- (void)openCalibration {
+    if (calibration || !panel || !rt_ios_backtap_available()) return;
+    calibration = (__bridge_transfer UIView *)rt_ios_backtap_calibration_create(calibration_closed, (__bridge void *)self);
+    calibration.frame = panel.bounds;
+    [panel addSubview:calibration];
+}
+- (void)calibrationClosed {
+    [calibration removeFromSuperview];
+    calibration = nil;
+    [self closeMenu];
+    [self openMenu];   // the row shows the new "Calibrated on"
+}
 - (void)addSwitchGameRow {
     P2MenuRow *row = [P2MenuRow new];
     row.kind = ROW_SWITCH_GAME;
@@ -715,6 +756,7 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     case ROW_RESET: [self resetPressed]; return;
     case ROW_RECOMMENDED: [self useRecommended]; return;
     case ROW_SWITCH_GAME: [self switchGamePressed:nil]; return;
+    case ROW_CALIBRATE: [self openCalibration]; return;
     case ROW_MAP: [self startMap:row]; return;
     case ROW_COMMUNITY: [self openCommunity]; return;
     case ROW_SETTING: break;
