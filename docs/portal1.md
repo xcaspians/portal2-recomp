@@ -4,8 +4,9 @@ The same pipeline also recompiles **Portal** (Steam app 400, the Source 2013
 Linux build, mod `portal`). It is experimental: the Mac app starts, plays the
 first chambers and renders on Metal or OpenGL, but only the first chambers
 have been tested and the indirect call roots are still being discovered. The
-iPhone app installs, starts and renders in a short session; no chamber has
-been played through on the phone yet.
+iPhone app installs, starts and renders in a short session of ours, and a
+user played it up to chamber 16 on an iPhone 18 Pro
+([#53](https://github.com/kanapitsas/source-recomp/issues/53)).
 
 **You must own Portal.** As for Portal 2, everything is generated from your
 own copy and nothing from Valve is in this repository. The app and the
@@ -95,8 +96,8 @@ Tested from this checkout on a Mac with an M5 Max (12 November 2026):
 Not tested: a playthrough, a chamber with energy balls, the advanced
 chambers, performance measurements, the Mac↔iPhone save copy (the cable
 `saves` command is Portal 2 only for now). The iPhone app was installed and
-launched in a short earlier session (menu and touch layout); no chamber has
-been played on the phone.
+launched in a short earlier session (menu and touch layout); we have not
+played a chamber on the phone ourselves (a user has, see [iPhone](#iphone)).
 
 To reach a chamber without the menu, with Steam running:
 
@@ -134,5 +135,20 @@ Saves live in the app's `Documents/portal-userdata`. The touch layout is
 Portal 2's (both portal buttons, back taps fire the portal; the Settings page
 is Portal 2's, Portals group included). `tools/ios_device.sh saves` is still
 Portal 2 only, so copying Portal's saves between the Mac and the phone is by
-hand for now. What has been checked on the phone: install, signing, launch,
+hand for now. What we have checked on the phone: install, signing, launch,
 the menu and the touch layout in a short session; not a chamber.
+
+Reported by a user
+([#53](https://github.com/kanapitsas/source-recomp/issues/53), 23 November
+2026): iPhone 18 Pro, iOS 27.3, built with Xcode 27.2 on a MacBook Air M5;
+played up to chamber 16 at a steady 60 fps without a crash, with audio.
+Back taps did not fire the portals reliably there: the thresholds were
+calibrated on an iPhone 15 Pro Max, so try Settings > Portal > Tap
+sensitivity, and a recording (Settings > Record taps,
+[backtap.md](backtap.md)) helps us tune them.
+
+Two build messages are expected and harmless: `PE plugin mssvoice.asi not
+found` (the voice chat codec, missing from the reporter's depot 404; a
+single-player game does not need it) and one function not compiled in
+`mssmixer.mix` (an indexed jump the lifter does not decode; the same message
+appears for Half-Life 2, where audio works too).

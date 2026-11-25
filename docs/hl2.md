@@ -1,10 +1,12 @@
-# Half-Life 2 (experimental)
+# Half-Life 2
 
 The same pipeline also recompiles **Half-Life 2** (20th anniversary build,
-Steam app 220, mod `hl2_complete`). It is experimental: it installs and plays
-on Mac, but only a few hours of play have been tested, the episodes and Lost
-Coast have only been started, and the iPhone build has had a first short test
-on an iPhone 15 Pro Max (see [iPhone](#iphone)).
+Steam app 220, mod `hl2_complete`). The main game is playable on Mac: we
+played it for a few hours and several players report sessions without a
+crash, though nobody has reported a start-to-end playthrough yet. The rest is
+experimental: the episodes and Lost Coast have only been started, and the
+iPhone build has had a first short test on an iPhone 15 Pro Max (see
+[iPhone](#iphone)).
 
 **You must own Half-Life 2.** As for Portal 2, everything is generated from
 your own copy and nothing from Valve is in this repository. The app and the
