@@ -56,6 +56,17 @@ DEVICE=${P2_DEVICE:-$(xcrun devicectl list devices 2>/dev/null |
 dc() {  # sous-commande de trois mots, --device, puis le reste (options et arguments)
   xcrun devicectl "${@:1:3}" --device "$DEVICE" "${@:4}"
 }
+wait_unlocked() {  # 0 once the device reports no passcode needed (up to a minute)
+  local i state; state=$(mktemp)
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    dc device info lockState --json-output "$state" >/dev/null 2>&1 &&
+      python3 -c 'import json,sys; r=json.load(open(sys.argv[1]))["result"]; sys.exit(0 if r.get("passcodeRequired") is False else 1)' "$state" &&
+      { rm -f "$state"; return 0; }
+    [ $i = 1 ] && echo "waiting for the device to be unlocked..."
+    sleep 5
+  done
+  rm -f "$state"; return 1
+}
 env_json() {  # VAR=valeur... -> {"VAR":"valeur",...}
   python3 -c 'import json,sys; print(json.dumps(dict(a.split("=",1) for a in sys.argv[1:])))' "$@"
 }
@@ -194,7 +205,7 @@ mel-data-push)
     slim_args=(--shared "portal2 portal2_dlc2" --overlay build/mel/slim)
   fi
   out=$(python3 tools/ios_data_plan.py --game-root "$GAME_ROOT" --linux-root "$LINUX_ROOT" --prep "$PREP" \
-        --folders "$IOS_DATA" --dest-root "$DATA_ROOT" "${slim_args[@]}") || exit 2
+        --folders "$IOS_DATA" --dest-root "$DATA_ROOT" ${slim_args[@]+"${slim_args[@]}"}) || exit 2
   total=$(awk -F'\t' '$1 == "total" {print $2}' <<< "$out")
   awk -F'\t' '$1 == "copy" {printf "  %-55s %6.0f MB\n", $3, $4 / 1048576}' <<< "$out" | head -40
   echo "total: $((total / 1048576)) MB ($([ $full = 1 ] && echo "full copy" || echo "slim pack")), to the app $APP_ID"
@@ -237,19 +248,39 @@ mel-slim-switch)
     copy_to "$APP_ID" "$from" "$to" >/dev/null </dev/null
   done <<< "$plan"
   echo "slim directories copied; boot test (90 s)..."
+  # The test needs the iPad unlocked and awake the whole time: locked or asleep,
+  # iOS stops the game drawing its menu and the save loads too early (the first
+  # attempt on the iPad mini: "Can't load ..., file missing!").
+  wait_unlocked || { echo "the device is locked: unlock it, keep it awake, and run this again (nothing was deleted)"; exit 1; }
   save=$(dc device info files --domain-type appDataContainer --domain-identifier "$APP_ID" \
            --subdirectory "Documents/mel-userdata/$MOD/SAVE" 2>/dev/null |
          awk '$1 ~ /\.sav$/ && $1 !~ /^autosave/ {print $1}' | tail -1)
-  load="+map sp_a1_tramride"; [ -n "$save" ] && load="+load ${save%.sav}"
-  # -condebug: the engine's console goes to Documents/mel-userdata/portal_stories/console.log.
+  # From the menu once it's up (P2_IOS_MENU_EXEC, runtime/ios/game_state.c), as a
+  # player would: a command-line +load runs before the menu on a slower device.
+  # The listing names the save with its Steam ID folder (7656.../1795587607.sav);
+  # the engine adds that folder itself, so only the file name is given.
+  save=${save##*/}
+  load="map sp_a1_tramride"; [ -n "$save" ] && load="load ${save%.sav}"
+  mkdir -p "$IOS_DIR"; log="$IOS_DIR/mel-slim-test.log"; before="$IOS_DIR/mel-slim-before.log"
+  # -condebug appends to Documents/mel-userdata/portal_stories/console.log across
+  # launches: only what this launch adds is judged (its length beforehand).
+  : > "$before"
+  dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" \
+    --source "Documents/mel-userdata/$MOD/console.log" --destination "$before" >/dev/null 2>&1 || : > "$before"
+  since=$(wc -c < "$before" | tr -d ' ')
   dc device process launch --terminate-existing --environment-variables \
-    "$(env_json P2_LOG_FILE=Documents/game.log P2_GAME_CHOICE=mel P2_MEL_SLIM=1 P2_EXTRA_ARGS="-condebug $load")" "$APP_ID" >/dev/null
+    "$(env_json P2_LOG_FILE=Documents/game.log P2_GAME_CHOICE=mel P2_MEL_SLIM=1 P2_EXTRA_ARGS=-condebug P2_IOS_MENU_EXEC="$load")" "$APP_ID" >/dev/null
   sleep 90
-  mkdir -p "$IOS_DIR"; log="$IOS_DIR/mel-slim-test.log"
   dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" \
     --source "Documents/mel-userdata/$MOD/console.log" --destination "$log" >/dev/null
-  if ! python3 tools/mel_slim.py boot-ok --log "$log"; then
-    echo "boot test failed: Mel's full copy is untouched. Log: $log"; exit 1
+  dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" \
+    --source Documents/game.log --destination "$IOS_DIR/mel-slim-game.log" >/dev/null 2>&1 || :
+  if grep -aq "app en arrière-plan" "$IOS_DIR/mel-slim-game.log" 2>/dev/null; then
+    echo "the device went to sleep or left the app during the test: nothing was deleted; keep it awake and run this again"
+    exit 1
+  fi
+  if ! python3 tools/mel_slim.py boot-ok --log "$log" --since "$since"; then
+    echo "boot test failed: Mel's full copy is untouched. Log: $log (from byte $since)"; exit 1
   fi
   dc device process launch --terminate-existing --environment-variables \
     "$(env_json P2_LOG_FILE=Documents/slim-commit.log P2_GAME_CHOICE=mel P2_MEL_SLIM_COMMIT=1)" "$APP_ID" >/dev/null

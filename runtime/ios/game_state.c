@@ -252,6 +252,24 @@ int rt_ios_game_command(const char *line) {
     return 1;
 }
 
+// P2_IOS_MENU_EXEC="<console command>" (device tests: tools/ios_device.sh mel
+// slim switch loads a save this way): sent once, 3 s after the main menu is up
+// with no level loaded, as a player would from the menu. A command-line +load
+// runs before the menu on a slower device and the engine answers "file missing".
+static void menu_exec(uint64_t now) {
+    static int done;
+    static uint64_t since;
+    if (done) return;
+    const char *line = getenv("P2_IOS_MENU_EXEC");
+    if (!line || !*line) { done = 1; return; }
+    if (!(ui_visible && engine_client > 1 && !in_level)) { since = 0; return; }
+    if (!since) { since = now; return; }
+    if (now - since < 3000) return;
+    done = 1;
+    fprintf(stderr, "[ios] commande du menu (P2_IOS_MENU_EXEC) : %s%s\n", line,
+            rt_ios_game_command(line) ? "" : " refusée");
+}
+
 static void client_unavailable(const char *why) {
     engine_client = 1; in_level = 0; command_count = 0;
     fprintf(stderr, "[ios] IVEngineClient : %s ; menu des réglages sans engrenage\n", why);
@@ -404,5 +422,6 @@ void rt_ios_game_state_poll(void) {
     watch_community_dialog(c, visible);
     if (linear_wanted || saved_response[0]) update_move_response(c);
     autoexec(c);
+    menu_exec(now);
 }
 #endif

@@ -56,10 +56,21 @@ def run(config, game, game_args=(), binary=None, timeout=60, show=False, env=Non
     return status, log
 
 
+def launch_timeout(given, show):
+    """Seconds before the launch is stopped: --timeout when given; else none when
+    playing by hand (--show: the game runs until the player quits), 60 for a
+    diagnostic launch."""
+    if given is not None:
+        return given
+    return None if show else 60
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     games.add_argument(parser)
-    parser.add_argument('--timeout', type=int, default=60)
+    parser.add_argument('--timeout', type=int, default=None,
+                        help='seconds before a diagnostic launch is stopped (default 60; with --show, none: '
+                             'you are playing, the game runs until you quit it)')
     parser.add_argument('--show', action='store_true', help='show the window (otherwise P2_HIDDEN_WINDOWS=1)')
     parser.add_argument('--binary', type=Path,
                         help='executable to run (default: the game\'s, e.g. build/portal2-native; '
@@ -72,7 +83,7 @@ def main(argv=None):
         if not config.get(key):
             sys.exit(f'{game["name"]} is not set up in config/local.json ({key} missing): '
                      f'run ./setup.sh --game {game["name"]}')
-    status, log = run(config, game, args.arguments, args.binary, args.timeout, args.show)
+    status, log = run(config, game, args.arguments, args.binary, launch_timeout(args.timeout, args.show), args.show)
     print(log.read_text()[-12000:])
     print(f'native process exit: {status}')
     return status if status >= 0 else 128 - status
