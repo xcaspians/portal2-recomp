@@ -98,11 +98,18 @@ static int set_convar(CPU *c, uint32_t convar, const char *value) {
     rt_free(text);
     return !strcmp(convar_string(convar), value);
 }
+static int level_known(void);   // below: a level has loaded, or this game can't tell
 static void update_move_response(CPU *c) {
     if (convar_broken) return;
     uint32_t convar = find_convar(c, "joy_response_move");
     if (!convar) {
-        if (icvar && !ui_visible) { convar_broken = 1; fprintf(stderr, "[ios] joy_response_move introuvable : réponse du jeu gardée\n"); }
+        // Missing in gameplay: not this game's variable. Portal 2 and Mel read
+        // as "UI hidden" at start-up too, before client.so has registered its
+        // variables: for them only once a level has loaded (level_known).
+        if (icvar && !ui_visible && level_known()) {
+            convar_broken = 1;
+            fprintf(stderr, "[ios] joy_response_move introuvable : réponse du jeu gardée\n");
+        }
         return;
     }
     const char *now = convar_string(convar);
@@ -215,6 +222,8 @@ static char command_queue[4][256];
 static int command_count;
 
 int rt_ios_game_in_level(void) { return in_level; }
+static int level_seen_once;
+static int level_known(void) { return engine_client == 1 || level_seen_once; }
 int rt_ios_game_paused(void) { return ui_visible && in_level; }
 int rt_ios_game_commands_available(void) { return engine_client > 1; }
 // Main thread (UIKit callbacks run inside SDL_PollEvent, like the poll below).
@@ -262,6 +271,7 @@ static void update_level(CPU *c, int visible) {
     if (level_mismatch > 20) { client_unavailable("partie sans niveau"); return; }
     int now = game && !background;
     if (now != in_level) fprintf(stderr, "[ios] niveau %s\n", now ? "chargé" : "fermé");
+    level_seen_once |= now;
     if (now && !in_level) rt_ios_memory_log("niveau chargé");   // device_ios.c: for crashes on 4 GB phones
     in_level = now;
     for (int i = 0; i < command_count; ++i) {
