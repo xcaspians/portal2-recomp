@@ -226,6 +226,10 @@ static const client_slots kClientSlots[] = {
     {"mel", "VEngineClient015", 25, 90, 108},
     {"hl2", "VEngineClient014", 26, 87, 106},
     {"portal1", "VEngineClient014", 26, 87, 106},
+    // Left 4 Dead 2: VEngineClient013, from the Mac edition's engine.dylib
+    // (CEngineClient's vtable: IsInGame 26, IsLevelMainMenuBackground 90,
+    // ClientCmd_Unrestricted 106).
+    {"l4d2", "VEngineClient013", 26, 90, 106},
 };
 static const client_slots *slots;
 #define CLIENT_IS_IN_GAME (slots->in_game)

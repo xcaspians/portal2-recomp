@@ -38,6 +38,12 @@ static const rt_ios_game games[] = {
     // restent à la racine de Documents).
     {"mel", "portal_stories", "mel-userdata", "317400", 1, RT_IOS_LAYOUT_PORTAL2, "VEngineCvar007", 13, "mel",
      "Portal Stories: Mel"},
+    // Left 4 Dead 2: its own app (round 15), offline only (the forced launch
+    // arguments come from tools/games.py through launch.args). ICvar
+    // VEngineCvar007 with FindCommandBase in 10, read from the Mac edition's
+    // libvstdlib.dylib symbols (CCvar's vtable: Connect 0 ... FindCommandBase 10).
+    // No back taps: its weapons fire while held, like Half-Life 2's.
+    {"l4d2", "left4dead2", "l4d2-userdata", "550", 0, RT_IOS_LAYOUT_L4D2, "VEngineCvar007", 10, "", "Left 4 Dead 2"},
 };
 
 const rt_ios_game *rt_ios_game_named(const char *name) {
