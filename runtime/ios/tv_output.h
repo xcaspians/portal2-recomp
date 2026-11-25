@@ -24,6 +24,12 @@ int rt_tv_frame_cap(const char *value, int tv_hz);
 // (the iOS app has no real fullscreen mode switch): "mat_setvideomode W H 1".
 int rt_tv_mode_command(int w, int h, char *out, unsigned long size);
 
+// The touch controls' mode (P2_TOUCH_CONTROLS, touch_layout.h) while the
+// picture is on a TV: P2_TV_TOUCH "always" keeps them on the iPad even with a
+// controller or keyboard connected ("1"); "auto" or unset leaves `mode` as is
+// (hidden while a controller or keyboard is connected, until a touch).
+const char *rt_tv_touch_mode(const char *mode, int on_tv, const char *tv_touch);
+
 // P2_TV_SIMULATE="1920x1080" (tests on an iPad without a TV): the iPad's own
 // screen stands in for a TV of that size. 1 and the size when set and readable.
 int rt_tv_simulated(const char *value, int *w, int *h);

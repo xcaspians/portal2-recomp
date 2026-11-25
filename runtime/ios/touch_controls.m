@@ -56,6 +56,7 @@
 #include "game_ios.h"
 #include "gyro_ios.h"
 #include "touch_layout.h"
+#include "tv_output.h"
 #include "touch_test.h"
 #include "lifecycle_ios.h"
 #include "icloud_saves.h"
@@ -304,7 +305,8 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, h
         trackpad = [NSUserDefaults.standardUserDefaults boolForKey:game_key(kTrackpadKey)];
         NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
         for (NSNotificationName name in @[GCControllerDidConnectNotification, GCControllerDidDisconnectNotification,
-                                          GCKeyboardDidConnectNotification, GCKeyboardDidDisconnectNotification])
+                                          GCKeyboardDidConnectNotification, GCKeyboardDidDisconnectNotification,
+                                          @"P2TVChanged"])   // the picture moved to or from a TV (tv_output_ios.m)
             [center addObserver:self selector:@selector(devicesChanged) name:name object:nil];
         [self devicesChanged];
         [self readLooks];
@@ -347,11 +349,11 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, h
 }
 // A setting changed in game (live_settings_ios.m): caches read again, layout redone.
 - (void)settingsChanged:(NSNotification *)note {
-    (void)note;
     BOOL hide = !rt_ios_env_flag("P2_SHOW_FPS", 0);   // FPS counter switched in the gear menu: at once
     if (hide != fpsHidden) { fpsHidden = hide; fps = 0; fpsAt = 0; [self setNeedsRender]; }
     look_speed_cache = 0; wanted = -1;   // relus au prochain usage
     [self readLooks];
+    if ([note.object isEqual:@"P2TVTouch"]) [self devicesChanged];   // TV > Touch controls, at once
     [self invalidateLayout];
 }
 
@@ -359,9 +361,15 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, h
 // hidden, simulator tests), pad (off while a controller is connected).
 - (void)overlayEvent:(rt_overlay_event)event padActive:(BOOL)active {
     BOOL was = concealed;
-    rt_touch_overlay_update(&overlay, event, hasGamepad, hasKeyboard, active, getenv("P2_TOUCH_CONTROLS"));
+    // On a TV, gear menu > TV > Touch controls: Always on keeps them on the iPad (round 23).
+    const char *mode = rt_tv_touch_mode(getenv("P2_TOUCH_CONTROLS"), rt_ios_tv_hz() > 0, getenv("P2_TV_TOUCH"));
+    rt_touch_overlay_update(&overlay, event, hasGamepad, hasKeyboard, active, mode);
     concealed = overlay.concealed != 0;
     if (concealed == was) return;
+    // Why the buttons hide or show (a controller or keyboard left connected hides them: round 23's TV test).
+    fprintf(stderr, "[ios] commandes tactiles : %s (manette %d, clavier %d, %s%s)\n", concealed ? "cachées" : "montrées",
+            hasGamepad, hasKeyboard, event == RT_OVERLAY_TOUCH ? "toucher" : event == RT_OVERLAY_DEVICES ? "appareils" : "manette utilisée",
+            rt_ios_tv_hz() > 0 ? ", image sur la TV" : "");
     // The controller takes over: no finger keeps a stick or a button held.
     if (concealed && event == RT_OVERLAY_PAD_POLL) [self releaseAll];
     [self setNeedsRender];

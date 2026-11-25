@@ -44,6 +44,10 @@ int rt_tv_mode_command(int w, int h, char *out, unsigned long size) {
     return n > 0 && (unsigned long)n < size;
 }
 
+const char *rt_tv_touch_mode(const char *mode, int on_tv, const char *tv_touch) {
+    return on_tv && tv_touch && !strcmp(tv_touch, "always") ? "1" : mode;
+}
+
 int rt_tv_simulated(const char *value, int *w, int *h) {
     if (!value || !*value) return 0;
     int a = 0, b = 0;

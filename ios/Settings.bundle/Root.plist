@@ -149,6 +149,26 @@
 			</array>
 		</dict>
 		<dict>
+			<key>DefaultValue</key>
+			<string>auto</string>
+			<key>Key</key>
+			<string>P2TVTouch</string>
+			<key>Title</key>
+			<string>Touch controls on the iPad</string>
+			<key>Titles</key>
+			<array>
+				<string>Auto (hidden with a controller)</string>
+				<string>Always on</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>auto</string>
+				<string>always</string>
+			</array>
+		</dict>
+		<dict>
 			<key>FooterText</key>
 			<string>Metal: the game's native Direct3D 9 rendering (libd3d9metal), faster and more faithful than OpenGL. Without the library in the app, or if the device does not support it, the game stays on OpenGL. Upscaling (Metal only) renders the scene at a fraction of the Resolution above and enlarges it with MetalFX: Quality with Native resolution renders as many pixels as ×2.25 and lets MetalFX fill the full screen; with ×2 it is faster but softer.</string>
 			<key>Title</key>
