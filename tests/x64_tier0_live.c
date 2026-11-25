@@ -27,7 +27,7 @@ static uint64_t call(const char *name, uint64_t a0, uint64_t a1, uint64_t a2) {
     printf("  %-36s -> %#llx\n", name, (unsigned long long)cpu.r[RAX]);
     return cpu.r[RAX];
 }
-#define PTR(p) ((uint64_t)(uintptr_t)(p))
+#define ADDR(p) ((uint64_t)(uintptr_t)(p))
 
 int main(void) {
     if (rt64_load(&p2ce_tier0, NULL)) return 1;
@@ -40,20 +40,20 @@ int main(void) {
     EXPECT((call("Plat_IsInBenchmarkMode", 0, 0, 0) & 0xff) == 0);
 
     char dest[8];
-    call("V_tier0_strncpy", PTR(dest), PTR("Portal 2 CE"), sizeof dest);
+    call("V_tier0_strncpy", ADDR(dest), ADDR("Portal 2 CE"), sizeof dest);
     EXPECT(!strcmp(dest, "Portal "));                       // truncated and terminated
-    EXPECT((int32_t)call("V_tier0_stricmp", PTR("Aperture"), PTR("aPERTURE"), 0) == 0);
-    EXPECT((int32_t)call("V_tier0_stricmp", PTR("chell"), PTR("wheatley"), 0) < 0);
+    EXPECT((int32_t)call("V_tier0_stricmp", ADDR("Aperture"), ADDR("aPERTURE"), 0) == 0);
+    EXPECT((int32_t)call("V_tier0_stricmp", ADDR("chell"), ADDR("wheatley"), 0) < 0);
 
     int64_t value = 41;
-    EXPECT(call("ThreadInterlockedCompareExchange64", PTR(&value), 42, 41) == 41 && value == 42);
-    EXPECT(call("ThreadInterlockedCompareExchange64", PTR(&value), 7, 41) == 42 && value == 42);
+    EXPECT(call("ThreadInterlockedCompareExchange64", ADDR(&value), 42, 41) == 41 && value == 42);
+    EXPECT(call("ThreadInterlockedCompareExchange64", ADDR(&value), 7, 41) == 42 && value == 42);
     void *slot = (void *)0x1234;
-    EXPECT(call("ThreadInterlockedExchangePointer", PTR(&slot), 0x5678, 0) == 0x1234 && slot == (void *)0x5678);
+    EXPECT(call("ThreadInterlockedExchangePointer", ADDR(&slot), 0x5678, 0) == 0x1234 && slot == (void *)0x5678);
 
     char zeroed[16];
     memset(zeroed, 0x55, sizeof zeroed);
-    call("ZeroMemory", PTR(zeroed), 12, 0);                  // tail call to the memset import
+    call("ZeroMemory", ADDR(zeroed), 12, 0);                  // tail call to the memset import
     EXPECT(zeroed[0] == 0 && zeroed[11] == 0 && zeroed[12] == 0x55);
 
     call("Plat_FloatTime", 0, 0, 0);                          // clock_gettime import + SSE2
@@ -66,7 +66,7 @@ int main(void) {
     EXPECT(first >= 0 && second - first >= 0.015 && second - first < 1.0);
 
     // No channel is registered before the constructors run: not found.
-    EXPECT((int32_t)call("LoggingSystem_FindChannel", PTR("Console"), 0, 0) == -1);
+    EXPECT((int32_t)call("LoggingSystem_FindChannel", ADDR("Console"), 0, 0) == -1);
 
     if (failures) { fprintf(stderr, "p2ce-tier0: %d of %d checks failed\n", failures, checks); return 1; }
     printf("p2ce-tier0: PASS, %d checks on functions lifted from P2CE's libtier0.so\n", checks);
