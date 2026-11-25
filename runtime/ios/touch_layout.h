@@ -83,6 +83,11 @@ int rt_touch_custom_parse(const char *text, rt_touch_custom_layout *out);
 // game's layout has take the edited entries (set or back to the default); a
 // button only another game has keeps its stored entry. Writes into *stored.
 void rt_touch_custom_merge(rt_touch_custom_layout *stored, const rt_touch_custom_layout *edited, rt_ios_layout layout);
+// A game's layout from its former standalone app (round 19, ios_device.sh
+// migrate): this game's buttons that the shared layout doesn't place yet take
+// the old app's entries; a button already placed keeps its place. Returns how
+// many entries were taken.
+int rt_touch_custom_import(rt_touch_custom_layout *stored, const rt_touch_custom_layout *old, rt_ios_layout layout);
 // Where a dragged button may go (area w x h, its diameter d): fully inside the
 // area, snapped to a grid of `grid` points, and pushed out of the sticks'
 // resting areas (centres stick[i] and radius stick_r) so a thumb on a stick

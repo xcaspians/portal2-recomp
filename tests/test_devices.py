@@ -63,18 +63,28 @@ class DevicesTest(unittest.TestCase):
         steps, problem = devices.plan('portal1', bare, built, 4_400_000_000)
         self.assertIsNone(problem)
         self.assertEqual([c for _, c in steps], [['--game', 'portal1', 'data']])
-        # Half-Life 2 and Left 4 Dead 2: their own app first, then their data.
+        # Half-Life 2 and Left 4 Dead 2 live in the one app too since round 19:
+        # their data into it, the app installed first when missing.
+        self.assertEqual(devices.OWN_APP, ())
         steps, problem = devices.plan('l4d2', bare, built, 14_000_000_000)
         self.assertIsNone(problem)
-        self.assertEqual([c for _, c in steps], [['--game', 'l4d2', 'install'], ['--game', 'l4d2', 'data']])
-        self.assertIn('Left 4 Dead 2 app', steps[0][0])
-        with_hl2 = dict(bare, apps={'portal2': False, 'hl2': True})
-        self.assertEqual([c for _, c in devices.plan('hl2', with_hl2, built, 10_000_000_000)[0]],
-                         [['--game', 'hl2', 'data']])
+        self.assertEqual([c for _, c in steps], [['--game', 'l4d2', 'data']])
+        no_app = dict(bare, app_installed=False, apps={'portal2': False})
+        self.assertEqual([c for _, c in devices.plan('hl2', no_app, built, 10_000_000_000)[0]],
+                         [['install'], ['--game', 'hl2', 'data']])
         # Not built on this Mac: the sentence, no steps.
         self.assertEqual(devices.plan('hl2', bare, dict(built, hl2='HL2 not built'), 1), ([], 'HL2 not built'))
         self.assertEqual(devices.app_game('portal1'), 'portal2')
-        self.assertEqual(devices.app_game('l4d2'), 'l4d2')
+        self.assertEqual(devices.app_game('l4d2'), 'portal2')
+
+
+class InstallerMatchesDevicesTest(unittest.TestCase):
+    def test_installer_lists_every_download_and_names_the_one_app(self):
+        import re
+        swift = (devices.ROOT / 'installer/Installer.swift').read_text()
+        listed = re.findall(r'\("(\w+)", "[^"]+"\)', swift.split('let downloads')[1].split('\n\n')[0])
+        self.assertEqual(tuple(listed), devices.DOWNLOADS)
+        self.assertIn(f'let deviceAppName = "{devices.games.APP_NAME}"', swift)   # rename: both, tests keep them equal
 
 
 class BaseGameTest(unittest.TestCase):

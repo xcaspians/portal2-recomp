@@ -621,6 +621,36 @@ were locked for the last run of this checkout, so the app was not exercised
 again. Same experimental status as the Mac app
 ([portal1.md](portal1.md#what-was-tested)).
 
+## Sauce: one app for every game (fork, round 19)
+
+Since round 19 every game lives in **one app, Sauce** (its home-screen name;
+`APP_NAME` in `tools/games.py`, or `"ios_app_name"` in `config/local.json`,
+renames it). It is the Portal app underneath: same bundle ID, provisioning
+profile and increased-memory entitlement, so saves, settings and iCloud carry
+over; only the name and the icon (our own art, `tools/make_app_icon.swift`)
+changed. The game picker offers Portal 2, Portal Stories: Mel, Portal,
+Half-Life 2 and Left 4 Dead 2; each keeps its data in `Documents/<game>`
+(Portal 2's at the root, as before), its saves in `Documents/<userdata>`, its
+launch arguments (`launch-<game>.args`, L4D2's offline ones included) and its
+iCloud folder. The settings menu's last line reads "Sauce <version> · <game>".
+
+- **One binary.** Each game's generated code is linked into the one executable
+  (as Mel's was in round 6), reached at launch through `rt_code`; a game whose
+  program isn't Portal 2's names it in its launch file (`--program hl2_linux`).
+  The executable is about 1.7 GB, the app 1.6 GB on disk (round 19).
+- **Data:** `tools/ios_device.sh --game hl2|l4d2|portal1 data` copies a game into
+  Sauce; `./setup.sh --ios` builds Sauce once and copies every selected game.
+- **From the former Half-Life 2 and Left 4 Dead 2 apps:**
+  `tools/ios_device.sh --game hl2|l4d2 migrate [--dry-run]` copies the game's
+  saves folder and the old app's preferences into Sauce through the Mac,
+  checks every file, and deletes nothing. At the game's next launch its old
+  button layout fills in the buttons the shared layout doesn't place yet. Then
+  remove the old app by hand.
+- **First launch of a game is slower:** the shader cache starts empty in a new
+  app, so the first minutes of a game compile shaders (Half-Life 2 and L4D2
+  dipped to 75–95 fps on the iPad Pro); from the second launch they hold their
+  usual rate (120 fps).
+
 ## One Portal app: Portal 2 and Mel
 
 Portal 2 and Portal Stories: Mel (and later any game on Portal 2's engine,

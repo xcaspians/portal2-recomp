@@ -132,6 +132,10 @@ class IosProfiles(unittest.TestCase):
             self.assertIn(game['mod'], game['ios_data'])
         # Portal 2 keeps the folder of existing installs.
         self.assertEqual(table['portal2'][2], 'portal2-userdata')
+        # The shell tools read the same saves folders (ios_game.py USERDATA, ios_device.sh migrate).
+        for name in ios_games:
+            self.assertEqual(games.ios_userdata(name), table[name][2])
+        self.assertEqual(games.ios_userdata('nonsense'), '')
         self.assertEqual(table['hl2'][5], 'RT_IOS_LAYOUT_HL2')
         self.assertEqual(table['portal1'][5], 'RT_IOS_LAYOUT_PORTAL2')
         self.assertEqual(table['portal1'][4], '1')   # back taps on, like Portal 2

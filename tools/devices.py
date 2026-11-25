@@ -29,8 +29,9 @@ MARGIN = 1 << 30   # kept free on the device (tools/workshop_push.py)
 DOWNLOADS = ('portal2', 'mel', 'portal1', 'hl2', 'l4d2', 'workshop')
 TITLES = {'portal2': 'Portal 2', 'mel': 'Portal Stories: Mel', 'portal1': 'Portal', 'hl2': 'Half-Life 2',
           'l4d2': 'Left 4 Dead 2', 'workshop': "Workshop maps (the Mac's)"}
-# Games with their own app on the device; the others live in the Portal app.
-OWN_APP = ('hl2', 'l4d2')
+# Games with their own app on the device (none since round 19: every game is in
+# the one app); the others live in the Portal app.
+OWN_APP = tuple(g for g, p in games.GAMES.items() if p.get('ios') and g != 'portal2' and not p.get('ios_host'))
 SIZES = {'portal1': 'about 4.4 GB', 'hl2': 'about 10 GB', 'l4d2': 'about 14 GB'}
 
 
@@ -123,9 +124,13 @@ def mac_builds(config=None):
     mel = localconfig.game_config(config, 'mel') if (config.get('games') or {}).get('mel') else {}
     out['mel'] = None if 'mel' in in_app and mel.get('game_root') else \
         'Portal Stories: Mel isn\'t in this Mac\'s iPhone app yet: install Mel on the Mac, then build Portal 2 for iPhone again.'
-    p1 = localconfig.game_config(config, 'portal1') if (config.get('games') or {}).get('portal1') else {}
-    out['portal1'] = None if 'portal1' in in_app and p1.get('game_root') else \
-        'Portal isn\'t in this Mac\'s iPhone app yet: install Portal on the Mac, then build Portal 2 for iPhone again.'
+    for game in ('portal1', 'hl2', 'l4d2'):   # in the one app (round 19), when this Mac has them
+        if game in OWN_APP:
+            continue
+        cfg = localconfig.game_config(config, game) if (config.get('games') or {}).get(game) else {}
+        out[game] = None if game in in_app and cfg.get('game_root') else \
+            (f'{TITLES[game]} isn\'t in this Mac\'s iPhone app yet: install {TITLES[game]} on the Mac, '
+             'then build Portal 2 for iPhone again.')
     for game in OWN_APP:   # their own apps (tools/build_ios.py --game hl2 | l4d2)
         cfg = localconfig.game_config(config, game) if (config.get('games') or {}).get(game) else {}
         built = cfg.get('game_root') and game in games_in_app(games.ios_app(games.profile(dict(cfg, game=game)), 'device'))
@@ -149,7 +154,7 @@ def plan(game, status, built, need_bytes):
     owner = app_game(game)
     installed = (status.get('apps') or {}).get(owner, status.get('app_installed') if owner == 'portal2' else False)
     if not installed:
-        steps.append(('Install the Portal app', ['install']) if owner == 'portal2' else
+        steps.append((f'Install the {games.app_name(localconfig.load())} app', ['install']) if owner == 'portal2' else
                      (f'Install the {TITLES[game]} app', ['--game', game, 'install']))
     if game == 'portal2':
         steps.append(('Copy Portal 2 (about 11.5 GB)', ['data']))

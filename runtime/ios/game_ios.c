@@ -24,7 +24,7 @@ static const rt_ios_game games[] = {
     // dans libvstdlib.so du dépôt 224 (table dont l'entrée 2 compare le nom à
     // « VEngineCvar004 », 5 incrémente un compteur, 10 et 11 parcourent la
     // liste des commandes par GetCommands, 16 et 17).
-    {"hl2", "hl2_complete", "hl2-userdata", "220", 0, RT_IOS_LAYOUT_HL2, "VEngineCvar004", 10, "", "Half-Life 2", NULL},
+    {"hl2", "hl2_complete", "hl2-userdata", "220", 0, RT_IOS_LAYOUT_HL2, "VEngineCvar004", 10, "hl2", "Half-Life 2", NULL},
     // Portal 1 : même Source 2013 que Half-Life 2 (ICvar VEngineCvar004, base 10).
     // La disposition tactile de Portal 2 convient : elle a les deux boutons de
     // portail, que le pistolet double de Portal 1 utilise aussi. Tapes au dos :
@@ -45,7 +45,7 @@ static const rt_ios_game games[] = {
     // No back taps: its weapons fire while held, like Half-Life 2's.
     // GPU 0x051f: the ID the M5 iPad Pro got, outside every dxsupport.cfg range
     // (full shaders, gpu_level 3) on every chip (game_ios.h).
-    {"l4d2", "left4dead2", "l4d2-userdata", "550", 0, RT_IOS_LAYOUT_L4D2, "VEngineCvar007", 10, "", "Left 4 Dead 2",
+    {"l4d2", "left4dead2", "l4d2-userdata", "550", 0, RT_IOS_LAYOUT_L4D2, "VEngineCvar007", 10, "l4d2", "Left 4 Dead 2",
      "0x051f"},
 };
 

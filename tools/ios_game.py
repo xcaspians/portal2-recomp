@@ -7,7 +7,7 @@ tools/ios_device.sh and setup.sh: prints KEY='value' lines to eval.
 GAME, TITLE, MOD, GAME_ROOT, LINUX_ROOT (localconfig.game_config: never
 another game's keys), PREP (the prep folder the app was built with), IOS_DIR
 (<ios_dir>/<target>), IOS_APP, APP_ID, PROBE_ID, IOS_DATA (space-separated
-folders copied to the device), HOST and DATA_ROOT (a game hosted in another
+folders copied to the device), USERDATA (its saves folder in Documents), HOST and DATA_ROOT (a game hosted in another
 game's app: Mel in the Portal app, data in Documents/mel).
 """
 import argparse
@@ -39,7 +39,7 @@ def values(name, target, config, standalone=False):
                 IOS_DIR=str(Path(game['ios_dir']) / target), IOS_APP=str(games.ios_app(app_game, target)),
                 APP_ID=bundle_id(game=app_game['name'], config=config),
                 PROBE_ID=bundle_id(True, app_game['name'], config),
-                IOS_DATA=' '.join(game['ios_data']),
+                IOS_DATA=' '.join(game['ios_data']), USERDATA=games.ios_userdata(game['name']),
                 HOST=host or '', DATA_ROOT=f'Documents/{game["name"]}' if host else 'Documents')
 
 

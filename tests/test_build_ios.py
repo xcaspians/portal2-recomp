@@ -55,12 +55,17 @@ class IosPaths(unittest.TestCase):
             hl2 = ios_game.values('hl2', 'device', BOTH)
         self.assertEqual((p2['GAME_ROOT'], p2['LINUX_ROOT'], p2['PREP'], p2['IOS_DIR'], p2['IOS_APP'], p2['MOD']),
                          ('/p2', '/p2-linux', 'build/game/prep', 'build/ios/sim', 'build/ios/sim/Portal2.app', 'portal2'))
+        # Half-Life 2 lives in the one app since round 19: that app and its ID,
+        # its data in Documents/hl2.
         self.assertEqual((hl2['GAME_ROOT'], hl2['LINUX_ROOT'], hl2['PREP'], hl2['IOS_DIR'], hl2['IOS_APP'],
-                          hl2['MOD']),
+                          hl2['MOD'], hl2['DATA_ROOT']),
                          ('/hl2', '/hl2-linux', 'build/hl2/prep', 'build/hl2/ios/device',
-                          'build/hl2/ios/device/HalfLife2.app', 'hl2_complete'))
-        self.assertEqual((p2['APP_ID'], hl2['APP_ID'], hl2['PROBE_ID']),
-                         ('local.portal2recomp.team', 'local.hl2recomp.team', 'local.hl2recomp.team.probe'))
+                          'build/ios/device/Portal2.app', 'hl2_complete', 'Documents/hl2'))
+        self.assertEqual((p2['APP_ID'], hl2['APP_ID']), ('local.portal2recomp.team', 'local.portal2recomp.team'))
+        with no_bundle_env():   # its former app keeps its own ID (saves migration, tools/ios_device.sh)
+            own = ios_game.values('hl2', 'device', BOTH, standalone=True)
+        self.assertEqual((own['APP_ID'], own['IOS_APP'], own['DATA_ROOT']),
+                         ('local.hl2recomp.team', 'build/hl2/ios/device/HalfLife2.app', 'Documents'))
         self.assertEqual(hl2['IOS_DATA'].split(), list(games.GAMES['hl2']['ios_data']))
         # HL2 not set up: empty folders, never Portal 2's.
         with no_bundle_env():
@@ -134,6 +139,17 @@ class LaunchArgs(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AppName(unittest.TestCase):
+    def test_one_place_for_the_name(self):
+        # Round 19: the one app's name lives in games.APP_NAME (or ios_app_name),
+        # never a Valve trademark.
+        self.assertEqual(games.app_name({}), games.APP_NAME)
+        self.assertEqual(games.app_name({'ios_app_name': 'Saurce'}), 'Saurce')
+        for mark in ('source', 'portal', 'half-life', 'valve', 'steam'):
+            self.assertNotIn(mark, games.APP_NAME.lower())
+        self.assertTrue((games.ROOT / build_ios.APP_ICON).is_file())
 
 
 class ForkVersionTests(unittest.TestCase):

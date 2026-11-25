@@ -739,13 +739,26 @@ if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
     [ -n "$DEVICE" ] || warn "no iPhone connected: a free account needs one registered for its first profile"
     # One identifier per game, or installing one app replaces the other (and
     # its data marker would skip the second copy): P2_BUNDLE_ID applies to all.
-    IOS_IDS=$(for id in "${IOS_SELECTED[@]}"; do python3 tools/ios_bundle_id.py --game "$id"; done)
-    [ "$(printf '%s\n' "$IOS_IDS" | sort -u | wc -l)" -eq ${#IOS_SELECTED[@]} ] ||
-        die "the iPhone apps of ${IOS_SELECTED[*]} would share the identifier $(printf '%s\n' "$IOS_IDS" | sort | uniq -d | head -1)
+    # Round 19: every game lives in the one app (Portal 2's, tools/games.py
+    # APP_NAME), each with its data in Documents/<game>. A game whose host isn't
+    # set up on this Mac (Half-Life 2 alone) still gets its own app.
+    host_of() {
+        local host; host=$(python3 tools/ios_game.py --game "$1" --target device | sed -n "s/^HOST='\{0,1\}\([a-z0-9]*\).*/\1/p")
+        if [ -n "$host" ] && [ -n "$(python3 tools/ios_game.py --game "$host" --target device | sed -n "s/^GAME_ROOT=//p" | tr -d "'")" ]
+        then echo "$host"; else echo "$1"; fi
+    }
+    IOS_HOSTS=()
+    for id in "${IOS_SELECTED[@]}"; do
+        h=$(host_of "$id")
+        case " ${IOS_HOSTS[*]-} " in *" $h "*) ;; *) IOS_HOSTS+=("$h") ;; esac
+    done
+    IOS_IDS=$(for id in "${IOS_HOSTS[@]}"; do python3 tools/ios_bundle_id.py --game "$id"; done)
+    [ "$(printf '%s\n' "$IOS_IDS" | sort -u | wc -l)" -eq ${#IOS_HOSTS[@]} ] ||
+        die "the iPhone apps of ${IOS_HOSTS[*]} would share the identifier $(printf '%s\n' "$IOS_IDS" | sort | uniq -d | head -1)
   (P2_BUNDLE_ID, or the same ios_bundle_id in config/local.json): unset P2_BUNDLE_ID, give each game its own
   ios_bundle_id, or build one game with --game."
     IOS_APPS=()
-    for id in "${IOS_SELECTED[@]}"; do
+    for id in "${IOS_HOSTS[@]}"; do
         game_info "$id"
         BUNDLE_ID=$(python3 tools/ios_bundle_id.py --game "$id")
         if [ "$id" = mel ]; then
@@ -767,22 +780,30 @@ if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
         fi
         step "Building the $TITLE iPhone app (about 10 minutes the first time)"
         python3 tools/build_ios.py --game "$id" --target device --release --deps "$IOS_DEPS/device"
-        IOS_APPS+=("$(eval "$(python3 tools/ios_game.py --game "$id" --target device)"; echo "$IOS_APP")")
+        OWN=; [ "$id" != portal2 ] && OWN=--standalone   # a game in IOS_HOSTS other than Portal 2 has its own app
+        IOS_APPS+=("$(eval "$(python3 tools/ios_game.py --game "$id" --target device $OWN)"; echo "$IOS_APP")")
         if [ -n "$DEVICE" ]; then
             step "Installing $TITLE on the iPhone"
-            P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" install
-            # The marker lives on the iPhone: a reinstalled app has an empty container.
-            # Older Portal 2 setups only left a local marker; trust it if the game folder is there.
-            OLD_MARK="build/ios/device/data-copied-$DEVICE"
-            SIZE="about 11.5 GB"; [ "$id" = hl2 ] && SIZE="about 10 GB"; [ "$id" = portal1 ] && SIZE="about 4 GB"; [ "$id" = mel ] && SIZE="about 9 GB"
-            if P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" has-data; then :
-            elif [ "$id" = portal2 ] && [ -f "$OLD_MARK" ] &&
-                 ! P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" has-mark &&
-                 P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" has-game; then :
-            else
-                step "Copying the $TITLE data to the iPhone ($SIZE; long, once)"
-                P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" data
-            fi
+            P2_STANDALONE=${OWN:+1} P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" install
+        fi
+    done
+    # Each game's data, into the app that holds it (its own app: P2_STANDALONE).
+    for id in "${IOS_SELECTED[@]}"; do
+        [ -n "$DEVICE" ] || break
+        game_info "$id"
+        STANDALONE=; [ "$(host_of "$id")" = "$id" ] && [ "$id" != portal2 ] && STANDALONE=1
+        # The marker lives on the iPhone: a reinstalled app has an empty container.
+        # Older Portal 2 setups only left a local marker; trust it if the game folder is there.
+        OLD_MARK="build/ios/device/data-copied-$DEVICE"
+        SIZE="about 11.5 GB"; [ "$id" = hl2 ] && SIZE="about 10 GB"; [ "$id" = portal1 ] && SIZE="about 4 GB"
+        [ "$id" = l4d2 ] && SIZE="about 14 GB"
+        if P2_STANDALONE=$STANDALONE P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" has-data; then :
+        elif [ "$id" = portal2 ] && [ -f "$OLD_MARK" ] &&
+             ! P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" has-mark &&
+             P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" has-game; then :
+        else
+            step "Copying the $TITLE data to the iPhone ($SIZE; long, once)"
+            P2_STANDALONE=$STANDALONE P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" data
         fi
     done
 fi
