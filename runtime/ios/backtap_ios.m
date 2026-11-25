@@ -77,10 +77,10 @@ static void backtap_log_report(const rt_backtap_report *r, double origin) {
     fprintf(stderr, "[ios] tape %.3f s : pic %.2f g (x %+.2f y %+.2f z %+.2f), secousse %.0f g/s, "
             "rotation x %+.2f y %+.2f z %+.2f rad/s, montée %.0f ms, durée %.0f ms, avant %.3f g, "
             "gravité %.2f g (x %+.2f y %+.2f z %+.2f), "
-            "toucher %s, orientation %+d -> %s\n",
+            "toucher %s, immobile avant : acc max %.3f g, rotation %.2f rad/s, orientation %+d -> %s\n",
             r->t - origin, r->peak, r->acc[0], r->acc[1], r->acc[2], r->jerk, r->rot[0], r->rot[1], r->rot[2],
             r->rise * 1000, r->width * 1000, r->pre_rms, r->gravity, r->grav[0], r->grav[1], r->grav[2], touch,
-            r->orient, verdict);
+            r->steady_a, r->steady_w, r->orient, verdict);
 }
 
 // Mode journal : chaque candidat jugé, et toutes les 5 s le bruit de fond
@@ -127,9 +127,12 @@ static void backtap_sample(CMDeviceMotion *m, NSError *error) {
     int judged = rt_backtap_feed(&backtap_detector, &s, atomic_load(&backtap_orient), active && !backtap_off, &r);
     if (atomic_load(&capture_on)) {   // calibration screen: its own detector, always "in game"; noise held still
         rt_backtap_report c;
-        if (rt_backtap_feed(&capture_detector, &s, atomic_load(&backtap_orient), 1, &c) && !c.weak &&
-            capture_head - capture_tail < CAPTURE_RING)
-            capture_ring[capture_head++ % CAPTURE_RING] = c;
+        if (rt_backtap_feed(&capture_detector, &s, atomic_load(&backtap_orient), 1, &c)) {
+            // Same rules as play: a jolt rejected for a touch, a moving hand or
+            // a turning device is not a tap; only the side gates are left to the fit.
+            if (backtap_log) backtap_log_report(&c, backtap_noise.origin ? backtap_noise.origin : c.t);
+            if (c.heard && capture_head - capture_tail < CAPTURE_RING) capture_ring[capture_head++ % CAPTURE_RING] = c;
+        }
         float a2 = s.a[0] * s.a[0] + s.a[1] * s.a[1] + s.a[2] * s.a[2], w2 = s.w[0] * s.w[0] + s.w[1] * s.w[1] + s.w[2] * s.w[2];
         noise_sq_a += a2; noise_sq_w += w2;
         if (noise_have_last) {
@@ -222,7 +225,22 @@ static void backtap_open_dataset(const rt_backtap_params *p, const char *raw) {
             out ? "" : " impossible", counts[0], counts[1], counts[2]);
 }
 
+// Tunable windows and thresholds from the app's ios/device_defaults.txt ("backtap" lines).
+static void load_tuning(void) {
+    static int done;
+    if (done++) return;
+    NSString *path = [NSBundle.mainBundle pathForResource:@"device_defaults" ofType:@"txt"];
+    NSString *text = path ? [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil] : nil;
+    rt_backtap_tuning t;
+    int n = rt_backtap_tuning_parse(text.UTF8String, &t);
+    rt_backtap_tuning_use(&t);
+    fprintf(stderr, "[ios] tapes au dos : réglages fins (%d lus) toucher -%.0f/+%.0f ms, immobile %.0f ms sous %.3g g et %.3g rad/s, "
+            "calibration à %.0f %% des seuils\n", n, t.touch_after * 1e3, t.touch_before * 1e3, t.steady_window * 1e3,
+            t.steady_accel, t.steady_rot, t.calib_gate * 100);
+}
+
 void rt_ios_backtap_start(void) {
+    load_tuning();
     if (backtap_motion || !rt_ios_env_flag("P2_BACKTAP", 1)) return;
     CMMotionManager *motion = [CMMotionManager new];
     if (!motion.deviceMotionAvailable) {
@@ -285,11 +303,7 @@ void rt_ios_backtap_capture(int on, const rt_backtap_params *judge) {
     if (!backtap_motion) return;
     rt_backtap_params p;
     if (judge) p = *judge;
-    else {   // wide gate: every tap the player makes, judged later by the fit
-        rt_backtap_defaults(&p);
-        p.accel_min /= 4; p.jerk_min /= 4; p.gyro_accel_min /= 4; p.gyro_rot_min /= 4; p.rot_min /= 2;
-        p.onset_factor = 0.5f;
-    }
+    else rt_backtap_calibration_gate(&p);   // calib_gate of the play thresholds (ios/device_defaults.txt)
     os_unfair_lock_lock(&backtap_lock);
     rt_backtap_init(&capture_detector, &p);
     capture_head = capture_tail = 0;
@@ -371,6 +385,7 @@ void rt_ios_backtap_touch(double timestamp) {
     if (!backtap_motion) return;
     os_unfair_lock_lock(&backtap_lock);
     rt_backtap_touch(&backtap_detector, timestamp);
+    rt_backtap_touch(&capture_detector, timestamp);   // calibration screen: its buttons too (Start)
     if (backtap_dataset_on) rt_backtap_touch(&backtap_wide, timestamp);
     if (backtap_raw) fprintf(backtap_raw, "t %.4f\n", timestamp);
     os_unfair_lock_unlock(&backtap_lock);

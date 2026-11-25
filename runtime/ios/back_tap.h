@@ -21,7 +21,14 @@ typedef struct {
     int invert;          // 1 : gauche et droite permutées
     int z_sign;          // 0 : indifférent ; ±1 : signe exigé de a_z au départ du pic
     float refractory;    // s : rien après un candidat pendant ce délai
-    float touch_guard;   // s : rien à moins de ce délai d'un début ou d'une fin de toucher
+    float touch_guard;   // s : rien à moins de ce délai AVANT un début ou une fin de toucher (événement UIKit en retard)
+    float touch_after;   // s : rien pendant ce délai APRÈS un début ou une fin de toucher (bouton à l'écran, Start compris)
+    // Steadiness: the device must have been still for steady_window just before
+    // the jolt (largest |a| under steady_accel, each rotation axis moving less
+    // than steady_rot): a hand shifting its grip is not a tap.
+    float steady_window; // s
+    float steady_accel;  // g
+    float steady_rot;    // rad/s (max - min of each axis over the window)
     float max_width;     // s : durée maximale du pic (une secousse dure plus longtemps)
     float flat_z;        // g : gravité selon z sous ce seuil = téléphone à plat, écran vers le haut (posé)
     float pre_rms_max;   // g : agitation maximale (moyenne quadratique) avant le pic
@@ -60,7 +67,29 @@ typedef struct {
     int gyro;              // retenu par la voie gyroscope seulement
     const char *reject;    // raison du rejet, NULL si accepté
     int weak;              // sous les seuils (candidat de journal seulement)
+    int heard;             // passed every gate but the side ones (calibration counts these)
+    float steady_a;        // g: largest |a| in the steadiness window
+    float steady_w;        // rad/s: largest per-axis rotation range in that window
 } rt_backtap_report;
+
+// Tunable numbers (ios/device_defaults.txt, "backtap" lines; the app reads the
+// bundled copy at start, the Mac checks read the file itself):
+//   backtap touch_before=0.08 touch_after=0.30 steady_window=0.15
+//           steady_accel=0.08 steady_rot=0.6 calib_gate=0.5
+// calib_gate: the calibration screen hears taps from this fraction of the play
+// thresholds, and a calibration never sets thresholds under it.
+typedef struct {
+    float touch_before, touch_after, steady_window, steady_accel, steady_rot, calib_gate;
+} rt_backtap_tuning;
+// Reads the backtap lines of the file's text over the built-in values (unknown
+// keys and out-of-range values ignored); returns how many values were read.
+int rt_backtap_tuning_parse(const char *text, rt_backtap_tuning *t);
+void rt_backtap_tuning_builtin(rt_backtap_tuning *t);
+// Makes rt_backtap_defaults use these (once at start, before any detector).
+void rt_backtap_tuning_use(const rt_backtap_tuning *t);
+const rt_backtap_tuning *rt_backtap_tuning_now(void);
+// The calibration screen's gate: the defaults scaled by calib_gate.
+void rt_backtap_calibration_gate(rt_backtap_params *p);
 
 enum { RT_BACKTAP_RING = 256, RT_BACKTAP_TOUCHES = 8 };
 

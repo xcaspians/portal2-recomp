@@ -62,9 +62,12 @@ int rt_btcal_fit_taps(const rt_btcal_tap *t, int n, const rt_btcal_noise *noise,
     // Thresholds: 60 % of the softest taps, over the noise, never above the defaults.
     float floor_a = noise ? 3 * noise->a_rms : 0, floor_j = noise ? 3 * noise->jerk_rms : 0,
           floor_w = noise ? 3 * noise->w_rms : 0;
-    out->accel_min = clampf(0.6f * quantile(peaks, n, 0.2f), fmaxf(floor_a, 0.02f), def->accel_min);
-    out->jerk_min = clampf(0.6f * quantile(jerks, n, 0.2f), fmaxf(floor_j, 1.0f), def->jerk_min);
-    out->gyro_rot_min = clampf(0.6f * quantile(rots, n, 0.2f), fmaxf(floor_w, 0.08f), def->gyro_rot_min);
+    // Never under the calibration screen's own gate (calib_gate of the
+    // defaults): play is never looser than what calibration could hear.
+    float gate = rt_backtap_tuning_now()->calib_gate;
+    out->accel_min = clampf(0.6f * quantile(peaks, n, 0.2f), fmaxf(floor_a, gate * def->accel_min), def->accel_min);
+    out->jerk_min = clampf(0.6f * quantile(jerks, n, 0.2f), fmaxf(floor_j, gate * def->jerk_min), def->jerk_min);
+    out->gyro_rot_min = clampf(0.6f * quantile(rots, n, 0.2f), fmaxf(floor_w, gate * def->gyro_rot_min), def->gyro_rot_min);
     free(peaks); free(jerks); free(rots);
     // Side weight: most taps on their side, then the widest smallest margin.
     float best_w = def->side_x_weight, best_min = -1e9f;

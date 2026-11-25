@@ -140,12 +140,13 @@ heavier device (an iPad mini) moves differently, so the in-game menu has
 **Calibrate back taps** (Settings menu > Back taps): tap the back on the
 left 8 times, on the right 8 times, then hold still for 5 seconds. Each tap
 shows as it lands. The values are fitted by `runtime/ios/backtap_calibrate.c`
-from the taps (a wide-gate detector catches them, `backtap_ios.m` capture
-mode) and the noise held still, one rule each:
+from the taps (the capture detector, `backtap_ios.m`, at `calib_gate` of the
+play thresholds, with every play rule: a jolt near a touch, after a moving
+hand or a turning device is not counted) and the noise held still, one rule each:
 
 - **Thresholds** (acceleration, jerk, gyroscope rotation): 60 % of the
   player's softest taps (20th percentile), never under 3 times the noise held
-  still, never above the defaults (a calibration only makes taps easier to
+  still nor under the calibration gate, never above the defaults (a calibration only makes taps easier to
   catch).
 - **Side weight**: the mix of rotations around x and z that puts the most
   taps on their side, then the one keeping them furthest from the line.
@@ -164,3 +165,42 @@ Checked by `tests/checks_back_tap.c`: on iPad-like soft taps with a contrary
 x rotation the defaults fire under half on the right side and the fit puts
 all but the margin's on their side, none wrong; played through the detector,
 soft taps go from 0 of 8 to 8 of 8.
+
+## Touches, steadiness and the config file (round 11)
+
+On the iPad mini, moving a hand on the device and pressing the calibration
+screen's own Start button both counted as taps. Three causes, all fixed:
+
+1. **Touches on UIKit buttons were invisible to the detector.** Only the touch
+   overlay reported touches, so the settings menu's and the calibration
+   screen's buttons (Start) shook the device unseen. A passive recognizer on
+   the game's window (`P2TouchWatcher`, `touch_controls.m`) now reports every
+   touch start and end, and the calibration detector gets them too.
+2. **The calibration screen counted rejected jolts.** It kept every strong
+   candidate, even those the detector rejected for a touch, agitation or a
+   turning device, through a gate at a quarter of the play thresholds. It now
+   counts only jolts that pass every play rule (`heard`), at `calib_gate`
+   (half) of the play thresholds, and a calibration never sets thresholds
+   under that gate.
+3. **No steadiness rule and a short touch window.** A jolt is now ignored
+   from `touch_after` (300 ms) after a touch starts or ends, so the jolt of a
+   hand letting go of a button and moving off is caught, and it only counts
+   if the device was steady for `steady_window` (150 ms) before it: largest
+   acceleration under `steady_accel`, each rotation axis moving less than
+   `steady_rot` (a smooth turn while aiming with the gyro stays steady; a
+   hand shifting its grip does not). Reject reason: "pas immobile avant".
+
+Every window and threshold is in `ios/device_defaults.txt` (`backtap`
+lines), read by the app from its bundle and by the Mac checks from the file.
+`P2_BACKTAP_TOUCH_AFTER`, `_STEADY_WINDOW`, `_STEADY_ACCEL` and
+`_STEADY_ROT` override them for a test. With the Log setting
+(`P2_BACKTAP_LOG=1`) each jolt, in play and in the calibration screen, logs
+its strength, the nearest touch, the steadiness before it and the verdict.
+
+Traces: `tests/data/backtap/*.txt` (the raw "Record taps" format, written by
+`make_traces.py`) hold a hand shift, a button press and real left and right
+taps, each with an `# expect` line; `backtap_recorded_traces_verdicts`
+replays every file with one through play and through the calibration gate.
+A real recording with an expect line dropped there is checked the same way.
+`build/backtap-replay` (`P2_BACKTAP_CALIBRATION=1` for the calibration gate)
+shows each verdict with its steadiness.

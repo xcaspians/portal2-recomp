@@ -47,6 +47,8 @@
 #include "backtap_calibrate.h"
 #include "env_ios.h"
 #include <math.h>
+#include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -61,6 +63,53 @@ static const double kPre = 0.300, kPreGap = 0.015, kGravityLag = 0.200, kWindow 
 // 1 rad/s (téléphone seul : ~0,7 rad/s pour un doigt de 10 g à 0,5 m/s, la
 // main en absorbe une part). Au repos en jeu : bruit ~0,005 g et 0,01 rad/s,
 // pouces sur l'écran quelques centièmes de g, variations lentes.
+static rt_backtap_tuning tuning = {0.08f, 0.30f, 0.15f, 0.08f, 0.6f, 0.5f};
+
+void rt_backtap_tuning_builtin(rt_backtap_tuning *t) { *t = (rt_backtap_tuning){0.08f, 0.30f, 0.15f, 0.08f, 0.6f, 0.5f}; }
+void rt_backtap_tuning_use(const rt_backtap_tuning *t) { tuning = *t; }
+const rt_backtap_tuning *rt_backtap_tuning_now(void) { return &tuning; }
+
+int rt_backtap_tuning_parse(const char *text, rt_backtap_tuning *t) {
+    rt_backtap_tuning_builtin(t);
+    static const struct { const char *key; size_t off; float lo, hi; } keys[] = {
+        {"touch_before", offsetof(rt_backtap_tuning, touch_before), 0, 0.5f},
+        {"touch_after", offsetof(rt_backtap_tuning, touch_after), 0, 2},
+        {"steady_window", offsetof(rt_backtap_tuning, steady_window), 0, 0.5f},
+        {"steady_accel", offsetof(rt_backtap_tuning, steady_accel), 0.001f, 2},
+        {"steady_rot", offsetof(rt_backtap_tuning, steady_rot), 0.001f, 20},
+        {"calib_gate", offsetof(rt_backtap_tuning, calib_gate), 0.1f, 1},
+    };
+    int read = 0;
+    for (const char *line = text; line && *line; line = strchr(line, '\n') ? strchr(line, '\n') + 1 : NULL) {
+        while (*line == ' ' || *line == '\t') ++line;
+        if (strncmp(line, "backtap", 7) || (line[7] != ' ' && line[7] != '\t')) continue;
+        const char *end = strchr(line, '\n');
+        size_t len = end ? (size_t)(end - line) : strlen(line);
+        char buf[512];
+        snprintf(buf, sizeof(buf), "%.*s", (int)(len < sizeof(buf) ? len : sizeof(buf) - 1), line);
+        char *save = NULL;
+        for (char *w = strtok_r(buf + 7, " \t\r", &save); w; w = strtok_r(NULL, " \t\r", &save)) {
+            char *eq = strchr(w, '=');
+            if (!eq) continue;
+            *eq = 0;
+            char *stop;
+            float v = strtof(eq + 1, &stop);
+            if (stop == eq + 1) continue;
+            for (size_t k = 0; k < sizeof(keys) / sizeof(*keys); ++k)
+                if (!strcmp(w, keys[k].key) && v >= keys[k].lo && v <= keys[k].hi) {
+                    *(float *)((char *)t + keys[k].off) = v; ++read;
+                }
+        }
+    }
+    return read;
+}
+
+void rt_backtap_calibration_gate(rt_backtap_params *p) {
+    rt_backtap_defaults(p);
+    float g = tuning.calib_gate;
+    p->accel_min *= g; p->jerk_min *= g; p->gyro_accel_min *= g; p->gyro_rot_min *= g;
+}
+
 void rt_backtap_defaults(rt_backtap_params *p) {
     p->accel_min = 0.10f;     // 20 fois le bruit, sous une tape légère
     p->jerk_min = 6.0f;       // 0,06 g en 10 ms : un geste de la main monte 10 fois moins vite
@@ -75,7 +124,11 @@ void rt_backtap_defaults(rt_backtap_params *p) {
     p->invert = 0;
     p->z_sign = 0;            // à fixer après calibration : dos et écran poussent en sens opposés
     p->refractory = 0.25f;    // 4 tapes/s au plus ; couvre les rebonds de la main
-    p->touch_guard = 0.08f;   // ±80 ms autour d'un début ou d'une fin de toucher
+    p->touch_guard = tuning.touch_before;   // 80 ms : l'événement UIKit peut suivre la secousse
+    p->touch_after = tuning.touch_after;    // 300 ms : un bouton relâché, la main qui repart (Start de la calibration)
+    p->steady_window = tuning.steady_window;
+    p->steady_accel = tuning.steady_accel;
+    p->steady_rot = tuning.steady_rot;
     p->max_width = 0.12f;     // inactive : tapes mesurées de 50 à 100 ms (vibration de la main), fenêtre de 100 ms
     p->flat_z = -0.95f;       // en jeu (calibration) : -0,75 à -0,86 ; posé sur la table : -1,00
     p->pre_rms_max = 0.05f;   // téléphone tenu immobile : ~0,01 g ; marche : 0,1 g et plus
@@ -107,6 +160,10 @@ void rt_backtap_params_from_env_calibrated(rt_backtap_params *p, const char *cal
     p->gyro_calm_max = rt_backtap_env_float("P2_BACKTAP_GYRO_CALM", p->gyro_calm_max, 0);
     p->refractory = rt_backtap_env_float("P2_BACKTAP_REFRACTORY", p->refractory, 0);
     p->touch_guard = rt_backtap_env_float("P2_BACKTAP_TOUCH_GUARD", p->touch_guard, 0);
+    p->touch_after = rt_backtap_env_float("P2_BACKTAP_TOUCH_AFTER", p->touch_after, 0);
+    p->steady_window = rt_backtap_env_float("P2_BACKTAP_STEADY_WINDOW", p->steady_window, 0);
+    p->steady_accel = rt_backtap_env_float("P2_BACKTAP_STEADY_ACCEL", p->steady_accel, 0.001f);
+    p->steady_rot = rt_backtap_env_float("P2_BACKTAP_STEADY_ROT", p->steady_rot, 0.001f);
     p->max_width = rt_backtap_env_float("P2_BACKTAP_WIDTH", p->max_width, 0.001f);
     p->flat_z = rt_backtap_env_float("P2_BACKTAP_FLAT", p->flat_z, -2);
     p->pre_rms_max = rt_backtap_env_float("P2_BACKTAP_AGITATION", p->pre_rms_max, 0.001f);
@@ -168,6 +225,20 @@ static void judge(rt_backtap *d, int orient, int active, rt_backtap_report *r) {
         ++n;
     }
     if (n) for (int k = 0; k < 3; ++k) base[k] /= n;
+    // Steadiness just before the jolt (outside the ringing of earlier candidates).
+    float wmin[3] = {1e9f, 1e9f, 1e9f}, wmax[3] = {-1e9f, -1e9f, -1e9f};
+    for (unsigned long i = onset; i-- > first;) {
+        const rt_backtap_sample *s = at(d, i);
+        if (s->t > t0 - kPreGap) continue;
+        if (s->t < t0 - kPreGap - p->steady_window) break;
+        int ringing = 0;
+        for (int k = 0; k < 2; ++k) ringing |= s->t >= d->last_candidates[k] && s->t < d->last_candidates[k] + kRinging;
+        if (ringing) continue;
+        float m = norm3(s->a);
+        if (m > r->steady_a) r->steady_a = m;
+        for (int k = 0; k < 3; ++k) { wmin[k] = fminf(wmin[k], s->w[k]); wmax[k] = fmaxf(wmax[k], s->w[k]); }
+    }
+    for (int k = 0; k < 3; ++k) if (wmax[k] >= wmin[k] && wmax[k] - wmin[k] > r->steady_w) r->steady_w = wmax[k] - wmin[k];
     r->pre_rms = n ? (float)sqrt(sq / n) : 0;
     r->tail_rms = n_tail ? (float)sqrt(tail_sq / n_tail) : 0;
     if (g_now && g_then) {
@@ -206,9 +277,13 @@ static void judge(rt_backtap *d, int orient, int active, rt_backtap_report *r) {
     }
     r->width = above_first < 0 ? 0 : (float)(above_last - above_first);
 
+    // Nearest touch, and whether one falls in the guard: from touch_after
+    // before the jolt (a button let go, the hand moving off) to touch_guard after it.
+    int touched = 0;
     for (unsigned i = 0; i < RT_BACKTAP_TOUCHES && i < d->ntouch; ++i) {
         double dt = d->touches[i] - t0;
         if (fabs(dt) < fabs(r->touch_dt)) r->touch_dt = dt;
+        if (dt <= p->touch_guard && dt >= -p->touch_after) touched = 1;
     }
 
     // Orientation : écran d'abord, gravité à défaut.
@@ -241,15 +316,19 @@ static void judge(rt_backtap *d, int orient, int active, rt_backtap_report *r) {
     // En menu jusqu'à touch_guard avant le pic : le clic qui reprend la partie
     // (toucher passé à SDL, inconnu ici) secoue aussi le téléphone.
     else if (!active || d->last_inactive >= t0 - p->touch_guard) r->reject = "menu";
-    else if (fabs(r->touch_dt) <= p->touch_guard) r->reject = "toucher à l'écran";
+    else if (touched) r->reject = "toucher à l'écran";
     else if (n < 3 || span < kMinHistory) r->reject = "historique insuffisant";
     else if (r->pre_rms > p->pre_rms_max) r->reject = "agitation avant le pic";
+    else if (p->steady_window > 0 && (r->steady_a > p->steady_accel || r->steady_w > p->steady_rot))
+        r->reject = "pas immobile avant";
     else if (d->last_candidates[0] + kRinging > t0 - kPreGap - kTail && r->tail_rms > fmaxf(p->pre_rms_max, kDecay * d->last_peak))
         r->reject = "agitation avant le pic";   // vibration de la tape d'avant qui ne retombe pas : secousse
     else if (r->gravity > p->gravity_max) r->reject = "gravité qui change";
     else if (g_now && g_now->g[2] < p->flat_z) r->reject = "téléphone à plat";
     else if (r->width > p->max_width) r->reject = "pic trop long";
+    if (!r->weak && !r->reject) r->heard = 1;   // the side gates below don't make it a non-tap
     // Calibrated wrong-side guard: too close to the line to trust the side.
+    if (r->reject) {}
     else if (p->side_margin > 0 && r->method && !strcmp(r->method, "rotation") && fabsf(r->side_score) < p->side_margin)
         r->reject = "côté incertain";
     else if (p->z_sign && (onset_az > 0 ? 1 : -1) != p->z_sign) r->reject = "sens z";
