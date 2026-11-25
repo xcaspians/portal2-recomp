@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "../runtime/ios/back_tap.c"
+#include "../runtime/ios/backtap_calibrate.c"
 
 // Une tape : poussée selon z (dos : vers l'utilisateur ; écran : à l'opposé)
 // ou selon y (tranche), à la position y de signe ry dans le repère de
@@ -28,7 +29,8 @@ typedef struct {
     double active_from;               // en menu jusque-là (0 : toujours la valeur active)
     rt_backtap_params params;
 } Scene;
-typedef struct { int accepted, reports, side[8]; const char *method[8], *reject[8]; int weak[8]; } Outcome;
+typedef struct { int accepted, reports, side[8]; const char *method[8], *reject[8]; int weak[8];
+                 float peak[8], jerk[8], rot_x[8], rot_z[8]; int orient[8]; } Outcome;
 
 static float half_sine(double x, double width) { return x < 0 || x > width ? 0 : (float)sin(M_PI * x / width); }
 
@@ -79,6 +81,8 @@ static Outcome play(const Scene *sc) {
             if (o.reports < 8) {
                 o.side[o.reports] = r.side; o.method[o.reports] = r.method;
                 o.reject[o.reports] = r.reject; o.weak[o.reports] = r.weak;
+                o.peak[o.reports] = r.peak; o.jerk[o.reports] = r.jerk; o.rot_x[o.reports] = r.rot[0];
+                o.rot_z[o.reports] = r.rot[2]; o.orient[o.reports] = r.orient;
             }
             ++o.reports;
             if (!r.reject) ++o.accepted;
@@ -429,4 +433,109 @@ RT_CHECK(backtap_params_from_env_bounds) {
     for (size_t i = 0; i < sizeof(names) / sizeof(*names); ++i) unsetenv(names[i]);
     rt_backtap_params_from_env(&p);
     assert(!memcmp(&p, &def, sizeof(p)));
+}
+
+
+// ---- Calibration (runtime/ios/backtap_calibrate.c) ----
+
+// A bigger, slower device (the iPad mini's complaint: half the taps missed,
+// some on the wrong side): softer taps, and an x rotation that pulls the
+// default score the wrong way on some taps while z keeps the side.
+static rt_btcal_tap ipad_tap(int i, int side) {
+    float soft = 0.055f + 0.004f * (float)(i % 5);          // 0.055 to 0.071 g: under the 0.10 default
+    float x = (i % 3 == 0 ? -0.35f : 0.05f) * (float)side;  // one tap in 3: x rotation against the side
+    float z = -0.12f * (float)side;                          // the hand pivots the device toward the tap
+    return (rt_btcal_tap){soft, 3.5f + 0.3f * (float)(i % 4), x, z, 1, side};
+}
+
+RT_CHECK(backtap_calibration_fit_on_recorded_taps) {
+    rt_btcal_tap taps[16];
+    for (int i = 0; i < 8; ++i) { taps[i] = ipad_tap(i, -1); taps[8 + i] = ipad_tap(i, 1); }
+    rt_btcal_noise noise = {0.006f, 0.6f, 0.01f};
+    rt_backtap_params def; rt_backtap_defaults(&def);
+    rt_btcal_fit fit;
+    assert(rt_btcal_fit_taps(taps, 16, &noise, &def, &fit));
+    // The rules: 60 % of the softest taps, over 3 x noise, never above the defaults.
+    assert(fit.accel_min < def.accel_min && fit.accel_min >= 3 * noise.a_rms && fit.accel_min <= 0.6f * 0.06f);
+    assert(fit.jerk_min <= def.jerk_min && fit.jerk_min >= 3 * noise.jerk_rms);
+    // Before: the defaults miss these soft taps; after: all on their side, none wrong.
+    assert(fit.before < 8);
+    assert(fit.after >= 14 && fit.wrong_after == 0);
+    assert(fit.taps == 16);
+    // Too few taps on a side: no fit.
+    rt_btcal_fit untouched = fit;
+    assert(!rt_btcal_fit_taps(taps, 11, &noise, &def, &untouched));
+}
+
+RT_CHECK(backtap_calibration_wrong_side_guard) {
+    // Taps whose side score sits on either side of zero: the margin goes above
+    // the strongest wrong one, so no tap fires on the wrong side.
+    rt_btcal_tap taps[16];
+    for (int i = 0; i < 16; ++i) {
+        int side = i < 8 ? -1 : 1;
+        float strength = (i % 8 == 0) ? -0.06f : 0.25f + 0.02f * (float)(i % 8);   // one wrong-leaning tap per side
+        taps[i] = (rt_btcal_tap){0.2f, 8, 0, -strength * (float)side, 1, side};
+    }
+    rt_backtap_params def; rt_backtap_defaults(&def);
+    rt_btcal_fit fit;
+    assert(rt_btcal_fit_taps(taps, 16, NULL, &def, &fit));
+    assert(fit.side_margin > 0.06f && fit.side_margin < 0.27f);
+    assert(fit.wrong_after == 0 && fit.after == 14);
+    rt_backtap_params p = def; rt_btcal_apply(&p, &fit);
+    assert(rt_btcal_judge(&taps[0], &p) == 0);                 // the wrong-leaning one: no portal at all
+    assert(rt_btcal_judge(&taps[1], &p) == -1 && rt_btcal_judge(&taps[9], &p) == 1);
+}
+
+RT_CHECK(backtap_calibration_stored_and_default_fallback) {
+    rt_backtap_params def, p;
+    rt_backtap_defaults(&def);
+    // No calibration, or an unreadable one: the defaults, exactly.
+    rt_backtap_params_from_env_calibrated(&p, NULL);
+    assert(!memcmp(&p, &def, sizeof(p)));
+    rt_backtap_params_from_env_calibrated(&p, "v1 accel=banana");
+    assert(!memcmp(&p, &def, sizeof(p)));
+    rt_backtap_params_from_env_calibrated(&p, "v1 accel=7 jerk=1 gyro_rot=0.2 side_x=0.5 margin=0 noise=0 when=1");
+    assert(!memcmp(&p, &def, sizeof(p)));                      // out of range
+    // Stored, read back, applied.
+    rt_btcal_fit fit = {0.05f, 3.2f, 0.2f, 0.85f, 0.07f, 0.006f, 16, 6, 15, 2, 0, 1};
+    char text[256];
+    rt_btcal_format(&fit, 1795500000LL, text, sizeof(text));
+    rt_btcal_fit back; long long when;
+    assert(rt_btcal_parse(text, &back, &when) && when == 1795500000LL);
+    assert(fabsf(back.accel_min - 0.05f) < 1e-4f && fabsf(back.side_margin - 0.07f) < 1e-4f);
+    rt_backtap_params_from_env_calibrated(&p, text);
+    assert(fabsf(p.accel_min - 0.05f) < 1e-4f && fabsf(p.side_x_weight - 0.85f) < 1e-3f && p.side_margin > 0);
+    assert(p.refractory == def.refractory && p.touch_guard == def.touch_guard);   // only the fitted values change
+}
+
+RT_CHECK(backtap_calibration_replay_soft_taps) {
+    // Soft back taps (0.07 g) played through the detector: the defaults miss
+    // them, the values fitted from the same kind of taps catch them, on their side.
+    rt_btcal_tap taps[16];
+    int n = 0;
+    for (int side = -1; side <= 1; side += 2)
+        for (int i = 0; i < 8; ++i) {
+            Scene sc = scene(100);
+            sc.params.accel_min /= 4; sc.params.jerk_min /= 4; sc.params.gyro_rot_min /= 4;   // capture: wide gate
+            sc.taps[sc.ntaps++] = (Tap){1.0, side * sc.orient, 2, 0.07f + 0.002f * (float)i, 0.1f, 0, 0, 0};
+            Outcome o = play(&sc);
+            assert(o.reports >= 1);
+            taps[n++] = (rt_btcal_tap){o.peak[0], o.jerk[0], o.rot_x[0], o.rot_z[0], o.orient[0], side};
+        }
+    rt_btcal_noise noise = {0.005f, 0.5f, 0.01f};
+    rt_backtap_params def; rt_backtap_defaults(&def);
+    rt_btcal_fit fit;
+    assert(rt_btcal_fit_taps(taps, n, &noise, &def, &fit));
+    int before = 0, after = 0;
+    for (int side = -1; side <= 1; side += 2)
+        for (int i = 0; i < 8; i += 2) {
+            Scene sc = scene(100);
+            sc.taps[sc.ntaps++] = (Tap){1.0, side * sc.orient, 2, 0.07f + 0.002f * (float)i, 0.1f, 0, 0, 0};
+            Outcome o = play(&sc);
+            before += o.accepted == 1 && o.side[0] == side;
+            rt_btcal_apply(&sc.params, &fit);
+            o = play(&sc);
+            after += o.accepted == 1 && o.side[0] == side;
+        }
+    assert(before == 0 && after == 8);
 }
