@@ -315,3 +315,9 @@ RT_CHECK(touch_fps_counter_clear_of_buttons) {
             }
     }
 }
+
+// A controller hides the touch buttons, never the FPS counter (round 11 item 6).
+RT_CHECK(touch_fps_counter_stays_with_a_controller) {
+    assert(rt_touch_fps_visible(1, 60, 1) && rt_touch_fps_visible(1, 60, 0));
+    assert(!rt_touch_fps_visible(0, 60, 0) && !rt_touch_fps_visible(1, 0, 1));
+}

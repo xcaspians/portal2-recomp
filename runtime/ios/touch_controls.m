@@ -1050,7 +1050,7 @@ static void set_circle(CAShapeLayer *l, CGFloat diameter) {
 // Bitmap du compteur, refait seulement quand ce qu'il montre change (FpsKey,
 // comparée avant de construire textes et cadre).
 - (void)renderFPS {
-    fpsLayer.hidden = concealed || fps <= 0;   // le compteur reste dans les menus
+    fpsLayer.hidden = !rt_touch_fps_visible(!fpsHidden, fps, concealed);   // menus and controllers too: only the buttons hide
     if (fpsLayer.hidden) return;
     FpsKey key;
     memset(&key, 0, sizeof(key));   // rembourrage à zéro : comparée par memcmp
