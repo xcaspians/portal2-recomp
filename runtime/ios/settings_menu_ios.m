@@ -711,13 +711,21 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     static int auto_open = -1;
     if (auto_open < 0) {
         const char *e = getenv("P2_SETTINGS_MENU_OPEN");
-        auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : 0;
+        auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : !strcmp(e, "display") ? 3 : 0;
     }
     if (auto_open && !gear.hidden) {
         int start = auto_open == 2;
         auto_open = 0;
         [self openMenu];
         for (P2MenuRow *row in rows) if (start && row.kind == ROW_MAP) { [self startMap:row]; break; }
+        // =display: scrolled to "Defaults for <device>" (screenshots of the defaults row).
+        if (auto_open == 0 && getenv("P2_SETTINGS_MENU_OPEN") && !strcmp(getenv("P2_SETTINGS_MENU_OPEN"), "display"))
+            for (P2MenuRow *row in rows) if (row.kind == ROW_RECOMMENDED) {
+                [scroll layoutIfNeeded];
+                CGRect r = [scroll convertRect:row.view.bounds fromView:row.view];
+                [scroll setContentOffset:CGPointMake(0, MAX(0, MIN(CGRectGetMinY(r) - 160,
+                                                     scroll.contentSize.height - scroll.bounds.size.height))) animated:NO];
+            }
     }
     // P2_COMMUNITY_TEST=<Workshop id> (simulator checks): at the first pause, opens
     // Community Maps on that chamber, downloads it and starts it;

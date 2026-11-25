@@ -264,7 +264,7 @@ dark, translucent panel drawn by the runtime over the game
   which the engine runs at its next frame, and closes the panel.
 - `P2_SETTINGS_MENU_OPEN=1` opens the panel at the first pause (simulator
   checks, where no finger can press the gear); `=map` also starts the first
-  map of Maps & Mods. Checked in the simulator on 24 November 2026: a map in
+  map of Maps & Mods; `=display` scrolls to "Defaults for <device>". Checked in the simulator on 24 November 2026: a map in
   `portal2_dlc3/maps` was listed, started and loaded, so the runtime mounts
   addon folders (still to confirm on a device).
 
