@@ -59,3 +59,21 @@
   FreeType, Fontconfig, iconv, OpenGL, OpenAL, under `host_prefix` (Homebrew
   or the prebuilt bundle of `tools/build_host_deps.sh`). A new host library
   goes in both and in the bundle.
+
+## Fork workflow (xcaspians/portal2-recomp)
+
+- **Name:** "Caspian" / xcaspians only, never the maintainer's real name, in
+  commits, files or messages. The repo's git config uses Caspian and the
+  GitHub noreply address.
+- **Merging:** branch + PR on the fork, never upstream. Merge on green GitHub
+  Actions; if the hosted runners can't run (billing, minutes), merge on a
+  passing local `make check` and say so in the report.
+- **Devices:** all testing and smoke runs on the iPad Pro (always pass
+  `P2_DEVICE`). The iPad mini is install-only: install any build once it is
+  ready, but run no tests on it. Back up saves before every install, and
+  close the app on the device right after each run.
+- **Natif Installer:** every time a new build is ready, rebuild the Mac
+  installer (`tools/build_installer.sh` → `build/installer/Natif Installer.app`,
+  same path every time) so its Devices section offers the latest games and
+  builds (Half-Life 2, Left 4 Dead 2, Portal 1 once they work). The app shows
+  its version number. Each report notes that it was rebuilt.
