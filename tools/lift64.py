@@ -23,6 +23,7 @@ replaced by a trap (and counted), so a module always compiles and the
 coverage report says exactly what is missing.
 """
 import argparse
+import bisect
 import collections
 import json
 import os
@@ -217,11 +218,41 @@ class Module:
                 self.slots[r['off']] = r['value'] + (r['addend'] if r['type'] == '64' else 0)
             elif r['type'] == 'RELATIVE':
                 self.slots[r['off']] = r['addend']
+        # Imports reached through a GOT slot (PLT stubs, call [rip + GOT]): slot -> name.
+        self.slot_imports = {r['off']: r['symbol'] for r in layout['relocations']
+                             if r['type'] in ('GLOB_DAT', 'JUMP_SLOT', '64') and 'import' in r}
+        self.plt_imports = {}
+        for lo, hi in layout.get('plt') or []:
+            for pc in self.order[bisect.bisect_left(self.order, lo):bisect.bisect_left(self.order, hi)]:
+                nxt, op, args = insns[pc]
+                m = re.fullmatch(r'qword ptr \[rip ([+-]) (0x[0-9a-f]+)\]', args)
+                if op == 'jmp' and m:
+                    slot = nxt + (1 if m[1] == '+' else -1) * int(m[2], 16)
+                    name = self.slot_imports.get(slot)
+                    if name:
+                        # The stub may start a few instructions earlier (mov r11d, n; endbr64).
+                        for start in (pc, *[p for p, _ in self.previous(pc, 2)]):
+                            self.plt_imports.setdefault(start, name)
+        self.landing_pads = {int(k, 16): v for k, v in (layout.get('landing_pads') or {}).items()}
         self.image = None
         if layout.get('image'):
             with open(layout['image'], 'rb') as f:
                 self.image = f.read()
         self.table_jumps = self.dispatch_jumps = self.unbounded_tables = 0
+
+    def call_target_import(self, insn):
+        """Name of the import a CALL reaches through the PLT or the GOT, or None."""
+        nxt, op, args = insn
+        if op != 'call':
+            return None
+        try:
+            return self.plt_imports.get(int(args, 0))
+        except ValueError:
+            pass
+        m = re.fullmatch(r'qword ptr \[rip ([+-]) (0x[0-9a-f]+)\]', args)
+        if m:
+            return self.slot_imports.get(nxt + (1 if m[1] == '+' else -1) * int(m[2], 16))
+        return None
 
     def is_code(self, offset):
         return any(lo <= offset < hi for lo, hi in self.layout['code'])
@@ -501,7 +532,7 @@ def translate(pc, insn, mod, entry, callees):
                     return f'PUSH64(c, {after}); {end}', [nxt]
                 callees.add(t)
                 return (f'PUSH64(c, {after}); {SAVE_F} fn_{t:x}(c); '
-                        f'if (c->rip != {after}) rt64_bad_return(c, {after}); {LOAD_F} {end}'), [nxt]
+                        f'if (c->rip != {after}) goto resume; {LOAD_F} {end}'), [nxt]
             if t in mod.entries and t != entry:
                 callees.add(t)
                 branch, successors = f'{SAVE_F} fn_{t:x}(c); return;', []
@@ -519,7 +550,7 @@ def translate(pc, insn, mod, entry, callees):
                 callees.add(known)
         if op == 'call':
             return (f'a = {target.read()}; PUSH64(c, {after}); {SAVE_F} rt64_dispatch(c, a); '
-                    f'if (c->rip != {after}) rt64_bad_return(c, {after}); {LOAD_F} {end}'), [nxt]
+                    f'if (c->rip != {after}) goto resume; {LOAD_F} {end}'), [nxt]
         cases = mod.jump_table(pc, args) if target.reg else None
         if cases:
             mod.table_jumps += 1
@@ -987,6 +1018,7 @@ def flag_liveness(order, flow, insns, bodies):
 def lift_function(entry, mod, stats=None, keep_flags=None):
     """C body of the function at `entry` and its callees."""
     pending, done, flow, callees = [entry], {}, {}, set()
+    pad_table, pads = getattr(mod, 'landing_pads', {}), set()
     while pending:
         pc = pending.pop()
         if pc in done:
@@ -1013,6 +1045,11 @@ def lift_function(entry, mod, stats=None, keep_flags=None):
         done[pc] = body
         flow[pc] = successors
         pending.extend(successors)
+        if pc in pad_table:
+            # Start of an FDE with landing pads (exception handlers, cleanups):
+            # reached by the unwinder, they are resume points of this function.
+            pads.update(pad_table[pc])
+            pending.extend(pad_table[pc])
     if stats is not None:
         stats['pcs'].update(p for p in done if p in mod.insns)
     if keep_flags is None:
@@ -1032,10 +1069,22 @@ def lift_function(entry, mod, stats=None, keep_flags=None):
         if entry_live and stats is not None:
             stats['entry_live'].append(entry)
     init = 'c->flags' if keep_flags or entry_live else '(FL64){0, 0, 0, 0, 0, 0}'
+    # A call that returned elsewhere (longjmp, a C++ exception reaching a
+    # landing pad): continue here when the target is one of this function's
+    # resume points, else leave this host frame too.
+    find_import = getattr(mod, 'call_target_import', lambda insn: None)
+    resume = sorted(mod.insns[pc][0] for pc in done if pc in mod.insns and find_import(mod.insns[pc]) in SETJMP)
+    resume = [r for r in resume if r in done]
+    resume += sorted(t for t in pads if t in done and t not in resume)
     lines = [f'void fn_{entry:x}(CPU64 *restrict c) {{',
              f'    FL64 f = {init}; uint64_t a, b, r; (void)f; (void)a; (void)b; (void)r;',
              f'    goto L{entry:x};']
     lines += [f'L{pc:x}: {body}' for pc, body in sorted(done.items())]
+    if resume:
+        cases = ' '.join(f'case {r:#x}: goto L{r:x};' for r in resume)
+        lines.append(f'resume: f = c->flags; switch (c->rip - B_) {{ {cases} default: return; }}')
+    else:
+        lines.append('resume: return;')
     lines.append('}')
     return '\n'.join(lines), callees
 
@@ -1045,10 +1094,12 @@ def new_stats():
                 read_after_call=[], entry_live=[])
 
 
+SETJMP = frozenset(('_setjmp', 'setjmp', '__sigsetjmp', 'sigsetjmp'))
 IGNORED_WEAK = ('_ITM_', '_ZGTt', '__gmon_start__')
 
 
 def relocation_rows(layout):
+    """(offset, kind, index, addend) for runtime/x64/loader64.c."""
     rows = []
     for r in layout['relocations']:
         kind, addend = r['type'], r['addend']
@@ -1063,9 +1114,20 @@ def relocation_rows(layout):
             else:
                 rows.append((r['off'], 'RT64_REL_IMPORT', r['import'], extra))
         elif kind == 'DTPMOD64':
-            rows.append((r['off'], 'RT64_REL_CONST', 0, 1))
+            if 'import' in r:
+                rows.append((r['off'], 'RT64_REL_IMPORT_TLS', r['import'], 0))
+            else:
+                rows.append((r['off'], 'RT64_REL_MODID', 0, 0))
         elif kind == 'DTPOFF64':
-            rows.append((r['off'], 'RT64_REL_CONST', 0, r.get('value', 0) + addend))
+            if 'import' in r:
+                rows.append((r['off'], 'RT64_REL_IMPORT_TLS', r['import'], 2))   # offset in its block
+            else:
+                rows.append((r['off'], 'RT64_REL_CONST', 0, r.get('value', 0) + addend))
+        elif kind == 'TPOFF64':
+            if 'import' in r:
+                rows.append((r['off'], 'RT64_REL_IMPORT_TLS', r['import'], 1))
+            else:
+                rows.append((r['off'], 'RT64_REL_TPOFF', 0, r.get('value', 0) + addend))
     return rows
 
 
@@ -1134,15 +1196,28 @@ def emit(layout, bodies, symbol, shards=1):
     tables.append('static const RT64Reloc relocs_[] = {')
     tables += [f'    {{{o:#x}, {k}, {i}, {a}ll}},' for o, k, i, a in rows] or ['    {0, 0, 0, 0},']
     tables.append('};')
-    tables.append('static const char *const imports_[] = {')
-    tables += [f'    {json.dumps(i["name"])},' for i in layout['imports']] or ['    "",']
+    tables.append('static const RT64Import imports_[] = {')
+    tables += [f'    {{{json.dumps(i["name"])}, {int(i["weak"]) | 2 * int(i.get("object", False))}}},'
+               for i in layout['imports']] or ['    {"", 0},']
     tables.append('};')
+    def offsets(name, values):
+        tables.append(f'static const uint64_t {name}[] = {{' + ', '.join(f'{v:#x}' for v in values or [0]) + '};')
+    offsets('init_array_', layout.get('init_array'))
+    offsets('fini_array_', layout.get('fini_array'))
+    tables.append('static const char *const needed_[] = {' +
+                  ', '.join(json.dumps(n) for n in (layout.get('needed') or [''])) + '};')
+    tls = layout.get('tls') or dict(vaddr=0, filesz=0, memsz=0, align=0)
     tables.append('static const RT64Export exports_[] = {')
     tables += [f'    {{{json.dumps(n)}, {v:#x}}},' for n, v in layout['exports'].items()] or ['    {"", 0},']
     tables.append('};')
     tables.append(f'const RT64Module {symbol} = {{{json.dumps(layout["name"])}, {json.dumps(layout["image"] or "")}, '
                   f'{layout["size"]:#x}, &{symbol}_base, functions_, {len(bodies)}, relocs_, {len(rows)}, '
-                  f'imports_, {len(layout["imports"])}, exports_, {len(layout["exports"])}}};')
+                  f'imports_, {len(layout["imports"])}, exports_, {len(layout["exports"])}, '
+                  f'{layout.get("init", 0):#x}, {layout.get("fini", 0):#x}, '
+                  f'init_array_, {len(layout.get("init_array") or [])}, fini_array_, {len(layout.get("fini_array") or [])}, '
+                  f'{tls["vaddr"]:#x}, {tls["filesz"]:#x}, {tls["memsz"]:#x}, {tls["align"]:#x}, '
+                  f'needed_, {len(layout.get("needed") or [])}}};')
+    tables.append(f'__attribute__((constructor)) static void register_(void) {{ rt64_register(&{symbol}); }}')
     ordered = [rename(bodies[e]) for e in sorted(bodies)]
     if shards <= 1:
         return {f'{symbol}.c': '\n'.join(header + ordered + tables) + '\n'}

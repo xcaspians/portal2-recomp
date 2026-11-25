@@ -13,6 +13,8 @@ sys.path.insert(0, str(ROOT / 'tools'))
 sys.path.insert(0, str(ROOT / 'tests'))
 import build64  # noqa: E402
 import coverage64  # noqa: E402
+import elfprep64  # noqa: E402
+import lift64  # noqa: E402
 import x64_link  # noqa: E402
 
 
@@ -52,6 +54,29 @@ class Fixture(unittest.TestCase):
         self.assertIn('m_x64fixture_base', symbols)
         again = build64.build_module(self.so, out, jobs=2, shard_size=20_000, opt='0', limit_gb=0, log=logs.append)
         self.assertEqual(again['compiled'], 0)               # unchanged C: every object from the cache
+
+
+class Exceptions(unittest.TestCase):
+    """Landing pads of tests/x64_except.cpp become resume points (the run
+    itself needs P2CE's C++ runtime: `make p2ce-modules-check`)."""
+    def test_landing_pads_are_resume_points(self):
+        with tempfile.TemporaryDirectory() as work:
+            obj, so = os.path.join(work, 'x.o'), os.path.join(work, 'libx64except.so')
+            subprocess.run(['clang++', '-target', 'x86_64-linux-gnu', '-fPIC', '-O1', '-fexceptions', '-c',
+                            str(ROOT / 'tests/x64_except.cpp'), '-o', obj], check=True)
+            x64_link.link(obj, so, 'libx64except.so', ['libmimalloc.so'])
+            elf = elfprep64.Elf64(so)
+            pads = elfprep64.landing_pads(elf)
+            exports = elf.exports()
+            for name in ('x64e_catch_here', 'x64e_catch_two_frames_up', 'x64e_catch_all'):
+                self.assertIn(exports[name]['value'], pads, name)
+            self.assertEqual(elf.needed, ['libmimalloc.so'])
+            self.assertTrue(any(p['type'] == 0x6474e550 for p in elf.phdrs))      # PT_GNU_EH_FRAME
+            info = elfprep64.prepare(so, work)
+            bodies, _ = lift64.lift_module(info, [exports['x64e_catch_here']['value']], sweep=False)
+            body = next(iter(bodies.values()))
+            for pad in pads[exports['x64e_catch_here']['value']]:
+                self.assertIn(f'case {pad:#x}: goto L{pad:x};', body)
 
 
 if __name__ == '__main__':
