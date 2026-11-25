@@ -84,6 +84,72 @@
 		</dict>
 		<dict>
 			<key>FooterText</key>
+			<string>With a TV connected (an HDMI cable, or AirPlay to an Apple TV), the game draws to the TV at its own shape and resolution, and the iPad shows the touch controls only. 4K needs a cable and a 4K TV.</string>
+			<key>Title</key>
+			<string>TV</string>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<true/>
+			<key>Key</key>
+			<string>P2TVOutput</string>
+			<key>Title</key>
+			<string>Picture on the TV</string>
+			<key>Type</key>
+			<string>PSToggleSwitchSpecifier</string>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>auto</string>
+			<key>Key</key>
+			<string>P2TVResolution</string>
+			<key>Title</key>
+			<string>TV resolution</string>
+			<key>Titles</key>
+			<array>
+				<string>Auto (the TV's)</string>
+				<string>1080p</string>
+				<string>1440p</string>
+				<string>4K</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>auto</string>
+				<string>1080</string>
+				<string>1440</string>
+				<string>2160</string>
+			</array>
+		</dict>
+		<dict>
+			<key>DefaultValue</key>
+			<string>auto</string>
+			<key>Key</key>
+			<string>P2TVMaxFPS</string>
+			<key>Title</key>
+			<string>TV frame rate</string>
+			<key>Titles</key>
+			<array>
+				<string>The TV's rate</string>
+				<string>30</string>
+				<string>60</string>
+				<string>120</string>
+			</array>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Values</key>
+			<array>
+				<string>auto</string>
+				<string>30</string>
+				<string>60</string>
+				<string>120</string>
+			</array>
+		</dict>
+		<dict>
+			<key>FooterText</key>
 			<string>Metal: the game's native Direct3D 9 rendering (libd3d9metal), faster and more faithful than OpenGL. Without the library in the app, or if the device does not support it, the game stays on OpenGL. Upscaling (Metal only) renders the scene at a fraction of the Resolution above and enlarges it with MetalFX: Quality with Native resolution renders as many pixels as ×2.25 and lets MetalFX fill the full screen; with ×2 it is faster but softer.</string>
 			<key>Title</key>
 			<string>Rendering</string>

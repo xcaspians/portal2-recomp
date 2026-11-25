@@ -8,6 +8,7 @@
 #include "env_ios.h"
 #include "power_ios.h"
 #include "settings.h"
+#include "tv_output.h"
 
 enum { POWER_SAVE_FPS = 30 };
 static _Atomic int cap;   // 0 : pas encore calculé
@@ -15,6 +16,8 @@ static int metal_renderer;
 
 // P2_IOS_MAX_FPS: a number, or "auto" for the screen's maximum (settings.c).
 static int requested(void) {
+    int tv = rt_ios_tv_hz();   // the picture on a TV (round 20): its own cap, P2_TV_MAX_FPS
+    if (tv > 0) return rt_tv_frame_cap(getenv("P2_TV_MAX_FPS"), tv);
     return rt_ios_fps_choice(getenv("P2_IOS_MAX_FPS"), (int)UIScreen.mainScreen.maximumFramesPerSecond);
 }
 // Raison de brider la cadence, ou NULL.
