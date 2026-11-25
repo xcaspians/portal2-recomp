@@ -2,7 +2,7 @@
 // dans la clé P2Game de l'Info.plist ; rien n'est deviné à l'exécution.
 #pragma once
 
-typedef enum { RT_IOS_LAYOUT_PORTAL2, RT_IOS_LAYOUT_HL2 } rt_ios_layout;
+typedef enum { RT_IOS_LAYOUT_PORTAL2, RT_IOS_LAYOUT_HL2, RT_IOS_LAYOUT_L4D2, RT_IOS_LAYOUT_COUNT } rt_ios_layout;
 
 typedef struct {
     const char *name;       // valeur de P2Game : "portal2", "portal1", "hl2"
