@@ -27,7 +27,13 @@ typedef struct {
     // shader combos (black hands). Only set where needed: a new ID makes the
     // engine reset a player's saved video settings once.
     const char *gpu_device_id;
+    // A game played with another's code and data (round 21): Half-Life 2's
+    // episodes and Lost Coast are Half-Life 2 started with "+launchmod <mod>"
+    // (the anniversary build's own way). NULL: a game of its own.
+    const char *base;
 } rt_ios_game;
+// The game whose code and engine `g` runs: its base, or itself.
+const char *rt_ios_game_kind(const rt_ios_game *g);
 
 // Profil de ce nom ; Portal 2 pour NULL, "" ou un nom inconnu (builds sans P2Game).
 const rt_ios_game *rt_ios_game_named(const char *name);

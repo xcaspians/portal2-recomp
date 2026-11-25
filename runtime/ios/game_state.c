@@ -294,7 +294,7 @@ static void client_unavailable(const char *why) {
     fprintf(stderr, "[ios] IVEngineClient : %s ; menu des réglages sans engrenage\n", why);
 }
 static void find_engine_client(CPU *c) {
-    const char *name = rt_ios_current_game()->name;
+    const char *name = rt_ios_game_kind(rt_ios_current_game());   // the episodes: Half-Life 2's engine
     for (size_t i = 0; i < sizeof(kClientSlots) / sizeof(*kClientSlots) && !slots; ++i)
         if (!strcmp(kClientSlots[i].game, name)) slots = &kClientSlots[i];
     if (!slots) { engine_client = 1; return; }

@@ -24,7 +24,7 @@ static NSMutableDictionary<NSString *, NSString *> *applied;
 const char *rt_ios_setting_value(const char *key, char *out, size_t size) {
     if (rt_ios_preference(key, out, size)) return out;
     const rt_menu_item *it = rt_menu_item_named(key);
-    snprintf(out, size, "%s", it ? rt_menu_item_default(it, rt_ios_current_game()->name) : "");
+    snprintf(out, size, "%s", it ? rt_menu_item_default(it, rt_ios_game_kind(rt_ios_current_game())) : "");
     return out;
 }
 

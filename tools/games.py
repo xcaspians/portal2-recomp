@@ -105,6 +105,13 @@ GAMES = {
         ios=True,   # in the one app (portal2's ios_guests, round 19); a standalone build still works
         ios_host='portal2',
         ios_name='Half-Life 2',
+        # Round 21: the episodes and Lost Coast are in the anniversary install
+        # (episodic, ep2, lostcoast): the engine plays them as expansions of
+        # hl2_complete, switched with "launchmod <mod>" (what its menu does).
+        # Each is a game in the picker running Half-Life 2's code on its data,
+        # with its own saves (runtime/ios/game_ios.c): (name, expansion, title).
+        ios_variants=(('ep1', 'episodic', 'Half-Life 2: Episode One'), ('ep2', 'ep2', 'Half-Life 2: Episode Two'),
+                      ('lostcoast', 'lostcoast', 'Half-Life 2: Lost Coast')),
         ios_executable='hl2',
         ios_app='HalfLife2.app',
         # hl2_complete mounts the VPKs of hl2, episodic and ep2 (gameinfo.txt);

@@ -9,6 +9,7 @@ typedef struct {
     const char *mod;        // its folder in game/ ("portal2", "portal_stories")
     const char *data_dir;   // "" (Documents itself) or "mel" (Documents/mel)
     const char *userdata;   // saves and settings folder in Documents, never removed
+    const char *base;       // a game on another's data (round 21: the episodes on Half-Life 2's), or NULL
 } rt_picker_game;
 
 // The folders that make a game installed, relative to Documents: game/<mod>,

@@ -29,8 +29,17 @@ RT_CHECK(ios_game_profile_from_plist_key) {
     assert(!strcmp(mel->userdata, "mel-userdata") && mel->layout == RT_IOS_LAYOUT_PORTAL2 && mel->back_taps);
     assert(!strcmp(mel->cvar_interface, "VEngineCvar007") && mel->find_command_base == 13);
     // Builds d'avant la clé P2Game, ou valeur inconnue : Portal 2.
-    assert(rt_ios_game_named(NULL) == p2 && rt_ios_game_named("") == p2 && rt_ios_game_named("ep2") == p2);
+    assert(rt_ios_game_named(NULL) == p2 && rt_ios_game_named("") == p2 && rt_ios_game_named("ep3") == p2);   // ep2 is a game since round 21
     assert(rt_ios_current_game() == p2);   // hors iOS
+    // Round 21: Half-Life 2's episodes and Lost Coast run Half-Life 2's code on its data, own saves.
+    static const char *const variants[] = {"ep1", "ep2", "lostcoast"};
+    for (size_t i = 0; i < 3; ++i) {
+        const rt_ios_game *v = rt_ios_game_named(variants[i]);
+        assert(v != p2 && !strcmp(v->name, variants[i]) && !strcmp(rt_ios_game_kind(v), "hl2"));
+        assert(!strcmp(v->data_dir, "hl2") && !strcmp(v->mod, "hl2_complete") && v->layout == RT_IOS_LAYOUT_HL2);
+        assert(strstr(v->userdata, variants[i]) && strcmp(v->userdata, hl2->userdata));
+    }
+    assert(!strcmp(rt_ios_game_kind(hl2), "hl2") && !strcmp(rt_ios_game_kind(p2), "portal2"));
     // Left 4 Dead 2 reports one modern GPU on every chip: libd3d9metal's own
     // pick for the A20 Pro (0x034b) is a GeForce FX in dxsupport.cfg (0x0301 to
     // 0x034f there: DirectX 9.0, black hands). The others keep the pick their
