@@ -17,6 +17,8 @@
 #                                                (tools/mods_dest.py; docs/mods.md)
 #   tools/ios_device.sh workshop push [--dry-run]   the Mac's Workshop maps onto the device, as Community
 #                                                Maps keeps them (tools/workshop_push.py; docs/mods.md)
+#   tools/ios_device.sh mel data push [--dry-run]   Portal Stories: Mel's data onto the device (the Mel app
+#                                                installed first; free space checked; tools/ios_data_plan.py)
 #   tools/ios_device.sh space [bytes]            the device's free space (the app reports it: P2_DEVICE_REPORT=1)
 #   tools/ios_device.sh saves status|pull|push [--force] [--dry-run]   saves between the Mac and the iPhone
 #                                                (tools/save_sync.py; docs/usage.md#saves-between-mac-and-iphone-portal-2; Portal 2 only)
@@ -25,6 +27,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 GAME_OPT=()
 case "${1:-}" in
+  mel) [ "${2:-}" = data ] && [ "${3:-}" = push ] || { echo "usage: $0 mel data push [--dry-run]"; exit 2; }
+       GAME_OPT=(--game mel); set -- mel-data-push "${@:4}" ;;
   --game) GAME_OPT=(--game "${2:?--game needs a value}"); shift 2 ;;
   --game=*) GAME_OPT=(--game "${1#--game=}"); shift ;;
 esac
@@ -34,7 +38,9 @@ VARS=$(python3 tools/ios_game.py ${GAME_OPT[@]+"${GAME_OPT[@]}"} --target device
 eval "$VARS"
 DEVICE=${P2_DEVICE:-$(xcrun devicectl list devices 2>/dev/null |
   awk '/physical/ && / connected|available \(paired\)/ {for (i = 1; i <= NF; ++i) if ($i ~ /^[0-9A-F]{8}-[0-9A-F]{16}$/) {print $i; exit}}')}
-[ -n "$DEVICE" ] || { echo "aucun appareil connecté (câble, appareil déverrouillé, mode développeur)"; exit 1; }
+# Un essai à blanc de « mel data push » se passe d'appareil.
+[ -n "$DEVICE" ] || [ "${1:-} ${2:-}" = "mel-data-push --dry-run" ] ||
+  { echo "aucun appareil connecté (câble, appareil déverrouillé, mode développeur)"; exit 1; }
 dc() {  # sous-commande de trois mots, --device, puis le reste (options et arguments)
   xcrun devicectl "${@:1:3}" --device "$DEVICE" "${@:4}"
 }
@@ -161,6 +167,25 @@ space)
   device_report "$report" || { echo "the app didn't report (installed, device unlocked?)"; exit 1; }
   cat "$report"; rm -f "$report"
   [ -z "${2:-}" ] || need_space "$2"
+  ;;
+mel-data-push)
+  # Toutes les données de Mel (~9,3 Go), sans les restes du joueur dans son
+  # dossier de jeu (SAVE, captures, journaux : tools/ios_data_plan.py).
+  out=$(python3 tools/ios_data_plan.py --game-root "$GAME_ROOT" --linux-root "$LINUX_ROOT" --prep "$PREP" \
+        --folders "$IOS_DATA") || exit 2
+  total=$(awk -F'\t' '$1 == "total" {print $2}' <<< "$out")
+  awk -F'\t' '$1 == "copy" {printf "  %-55s %6.0f MB\n", $3, $4 / 1048576}' <<< "$out"
+  echo "total: $((total / 1048576)) MB, to the app $APP_ID"
+  [ "${2:-}" = --dry-run ] && { echo "dry run: nothing copied"; exit 0; }
+  need_space "$total" || exit 1
+  mark_data incomplete
+  while IFS=$'\t' read -r op from to size; do   # </dev/null : devicectl ne doit pas lire la liste
+    [ "$op" = copy ] || continue
+    echo "$to"
+    copy_to "$APP_ID" "$from" "$to" >/dev/null </dev/null
+  done <<< "$out"
+  mark_data complete
+  echo "Mel's data is on the device. Open the app, or: tools/ios_device.sh --game mel run"
   ;;
 workshop)
   # Documents/portal2-userdata/portal2/maps/workshop/<id>/ : la disposition de
