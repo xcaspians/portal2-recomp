@@ -2,13 +2,33 @@
 #include "game_data.h"
 #include <limits.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
+#include "posix.h"
+
+// A game borrowing Portal 2's archives (P2_BASE_GAME_ROOT): they must be there.
+static int base_game_present(FILE *errors) {
+    const char *base = rt_paths_base_root();
+    if (!base || !*base) return 1;
+    char folder[64], path[PATH_MAX];
+    for (int i = 0; rt_paths_base_shared(i, folder, sizeof(folder)); ++i) {
+        snprintf(path, sizeof(path), "%s/%s/pak01_dir.vpk", base, folder);
+        if (access(path, R_OK)) {
+            if (errors) fprintf(errors, "This game needs Portal 2: Portal 2's files weren't found (%s). "
+                                "Install Portal 2 first, then open this game again.\n", path);
+            return 0;
+        }
+    }
+    return 1;
+}
 
 // Portal 2 initializes its puzzle editor even for the campaign. Missing item
 // definitions produce a null ITEM_ENTRY_DOOR and a crash at guest address 0x7c.
 // Check the effective read path (including user overrides and whiteouts), not
 // just the original Steam folder. This is a presence check, not a KV parser.
 int rt_validate_game_data(const char *program, const char *game, FILE *errors) {
+    if (!base_game_present(errors)) return -1;
     if (strcmp(program, "portal2_linux")) return 0;
     const char *relative = "portal2_dlc2/scripts/editoritems.txt";
     char path[PATH_MAX];

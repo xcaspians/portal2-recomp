@@ -17,8 +17,12 @@
 #                                                (tools/mods_dest.py; docs/mods.md)
 #   tools/ios_device.sh workshop push [--dry-run]   the Mac's Workshop maps onto the device, as Community
 #                                                Maps keeps them (tools/workshop_push.py; docs/mods.md)
-#   tools/ios_device.sh mel data push [--dry-run]   Portal Stories: Mel's data into the Portal app (Documents/mel;
-#                                                free space checked; tools/ios_data_plan.py)
+#   tools/ios_device.sh mel data push [--dry-run] [--full]   Portal Stories: Mel's data into the Portal app
+#                                                (Documents/mel; free space checked; tools/ios_data_plan.py): the slim
+#                                                pack, which reads Portal 2's archives (tools/mel_slim.py), or --full
+#   tools/ios_device.sh mel slim switch [--dry-run]   a device with Mel's full copy goes slim: the slim pack's
+#                                                extra files, a boot test (Mel's menu, then a save or the first
+#                                                map), and only then Mel's own copies of Portal 2's archives removed
 #   tools/ios_device.sh mel saves migrate [--dry-run]  Mel's saves from the old standalone Mel app into the Portal
 #                                                app, through the Mac, checked file by file; nothing deleted
 #   tools/ios_device.sh space [bytes]            the device's free space (the app reports it: P2_DEVICE_REPORT=1)
@@ -32,8 +36,9 @@ case "${1:-}" in
   mel) GAME_OPT=(--game mel)
        case "${2:-} ${3:-}" in
          "data push") set -- mel-data-push "${@:4}" ;;
+         "slim switch") set -- mel-slim-switch "${@:4}" ;;
          "saves migrate") set -- mel-saves-migrate "${@:4}" ;;
-         *) echo "usage: $0 mel data push [--dry-run] | mel saves migrate [--dry-run]"; exit 2 ;;
+         *) echo "usage: $0 mel data push [--dry-run] [--full] | mel slim switch [--dry-run] | mel saves migrate [--dry-run]"; exit 2 ;;
        esac ;;
   --game) GAME_OPT=(--game "${2:?--game needs a value}"); shift 2 ;;
   --game=*) GAME_OPT=(--game "${1#--game=}"); shift ;;
@@ -46,7 +51,7 @@ eval "$VARS"
 DEVICE=${P2_DEVICE:-$(xcrun devicectl list devices 2>/dev/null |
   awk '/physical/ && / connected|available \(paired\)/ {for (i = 1; i <= NF; ++i) if ($i ~ /^[0-9A-F]{8}-[0-9A-F]{16}$/) {print $i; exit}}')}
 # Un essai à blanc de « mel data push » se passe d'appareil.
-[ -n "$DEVICE" ] || [ "${1:-} ${2:-}" = "mel-data-push --dry-run" ] ||
+[ -n "$DEVICE" ] || [[ "${1:-} ${*:2}" == "mel-data-push "*--dry-run* ]] ||
   { echo "aucun appareil connecté (câble, appareil déverrouillé, mode développeur)"; exit 1; }
 dc() {  # sous-commande de trois mots, --device, puis le reste (options et arguments)
   xcrun devicectl "${@:1:3}" --device "$DEVICE" "${@:4}"
@@ -176,14 +181,28 @@ space)
   [ -z "${2:-}" ] || need_space "$2"
   ;;
 mel-data-push)
-  # Toutes les données de Mel (~9,3 Go), sans les restes du joueur dans son
-  # dossier de jeu (SAVE, captures, journaux : tools/ios_data_plan.py).
+  # Mel's data (Documents/mel), without the player's leftovers in its game
+  # folder (SAVE, screenshots, logs: tools/ios_data_plan.py). By default the
+  # slim pack (~6.8 GB instead of ~9.2): Portal 2's VPK archives are read from
+  # Portal 2's own data on the device (tools/mel_slim.py, runtime/paths.c), so
+  # Portal 2 must be there first. --full: Mel's whole copy, as before.
+  full=0; dry=0
+  for a in "${@:2}"; do case "$a" in --full) full=1 ;; --dry-run) dry=1 ;; esac; done
+  slim_args=()
+  if [ $full = 0 ]; then
+    python3 tools/mel_slim.py build --mel "$GAME_ROOT" --out build/mel/slim >/dev/null || exit 2
+    slim_args=(--shared "portal2 portal2_dlc2" --overlay build/mel/slim)
+  fi
   out=$(python3 tools/ios_data_plan.py --game-root "$GAME_ROOT" --linux-root "$LINUX_ROOT" --prep "$PREP" \
-        --folders "$IOS_DATA" --dest-root "$DATA_ROOT") || exit 2
+        --folders "$IOS_DATA" --dest-root "$DATA_ROOT" "${slim_args[@]}") || exit 2
   total=$(awk -F'\t' '$1 == "total" {print $2}' <<< "$out")
-  awk -F'\t' '$1 == "copy" {printf "  %-55s %6.0f MB\n", $3, $4 / 1048576}' <<< "$out"
-  echo "total: $((total / 1048576)) MB, to the app $APP_ID"
-  [ "${2:-}" = --dry-run ] && { echo "dry run: nothing copied"; exit 0; }
+  awk -F'\t' '$1 == "copy" {printf "  %-55s %6.0f MB\n", $3, $4 / 1048576}' <<< "$out" | head -40
+  echo "total: $((total / 1048576)) MB ($([ $full = 1 ] && echo "full copy" || echo "slim pack")), to the app $APP_ID"
+  [ $dry = 1 ] && { echo "dry run: nothing copied"; exit 0; }
+  if [ $full = 0 ] && ! has_file Documents/game/portal2/pak01_dir.vpk; then
+    echo "Mel's slim pack reads Portal 2's files, and Portal 2 isn't on this device: copy it first (tools/ios_device.sh data), or use --full"
+    exit 1
+  fi
   need_space "$total" || exit 1
   mark_data incomplete
   while IFS=$'\t' read -r op from to size; do   # </dev/null : devicectl ne doit pas lire la liste
@@ -191,8 +210,53 @@ mel-data-push)
     echo "$to"
     copy_to "$APP_ID" "$from" "$to" >/dev/null </dev/null
   done <<< "$out"
+  if [ $full = 0 ]; then   # the app reads Portal 2's archives from now on (ios/main_ios.c)
+    m=$(mktemp); echo slim > "$m"; copy_to "$APP_ID" "$m" "$DATA_ROOT/.p2-slim" >/dev/null; rm -f "$m"
+  fi
   mark_data complete
   echo "Mel's data is on the device. Open the app, or: tools/ios_device.sh --game mel run"
+  ;;
+mel-slim-switch)
+  # A device holding Mel's full copy goes slim, never losing anything on the way:
+  # 1. the slim pack's VPK directories (portal2/pak01_slim.vpk) go next to Mel's
+  #    own (harmless to the full copy: only the slim mode reads them);
+  # 2. boot test with the slim layout (P2_MEL_SLIM=1): Mel's menu, then its newest
+  #    save (or the first map when there is none), checked in the game's log;
+  # 3. only then the app removes Mel's own copies of Portal 2's archives
+  #    (P2_MEL_SLIM_COMMIT=1: devicectl can't delete) and marks Mel slim.
+  python3 tools/mel_slim.py build --mel "$GAME_ROOT" --out build/mel/slim || exit 2
+  plan=$(python3 tools/ios_data_plan.py --game-root "$GAME_ROOT" --linux-root "$LINUX_ROOT" --prep "$PREP" \
+         --folders "" --dest-root "$DATA_ROOT" --overlay build/mel/slim) || exit 2
+  freed=$(python3 tools/mel_slim.py plan --mel "$GAME_ROOT" --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["shared_bytes"])')
+  echo "frees about $((freed / 1000000)) MB on the device once confirmed"
+  [ "${2:-}" = --dry-run ] && { echo "dry run: nothing copied"; exit 0; }
+  has_file "$DATA_ROOT/game/$MOD/gameinfo.txt" || { echo "Mel isn't on this device: use tools/ios_device.sh mel data push"; exit 1; }
+  has_file Documents/game/portal2/pak01_dir.vpk || { echo "Portal 2 isn't on this device: Mel can't go slim"; exit 1; }
+  while IFS=$'\t' read -r op from to size; do
+    case "$to" in */pak01_slim.vpk) ;; *) continue ;; esac   # the slim directories only (not prep or linux)
+    copy_to "$APP_ID" "$from" "$to" >/dev/null </dev/null
+  done <<< "$plan"
+  echo "slim directories copied; boot test (90 s)..."
+  save=$(dc device info files --domain-type appDataContainer --domain-identifier "$APP_ID" \
+           --subdirectory "Documents/mel-userdata/$MOD/SAVE" 2>/dev/null |
+         awk '$1 ~ /\.sav$/ && $1 !~ /^autosave/ {print $1}' | tail -1)
+  load="+map sp_a1_tramride"; [ -n "$save" ] && load="+load ${save%.sav}"
+  # -condebug: the engine's console goes to Documents/mel-userdata/portal_stories/console.log.
+  dc device process launch --terminate-existing --environment-variables \
+    "$(env_json P2_LOG_FILE=Documents/game.log P2_GAME_CHOICE=mel P2_MEL_SLIM=1 P2_EXTRA_ARGS="-condebug $load")" "$APP_ID" >/dev/null
+  sleep 90
+  mkdir -p "$IOS_DIR"; log="$IOS_DIR/mel-slim-test.log"
+  dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" \
+    --source "Documents/mel-userdata/$MOD/console.log" --destination "$log" >/dev/null
+  if ! python3 tools/mel_slim.py boot-ok --log "$log"; then
+    echo "boot test failed: Mel's full copy is untouched. Log: $log"; exit 1
+  fi
+  dc device process launch --terminate-existing --environment-variables \
+    "$(env_json P2_LOG_FILE=Documents/slim-commit.log P2_GAME_CHOICE=mel P2_MEL_SLIM_COMMIT=1)" "$APP_ID" >/dev/null
+  sleep 15
+  dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" \
+    --source Documents/slim-commit.log --destination "$IOS_DIR/mel-slim-commit.log" >/dev/null
+  grep -a "paquet allégé" "$IOS_DIR/mel-slim-commit.log" || { echo "the app didn't confirm the switch: see $IOS_DIR/mel-slim-commit.log"; exit 1; }
   ;;
 mel-saves-migrate)
   # Les sauvegardes de l'ancienne app Mel autonome vers l'app Portal (Mel y est

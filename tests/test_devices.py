@@ -37,7 +37,9 @@ class DevicesTest(unittest.TestCase):
     def test_plan(self):
         built = {'portal2': None, 'mel': None, 'workshop': None}
         fresh = {'app_installed': False, 'free_bytes': None, 'data': {}}
-        steps, problem = devices.plan('mel', fresh, built, 9_300_000_000)
+        self.assertIn('Portal 2 first', devices.plan('mel', fresh, built, 6_800_000_000)[1])   # Mel's slim pack uses its files
+        fresh['data'] = {'portal2': True}
+        steps, problem = devices.plan('mel', fresh, built, 6_800_000_000)
         self.assertIsNone(problem)
         self.assertEqual([c for _, c in steps], [['install'], ['mel', 'data', 'push']])   # the app first
         ready = {'app_installed': True, 'free_bytes': 50_000_000_000, 'data': {'portal2': True}}
