@@ -10,12 +10,13 @@
   fired by back taps, Settings page ([docs/ios.md](docs/ios.md)).
 - **Co-op** over the LAN: Mac ↔ Mac and Mac ↔ iPhone, connection and map load
   checked ([docs/usage.md](docs/usage.md#lan-co-op-portal-2)).
-- **Half-Life 2** (experimental): built from the same checkout into
-  `build/hl2`, Metal by default, 120 fps on Mac, 60 fps on an iPhone 15 Pro Max
-  in a short test ([docs/hl2.md](docs/hl2.md)).
+- **Half-Life 2** (playable on Mac; iPhone, episodes and Lost Coast
+  experimental): built from the same checkout into `build/hl2`, Metal by
+  default, 120 fps on Mac, 60 fps on an iPhone 15 Pro Max in a short test ([docs/hl2.md](docs/hl2.md)).
 - **Portal** (experimental, contributed in #31): built into `build/portal1`
   from the current Linux binaries (depot 404); the first chambers have been
-  played on a Mac ([docs/portal1.md](docs/portal1.md)). The `save` crash of
+  played on a Mac, and a user played up to chamber 16 on an iPhone 18 Pro
+  (#53, [docs/portal1.md](docs/portal1.md)). The `save` crash of
   #44 is fixed in the lifter and checked in Half-Life 2, which shares that
   code; not confirmed in Portal yet.
 - **Portal 2 Puzzle Maker** (#42): Build and Play works on Mac. VBSP, VVIS

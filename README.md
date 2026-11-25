@@ -37,16 +37,16 @@ share them.
 
 ## Status
 
-Updated 22 November 2026. Latest release:
+Updated 24 November 2026. Latest release:
 [v0.4.0](https://github.com/kanapitsas/source-recomp/releases/tag/v0.4.0)
 (18 November). Items marked *`main` only* are merged but not in a release yet.
 
 | Game | Mac | iPhone |
 |---|---|---|
 | [**Portal 2**](#portal-2) | **Playable** | **Playable**, steady 60 fps on an iPhone 15 Pro Max |
-| [**Half-Life 2**](#half-life-2) | Experimental: main game played for a few hours | Experimental: 60 fps in a short test |
+| [**Half-Life 2**](#half-life-2) | **Playable**: main game played for hours by us and by several players | Experimental: 60 fps in a short test |
 | **Episode One, Episode Two, Lost Coast** | Experimental: first maps load, not played through | Experimental: data is copied, not played |
-| [**Portal**](#portal) | Experimental: first chamber played, six more load and run | Experimental: installs, starts and renders, no chamber played |
+| [**Portal**](#portal) | Experimental: first chamber played, six more load and run | Experimental: a user played up to chamber 16 at 60 fps on an iPhone 18 Pro (#53) |
 
 In an experimental game, a crash ending with `target not recompiled` is a
 missing root. Please report it with the log.
@@ -74,11 +74,13 @@ missing root. Please report it with the log.
 
 ### Half-Life 2
 
-[Full details](#half-life-2-experimental).
+[Full details](#half-life-2-and-its-episodes).
 
-- **Mac**: 120 fps with Metal on an M3 Pro at 1280×720. Players report an hour
-  on an M4 Pro with no issue, and mostly 60 fps (dips to 50) on an M4 Air at
-  2560×1664, maximum settings, with a DualShock 4.
+- **Mac**: playable. 120 fps with Metal on an M3 Pro at 1280×720. Players
+  report an hour on an M4 Pro with no issue, play from Highway 17 on at mostly
+  60 fps (dips to 50) on an M4 Air at 2560×1664, maximum settings, with a
+  DualShock 4, and it running on M2 and M5 Macs. No game bug is open; nobody
+  has reported a start-to-end playthrough yet.
 - **iPhone**: touch controls and gyro aiming, one short session.
 
 ### Portal
@@ -90,7 +92,9 @@ Contributed in #31. [Full details](#portal-experimental).
   ([what was tested](docs/portal1.md#what-was-tested)). It needs the current
   Linux binaries (depot 404). The `save` crash of #44 is fixed in the
   recompiler and checked in Half-Life 2, not confirmed in Portal yet.
-- **iPhone**: a short session only (menu and touch layout).
+- **iPhone**: a user played up to chamber 16 on an iPhone 18 Pro at a steady
+  60 fps without a crash (#53); back taps were not reliable there. Our own
+  test is a short session only (menu and touch layout).
 
 ### All games
 
@@ -301,7 +305,7 @@ For each game installed, it asks before moving the app and its log to the
 Trash, and asks again for the saves; then, on its own yes, the installer's
 build folder. It never touches the Steam game files or the Linux binaries.
 
-## Half-Life 2 (experimental)
+## Half-Life 2 and its episodes
 
 The same recompiler also turns the Linux version of **Half-Life 2** (the
 current Steam build, 20th anniversary update) into a native Mac app. **You
@@ -316,6 +320,8 @@ installer, or run `./setup.sh` (or `./setup.sh --game hl2`) in the same
 checkout as Portal 2: each game has its own build folder. It creates
 `~/Applications/Half-Life 2 Natif.app`, with its own saves folder.
 
+- **Status**: the main game is playable on Mac; the episodes, Lost Coast
+  and the iPhone app are experimental.
 - **Tested**: a few hours of the main game on an M3 Pro, at 1280×720:
   120 fps with Metal (the display's limit; the default, as for Portal 2) and 91 with
   OpenGL (`--release` build).
@@ -350,10 +356,14 @@ its own build folder (`build/portal1`). It creates
   the later `testchmb_a_10` started with `+map` and left running 70 s without
   trapping (see [docs/portal1.md](docs/portal1.md#what-was-tested)); the
   indirect call roots are still being discovered, so later chambers may trap.
-- **iPhone**: `./setup.sh --game portal1 --ios` builds the app; it installs,
-  starts and renders (short session only).
+- **iPhone**: `./setup.sh --game portal1 --ios` builds the app. A user played
+  up to chamber 16 on an iPhone 18 Pro at a steady 60 fps without a crash
+  ([#53](https://github.com/kanapitsas/source-recomp/issues/53)); our own
+  test is a short session only.
 - **Touch**: Portal 2's layout, both portal buttons, back taps fire the
-  portal; the Settings page is Portal 2's.
+  portal; the Settings page is Portal 2's. Back taps were reported
+  unreliable on an iPhone 18 Pro (the thresholds were calibrated on an
+  iPhone 15 Pro Max): try Settings > Tap sensitivity.
 - **Not yet**: a full playthrough, later chambers (energy balls), performance
   measurements. A crash ending with `target not recompiled` is one more root
   to add: please report it with the log, `~/Library/Logs/PortalNatif.log`.
@@ -430,11 +440,11 @@ profiles.
 | Community | Native server plugins (macOS arm64 dylibs) in place of Linux `.so` plugins ([details](docs/native-plugins.md)) | ✅ |
 | Community | Publish Puzzle Maker chambers to the Steam Workshop on Mac: reported working by a contributor, not tested by us yet ([details](docs/steam.md)) | 🚧 |
 | Community | Browse and subscribe to Workshop chambers on Mac (enumeration methods bridged, not tested) | 🚧 |
-| Half-Life 2 | Mac app from the same recompiler, installer and checkout as Portal 2, main game played for a few hours | 🚧 |
+| Half-Life 2 | Mac app from the same recompiler, installer and checkout as Portal 2: main game playable, played for hours by us and by several players | ✅ |
 | Half-Life 2 | iPhone app: 60 fps on an iPhone 15 Pro Max in a first short test (`./setup.sh --game hl2 --ios`, [details](docs/hl2.md#iphone)) | 🚧 |
 | Half-Life 2 | The episodes and Lost Coast: first maps load and render, not played through | 🚧 |
 | Portal | Mac app from the same recompiler and checkout: first chamber played, six more load and run, later chambers untested | 🚧 |
-| Portal | iPhone app: installs, starts and renders in a short session (`./setup.sh --game portal1 --ios`, [details](docs/portal1.md#iphone)) | 🚧 |
+| Portal | iPhone app: played up to chamber 16 at 60 fps on an iPhone 18 Pro by a user ([#53](https://github.com/kanapitsas/source-recomp/issues/53)), short session only by us (`./setup.sh --game portal1 --ios`, [details](docs/portal1.md#iphone)) | 🚧 |
 | Rendering | Ray-traced lighting with Metal on M3 and A17 Pro GPUs, in the spirit of Portal with RTX (NVIDIA's RTX Remix is Windows and NVIDIA only, so it cannot be reused) | 💡 |
 
 ## Repository layout
@@ -475,7 +485,7 @@ profiles.
 ## Documentation
 
 - [docs/usage.md](docs/usage.md): language, controllers, LAN co-op, manual build, diagnostics
-- [docs/hl2.md](docs/hl2.md): Half-Life 2 (experimental)
+- [docs/hl2.md](docs/hl2.md): Half-Life 2 and its episodes
 - [docs/portal1.md](docs/portal1.md): Portal (experimental)
 - [docs/ios.md](docs/ios.md): iOS port, controls, settings, back taps
 - [docs/mods.md](docs/mods.md): custom maps, addon folders and console tweaks on iPhone and iPad
