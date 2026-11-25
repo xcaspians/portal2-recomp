@@ -136,6 +136,9 @@ RT_CHECK(workshop_pasted_links) {
     assert(!rt_ws_parse_link("", &id) && !rt_ws_parse_link("laser maze", &id) && !rt_ws_parse_link("12a", &id));
     assert(!rt_ws_parse_link("?id=0", &id) && !rt_ws_parse_link("https://example.com/", &id));
     assert(!rt_ws_parse_link("123456789012345678901", &id));   // longer than any 64-bit id
+    // "id=" inside another parameter (audit, round 4): appid=620 is not the item
+    assert(rt_ws_parse_link("https://steamcommunity.com/sharedfiles/filedetails/?appid=620&id=123", &id) && id == 123ULL);
+    assert(!rt_ws_parse_link("https://steamcommunity.com/app/?appid=620", &id));
 }
 
 RT_CHECK(workshop_map_paths) {
@@ -211,4 +214,41 @@ RT_CHECK(workshop_saved_maps_and_canceled_downloads) {
     snprintf(path, sizeof(path), "%s/x.bsp.part", c); unlink(path); rmdir(c);
     snprintf(path, sizeof(path), "%s/readme.txt", d); unlink(path); rmdir(d);
     assert(rmdir(root) == 0);
+}
+
+// Text from Steam is always valid UTF-8 afterwards (audit, round 4): a lone
+// surrogate or a stray byte becomes U+FFFD, or NSString would be nil (crash
+// on a nil URL, empty labels).
+static int valid_utf8(const unsigned char *p) {
+    while (*p) {
+        int len = *p < 0x80 ? 1 : (*p & 0xE0) == 0xC0 ? 2 : (*p & 0xF0) == 0xE0 ? 3 : (*p & 0xF8) == 0xF0 ? 4 : 0;
+        if (!len) return 0;
+        for (int k = 1; k < len; ++k) if ((p[k] & 0xC0) != 0x80) return 0;
+        unsigned cp = len == 1 ? p[0] : len == 2 ? (p[0] & 31u) << 6 | (p[1] & 63u)
+                    : len == 3 ? (p[0] & 15u) << 12 | (p[1] & 63u) << 6 | (p[2] & 63u)
+                    : (p[0] & 7u) << 18 | (p[1] & 63u) << 12 | (p[2] & 63u) << 6 | (p[3] & 63u);
+        if ((cp >= 0xD800 && cp < 0xE000) || (len == 2 && cp < 0x80) || (len == 3 && cp < 0x800) || cp > 0x10FFFF) return 0;
+        p += len;
+    }
+    return 1;
+}
+RT_CHECK(workshop_text_is_always_valid_utf8) {
+    static const char *const cases[] = {
+        "{\"t\":\"a\\ud800b\"}", "{\"t\":\"\\udc00\"}", "{\"t\":\"x\xff y\"}", "{\"t\":\"\xc3(\"}", "{\"t\":\"\xed\xa0\x80\"}",
+        "{\"t\":\"ok \\ud83d\\ude00 \xc3\xa9\"}",
+    };
+    for (size_t c = 0; c < sizeof(cases) / sizeof(*cases); ++c) {
+        rt_json_tok toks[8];
+        int n = rt_json_parse(cases[c], strlen(cases[c]), toks, 8);
+        assert(n == 3);
+        char out[64];
+        assert(rt_json_text(cases[c], &toks[2], out, sizeof(out)));
+        assert(valid_utf8((const unsigned char *)out));
+    }
+    rt_json_tok toks[8];
+    const char *good = "{\"t\":\"ok \\ud83d\\ude00 \xc3\xa9\"}";
+    rt_json_parse(good, strlen(good), toks, 8);
+    char out[64];
+    rt_json_text(good, &toks[2], out, sizeof(out));
+    assert(!strcmp(out, "ok \xf0\x9f\x98\x80 \xc3\xa9"));   // real text unchanged
 }
