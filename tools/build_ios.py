@@ -39,7 +39,8 @@ import localconfig
 
 ROOT = Path(__file__).resolve().parent.parent
 FRAMEWORKS = ['UIKit', 'Foundation', 'CoreGraphics', 'QuartzCore', 'OpenGLES', 'Metal', 'AVFoundation',
-              'AudioToolbox', 'CoreAudio', 'CoreMotion', 'GameController', 'CoreHaptics', 'CoreBluetooth', 'OpenAL']
+              'AudioToolbox', 'CoreAudio', 'CoreMotion', 'GameController', 'CoreHaptics', 'CoreBluetooth', 'OpenAL',
+              'Security']   # Security: the Steam Web API key in the Keychain (runtime/ios/workshop_ios.m)
 # Frameworks de libd3d9metal en plus de ceux de l'app (otool -L de sa dylib iOS).
 D3D9METAL_FRAMEWORKS = ['MetalFX', 'CoreVideo', 'CoreFoundation']
 TARGETS = {
