@@ -24,11 +24,10 @@ RT_CHECK(game_picker_remove_keeps_saves_and_other_games) {
         assert(!strncmp(out, "mel/", 4));                   // only Mel's own folder
         assert(!strstr(out, "userdata") && !strstr(out, "SAVE"));
     }
-    for (int i = 0; rt_picker_removable(&p2, i, out, sizeof(out)); ++i) {
-        assert(strcmp(out, "mel") && strncmp(out, "mel/", 4) && !strstr(out, "userdata"));
-    }
-    assert(!strcmp(rt_picker_removable(&p2, 0, out, sizeof(out)), "game"));
-    assert(!rt_picker_removable(&p2, 3, out, sizeof(out)));
+    // Portal 2 is the base the other games run on: nothing of it is removable.
+    assert(!rt_picker_can_remove(&p2) && rt_picker_can_remove(&mel));
+    for (int i = -1; i < 4; ++i) assert(!rt_picker_removable(&p2, i, out, sizeof(out)));
+    assert(!strcmp(rt_picker_removable(&mel, 0, out, sizeof(out)), "mel/game"));
 }
 
 RT_CHECK(game_picker_autostart) {
