@@ -429,6 +429,16 @@ x64_misc:
     emms
     ret
 
+# A stray byte in .text (data, as compilers and hand-written code leave):
+# a linear disassembly reads 0xe8 as a CALL and swallows the start of the
+# next function; the lifter decodes again from the function's own address.
+    .byte 0xe8
+.globl x64_after_data
+.type x64_after_data, @function
+x64_after_data:
+    mov eax, 0x5a5a
+    ret
+
 .section .rodata
 .p2align 2
 .Ltable:

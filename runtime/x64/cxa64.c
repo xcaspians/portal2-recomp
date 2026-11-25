@@ -5,6 +5,7 @@
 // so the C++ runtime itself (operator new, exceptions, RTTI) is guest code.
 #include "rt64.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/sysctl.h>
@@ -132,6 +133,13 @@ static void s_longjmp(CPU64 *c) {
     c->transferred = 1;
 }
 
+// No child processes from a lifted program (zenity message boxes, crash
+// handlers): fork, exec and spawn fail with EAGAIN/ENOSYS.
+static void s_fork(CPU64 *c) { rt64_set_errno(EAGAIN); RET(c, -1); }
+static void s_exec(CPU64 *c) { rt64_set_errno(ENOSYS); RET(c, -1); }
+static void s_spawn(CPU64 *c) { RET(c, 11); }                    // returns the error (EAGAIN)
+static void s_waitpid(CPU64 *c) { rt64_set_errno(ECHILD); RET(c, -1); }
+
 static const char *program_name = "p2ce";
 static const char *program_full = "p2ce";
 
@@ -146,7 +154,9 @@ static const RT64Shim shims[] = {
     {"qsort", s_qsort}, {"bsearch", s_bsearch}, {"signal", s_signal_ok}, {"sigaction", s_signal_ok},
     {"sigprocmask", s_signal_ok}, {"pthread_sigmask", s_signal_ok}, {"sigaltstack", s_signal_ok},
     {"sigemptyset", s_sigemptyset}, {"sigfillset", s_sigfillset}, {"sigaddset", s_sigaddset},
-    {"raise", s_raise}, {"alarm", s_alarm},
+    {"raise", s_raise}, {"alarm", s_alarm}, {"fork", s_fork}, {"vfork", s_fork}, {"execv", s_exec},
+    {"execve", s_exec}, {"execvp", s_exec}, {"posix_spawn", s_spawn}, {"posix_spawnp", s_spawn},
+    {"waitpid", s_waitpid}, {"wait", s_waitpid},
     {"_setjmp", s_setjmp}, {"setjmp", s_setjmp}, {"__sigsetjmp", s_setjmp}, {"sigsetjmp", s_setjmp},
     {"longjmp", s_longjmp}, {"_longjmp", s_longjmp}, {"siglongjmp", s_longjmp}, {"__longjmp_chk", s_longjmp},
     {NULL, NULL},
