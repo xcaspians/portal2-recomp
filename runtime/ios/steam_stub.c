@@ -62,6 +62,24 @@ uint32_t steam_stub_app_id(void) {
     return value ? value : 620u;
 }
 
+// The game's own app, or one Steam installed with a game of this app for this
+// account: P2_STEAM_OWNED, the "SharedDepots" apps of the games' appmanifest on
+// the Mac (tools/build_ios.py writes steam-owned.txt, ios/main_ios.c reads it).
+// Half-Life 2's episodes (380, 420) and Lost Coast (340) come with it since the
+// anniversary update, and its engine asks before switching to them.
+bool steam_stub_owns(uint32_t app) {
+    if (app == steam_stub_app_id()) return true;
+    const char *list = getenv("P2_STEAM_OWNED");
+    for (const char *p = list; p && *p;) {
+        char *end = NULL;
+        unsigned long id = strtoul(p, &end, 10);
+        if (end == p) break;
+        if (id == app) return true;
+        p = *end ? end + 1 : end;
+    }
+    return false;
+}
+
 // ---- cycle de vie ----
 EXPORT bool SteamAPI_InitSafe(void) { fprintf(stderr, "[steam-stub] hors ligne : stub iOS, app %u\n", steam_stub_app_id()); return true; }
 // Left 4 Dead 2 starts through SteamAPI_Init and asks SteamAPI_IsSteamRunning:
