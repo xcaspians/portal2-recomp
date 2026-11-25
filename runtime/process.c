@@ -3,6 +3,7 @@
 // system exécutent réellement la commande (un exécutable ELF Linux échoue donc
 // avec ENOEXEC, comme sur un Linux sans binfmt adapté). Les numéros de signaux
 // et les statuts wait sont traduits entre Darwin et Linux.
+// SHIMS: unsetenv execlp
 // SHIMS: setenv getpid getuid getpwuid gethostname getrusage getloadavg kill wait waitpid
 // SHIMS: geteuid getgid getegid getlogin_r
 // SHIMS: fork execvp popen pclose system _exit exit alarm uuid_generate mallinfo mount
@@ -154,6 +155,20 @@ static int write_passwd(CPU *c, const struct passwd *pw) {
 }
 
 static int process_shim(CPU *c, const char *name) {
+    if (!strcmp(name, "unsetenv")) {
+        uint32_t key = rt_arg32(c, 0);
+        const char *k = key ? rt_guest_cstr(c, key) : "";
+        if (!*k || strchr(k, '=')) { rt_fail(c, RT_EINVAL); return 1; }
+        unsetenv(k);   // shared with the host libraries, as setenv
+        c->eax = 0;
+        return 1;
+    }
+    if (!strcmp(name, "execlp")) {
+        // Left 4 Dead 2 opens web pages with xdg-open: nothing to start here.
+        fprintf(stderr, "execlp %s: not started (no external programs)\n", rt_guest_cstr(c, rt_arg32(c, 0)));
+        rt_fail(c, RT_ENOENT);
+        return 1;
+    }
     if (!strcmp(name, "setenv")) {
         uint32_t key = rt_arg32(c, 0), value = rt_arg32(c, 1); int overwrite = (int32_t)rt_arg32(c, 2);
         if (!key) { rt_fail(c, RT_EINVAL); return 1; }

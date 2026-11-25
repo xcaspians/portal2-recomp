@@ -6,7 +6,7 @@
 // « C.UTF-8 », ont le même LC_NUMERIC (séparateur décimal « . », aucun groupement).
 // SHIMS: strtoll strtoull strtold_l __strtod_internal __strtof_internal __strtol_internal
 // SHIMS: __strtoll_internal __strtoul_internal __strtoull_internal __strtod_l __strtof_l
-// SHIMS: qsort rand srand rand_r
+// SHIMS: qsort bsearch rand srand rand_r
 #include "rt.h"
 #include "modules.h"
 #include <ctype.h>
@@ -152,6 +152,16 @@ static int rt_numeric_shim(CPU *c, const char *name) {
     else if (!strcmp(name, "__strtof_internal") || !strcmp(name, "__strtof_l")) floating(c, 0);
     else if (!strcmp(name, "strtold_l")) floating(c, 2);
     else if (!strcmp(name, "qsort")) rt_guest_qsort(c, rt_arg32(c, 0), rt_arg32(c, 1), rt_arg32(c, 2), rt_arg32(c, 3));
+    else if (!strcmp(name, "bsearch")) {   // glibc's: compare(key, element), halving [0, count)
+        uint32_t key = rt_arg32(c, 0), base = rt_arg32(c, 1), lo = 0, hi = rt_arg32(c, 2), size = rt_arg32(c, 3),
+                 function = rt_arg32(c, 4), found = 0;
+        while (lo < hi) {
+            uint32_t mid = lo + (hi - lo) / 2, element = base + mid * size, args[2] = {key, element};
+            int32_t order = (int32_t)rt_invoke(c, function, args, 2);
+            if (order < 0) hi = mid; else if (order > 0) lo = mid + 1; else { found = element; break; }
+        }
+        c->eax = found;
+    }
     else if (!strcmp(name, "srand")) {
         pthread_mutex_lock(&random_lock); random_seed(rt_arg32(c, 0)); pthread_mutex_unlock(&random_lock);
     } else if (!strcmp(name, "rand_r")) {

@@ -15,10 +15,14 @@
 // SHIMS: acos acosf asin asinf atan atanf atan2 atan2f cbrtf ceil ceilf cos cosf cosh coshf
 // SHIMS: sqrt exp2f fmaxf fminf
 // SHIMS: exp exp2 expf floor floorf fmod fmodf frexp ldexp log log10 log10f logf modf
+// SHIMS: __acos_finite __acosf_finite __asin_finite __asinf_finite __atan2_finite __atan2f_finite
+// SHIMS: __exp_finite __expf_finite __log10_finite __log10f_finite __log_finite __logf_finite __powf_finite
 // SHIMS: pow powf __pow_finite sin sinf sinh sinhf sincos sincosf sqrtf tan tanf tanh tanhf trunc
 #include "rt.h"
 #include <errno.h>
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 
 
 enum { UFLOW = 1 };
@@ -54,7 +58,28 @@ static void run_unary(CPU *c, size_t i) {
 }
 
 static int sincosf_handler(CPU *c, const char *name, void *data);
+// glibc's __<name>_finite (Left 4 Dead 2, built with -ffast-math): the function
+// without its errno wrapper, as __pow_finite above.
+static int finite_variant(CPU *c, const char *name) {
+    size_t n = strlen(name);
+    if (n < 10 || strncmp(name, "__", 2) || strcmp(name + n - 7, "_finite") || !strcmp(name, "__pow_finite")) return 0;
+    char base[24];
+    snprintf(base, sizeof(base), "%.*s", (int)(n - 9), name + 2);
+    double result;
+    if (!strcmp(base, "atan2")) result = atan2(rt_arg_f64(c, 0), rt_arg_f64(c, 8));
+    else if (!strcmp(base, "atan2f")) result = atan2f(rt_arg_f32(c, 0), rt_arg_f32(c, 4));
+    else if (!strcmp(base, "powf")) result = powf(rt_arg_f32(c, 0), rt_arg_f32(c, 4));
+    else {
+        size_t i = 0;
+        while (i < sizeof(unary) / sizeof(*unary) && strcmp(unary[i].name, base)) ++i;
+        if (i == sizeof(unary) / sizeof(*unary)) return 0;
+        result = unary[i].fd ? unary[i].fd(rt_arg_f64(c, 0)) : unary[i].ff(rt_arg_f32(c, 0));
+    }
+    rt_return_st0(c, result);
+    return 1;
+}
 static int rt_math_shim(CPU *c, const char *name) {
+    if (finite_variant(c, name)) return 1;
     for (size_t i = 0; i < sizeof(unary) / sizeof(*unary); ++i) {
         if (strcmp(name, unary[i].name)) continue;
         run_unary(c, i);

@@ -4,6 +4,8 @@
 // SHIMS: alSourceQueueBuffers alSourceUnqueueBuffers alGetError alGetEnumValue alGetProcAddress
 // SHIMS: alcOpenDevice alcCloseDevice alcCreateContext alcDestroyContext
 // SHIMS: alcMakeContextCurrent alcGetCurrentContext alcGetContextsDevice
+// SHIMS: alcGetError alcGetIntegerv alcCaptureOpenDevice alcCaptureCloseDevice alcCaptureStart
+// SHIMS: alcCaptureStop alcCaptureSamples
 //
 // AL object names (ALuint) and enums are plain integers shared by the guest and
 // the host. ALCdevice*/ALCcontext* are host pointers: they cross the ABI as
@@ -25,7 +27,7 @@ static const char *const bridged[] = {
     "alSourcei", "alGetSourcei", "alSourcePlay", "alSourcePause", "alSourceStop",
     "alSourceQueueBuffers", "alSourceUnqueueBuffers", "alGetError", "alGetEnumValue", "alGetProcAddress",
     "alcOpenDevice", "alcCloseDevice", "alcCreateContext", "alcDestroyContext",
-    "alcMakeContextCurrent", "alcGetCurrentContext", "alcGetContextsDevice",
+    "alcMakeContextCurrent", "alcGetCurrentContext", "alcGetContextsDevice", "alcGetError", "alcGetIntegerv",
 };
 
 // Names read from / written to a guest ALuint array of n entries. A negative
@@ -101,6 +103,23 @@ static int openal_shim(CPU *c, const char *name) {
         c->eax = 0;
         for (size_t i = 0; i < sizeof(bridged) / sizeof(*bridged); ++i)
             if (!strcmp(bridged[i], wanted)) c->eax = rt_dynamic_import(wanted);
+    } else if (!strcmp(name, "alcGetError")) {
+        ALCdevice *device = rt_arg32(c, 0) ? rt_handle_get(rt_arg32(c, 0), KIND_DEVICE) : NULL;
+        c->eax = (uint32_t)alcGetError(device);
+    } else if (!strcmp(name, "alcGetIntegerv")) {
+        ALCdevice *device = rt_arg32(c, 0) ? rt_handle_get(rt_arg32(c, 0), KIND_DEVICE) : NULL;
+        int32_t size = (int32_t)rt_arg32(c, 2);
+        uint32_t out = rt_arg32(c, 3);
+        if (size > 0 && size <= 64 && out) {
+            ALCint values[64];
+            alcGetIntegerv(device, (ALCenum)rt_arg32(c, 1), size, values);
+            rt_write_span(c, out, (uint64_t)size * 4);
+            for (int32_t i = 0; i < size; ++i) W32(out + 4u * (uint32_t)i, (uint32_t)values[i]);
+        }
+    } else if (!strncmp(name, "alcCapture", 10)) {
+        // Voice capture (Left 4 Dead 2's voice chat, never used offline): no
+        // capture device, so the game keeps its microphone off.
+        c->eax = 0;
     } else if (!strcmp(name, "alcOpenDevice")) {
         uint32_t device_name = rt_arg32(c, 0);
         ALCdevice *device = alcOpenDevice(device_name ? rt_guest_cstr(c, device_name) : NULL);
