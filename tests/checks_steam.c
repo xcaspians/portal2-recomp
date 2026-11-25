@@ -596,3 +596,24 @@ RT_CHECK(steam_absent_client_exits_cleanly) {
     assert(strstr(unknown, "SteamAPI_Init failed") && strstr(unknown, "Check that Steam is running"));
     assert(absent[strlen(absent) - 1] == '\n' && running[strlen(running) - 1] == '\n' && unknown[strlen(unknown) - 1] == '\n');
 }
+
+// Offline (P2_STEAM_OFFLINE=1, Left 4 Dead 2): server lists, server pings and
+// lobby searches never reach Steam; they answer "no request". Nothing else changes.
+RT_CHECK(steam_offline_refuses_online_matchmaking) {
+    setenv("P2_STEAM_OFFLINE", "1", 1);
+    static const struct { const char *name; uint32_t eax; } cases[] = {
+        {"SteamMatchMakingServers002::PingServer", UINT32_MAX},
+        {"SteamMatchMakingServers002::ServerRules", UINT32_MAX},
+        {"SteamMatchMakingServers002::RequestInternetServerList", 0},
+        {"SteamMatchMakingServers002::RequestLANServerList", 0},
+        {"SteamMatchMaking009::RequestLobbyList", 0},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(*cases); ++i) {
+        CPU c; rt_cpu_reset(&c); c.esp = STACK; c.eax = 0x5555; c.edx = 0x6666;
+        W32(STACK, RT_RETURN_SENTINEL);
+        rt_call(&c, rt_dynamic_import(cases[i].name), RT_RETURN_SENTINEL);
+        assert(c.eax == cases[i].eax);
+        if (strstr(cases[i].name, "Lobby")) assert(c.edx == 0);   // 64-bit k_uAPICallInvalid
+    }
+    unsetenv("P2_STEAM_OFFLINE");
+}

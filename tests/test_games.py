@@ -177,6 +177,9 @@ class Left4Dead2Profile(unittest.TestCase):
         self.assertEqual(args[-4:], ['-insecure', '+sv_lan', '1', '-nomaster'])   # never Valve's servers or VAC
         self.assertEqual(games.forced_args(dict(games.GAMES['portal2']), ['-novid']), ['-novid'])   # others unchanged
         self.assertTrue((games.ROOT / l4d2['roots']).is_file())
+        import launch
+        self.assertEqual(launch.environment({}, l4d2, base={})['P2_STEAM_OFFLINE'], '1')   # no server lists or lobbies
+        self.assertNotIn('P2_STEAM_OFFLINE', launch.environment({}, dict(games.GAMES['portal2']), base={}))
 
 
 if __name__ == '__main__':
