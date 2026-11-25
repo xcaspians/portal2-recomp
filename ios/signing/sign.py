@@ -40,6 +40,35 @@ def find_profile(bundle_id):
     return best
 
 
+ICLOUD_KEYS = ('com.apple.developer.icloud-container-identifiers', 'com.apple.developer.icloud-services',
+               'com.apple.developer.ubiquity-container-identifiers', 'com.apple.developer.icloud-container-environment',
+               'com.apple.developer.ubiquity-kvstore-identifier')
+
+
+def narrow_entitlements(entitlements):
+    """Droits du profil ramenés à ceux de l'app, comme Xcode le fait. Un profil
+    avec iCloud (sauvegardes iCloud, runtime/ios/icloud_saves_ios.m) porte des
+    jokers (« * », « ÉQUIPE.* ») qu'une app signée ne peut pas garder : iCloud
+    Documents seulement, les conteneurs du profil, l'environnement de
+    développement, sans magasin clé-valeur. iCloud coché sans conteneur
+    attribué : pas d'iCloud du tout. Sans iCloud : inchangés."""
+    narrowed = dict(entitlements)
+    if not any(key in narrowed for key in ICLOUD_KEYS):
+        return narrowed
+    containers = [c for c in narrowed.get('com.apple.developer.icloud-container-identifiers') or [] if '*' not in c]
+    for key in ICLOUD_KEYS:
+        narrowed.pop(key, None)
+    if not containers:
+        print('profil avec iCloud mais sans conteneur : app signée sans iCloud (voir docs/ios.md, sauvegardes iCloud)',
+              file=sys.stderr)
+        return narrowed
+    narrowed['com.apple.developer.icloud-container-identifiers'] = containers
+    narrowed['com.apple.developer.ubiquity-container-identifiers'] = containers
+    narrowed['com.apple.developer.icloud-services'] = ['CloudDocuments']
+    narrowed['com.apple.developer.icloud-container-environment'] = 'Development'
+    return narrowed
+
+
 def pick_identity(find_identity_output, profile_certificates):
     """Empreinte de la première identité de signature dont le certificat est
     dans le profil. Avec plusieurs comptes Apple dans Xcode (équipe gratuite
@@ -72,7 +101,7 @@ def main():
     (app / 'embedded.mobileprovision').write_bytes(path.read_bytes())
     with tempfile.TemporaryDirectory() as tmp:
         entitlements = Path(tmp) / 'entitlements.plist'
-        entitlements.write_bytes(plistlib.dumps(data['Entitlements']))
+        entitlements.write_bytes(plistlib.dumps(narrow_entitlements(data['Entitlements'])))
         subprocess.run(['codesign', '-f', '-s', identity(data), '--entitlements', str(entitlements),
                         '--generate-entitlement-der', str(app)], check=True)
     print(f'{app} signé ({bundle_id}, équipe {team}, profil expirant le {data["ExpirationDate"]:%Y-%m-%d})')

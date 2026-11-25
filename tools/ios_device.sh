@@ -13,6 +13,11 @@
 #   tools/ios_device.sh prep                     copy only Documents/prep again (after gameprep: ~80 MB)
 #   tools/ios_device.sh run [seconds] [VAR=value...]   launch (default 180 s), then fetch Documents/game.log
 #   tools/ios_device.sh backtap                  fetch the back-tap dataset (Documents/backtap/dataset.csv)
+#   tools/ios_device.sh mods push <map.bsp | folder> [portal2_dlcN]   a map or an addon onto the device
+#                                                (tools/mods_dest.py; docs/mods.md)
+#   tools/ios_device.sh workshop push [--dry-run]   the Mac's Workshop maps onto the device, as Community
+#                                                Maps keeps them (tools/workshop_push.py; docs/mods.md)
+#   tools/ios_device.sh space [bytes]            the device's free space (the app reports it: P2_DEVICE_REPORT=1)
 #   tools/ios_device.sh saves status|pull|push [--force] [--dry-run]   saves between the Mac and the iPhone
 #                                                (tools/save_sync.py; docs/usage.md#saves-between-mac-and-iphone-portal-2; Portal 2 only)
 # Device: P2_DEVICE (UDID or name), else the first connected iPhone/iPad.
@@ -55,6 +60,27 @@ list_saves() {  # fichier JSON : liste horodatée de Documents/portal2-userdata/
     echo "cannot list Documents/portal2-userdata/portal2 on the device: is it unlocked, and was the game launched once?"
     exit 1
   }
+}
+# Free space, model and memory, written by the app itself (ios/main_ios.c,
+# P2_DEVICE_REPORT=1: it writes Documents/device-report.txt and quits at once;
+# devicectl only knows the total capacity). File path in $1.
+device_report() {
+  dc device process launch --terminate-existing \
+    --environment-variables "$(env_json P2_DEVICE_REPORT=1)" "$APP_ID" >/dev/null 2>&1 || return 1
+  local i
+  for i in 1 2 3 4 5 6 7 8; do
+    sleep 1
+    dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" \
+      --source Documents/device-report.txt --destination "$1" >/dev/null 2>&1 && grep -q '^free_bytes=' "$1" && return 0
+  done
+  return 1
+}
+# Stops with a plain message unless the device has $1 bytes free plus a margin.
+need_space() {
+  local report; report=$(mktemp)
+  device_report "$report" || : > "$report"
+  python3 tools/workshop_push.py space --report "$report" --need "$1"; local status=$?
+  rm -f "$report"; return $status
 }
 
 case "${1:-}" in
@@ -118,6 +144,54 @@ backtap)
   dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" \
     --source Documents/backtap/dataset.csv --destination "$IOS_DIR/backtap/dataset.csv"
   echo "dataset: $IOS_DIR/backtap/dataset.csv ($(($(wc -l < "$IOS_DIR/backtap/dataset.csv") - 1)) examples)"
+  ;;
+mods)
+  # Cartes dans Documents/game/portal2/maps/custom, extensions dans
+  # Documents/game/portal2_dlcN (tools/mods_dest.py : destinations vérifiées).
+  [ "${2:-}" = push ] && [ -n "${3:-}" ] || { echo "usage: $0 mods push <map.bsp | folder> [portal2_dlcN]"; exit 2; }
+  pairs=$(python3 tools/mods_dest.py "$3" ${4:+"$4"}) || exit 2
+  while IFS=$'\t' read -r from to; do   # </dev/null : devicectl ne doit pas lire la liste
+    echo "$from -> $to"
+    copy_to "$APP_ID" "$from" "$to" >/dev/null </dev/null
+  done <<< "$pairs"
+  echo "Copied. In the game: pause menu > Touch Controls > Maps & Mods, or a line +map custom/<name> in Documents/launch.args"
+  ;;
+space)
+  report=$(mktemp)
+  device_report "$report" || { echo "the app didn't report (installed, device unlocked?)"; exit 1; }
+  cat "$report"; rm -f "$report"
+  [ -z "${2:-}" ] || need_space "$2"
+  ;;
+workshop)
+  # Documents/portal2-userdata/portal2/maps/workshop/<id>/ : la disposition de
+  # Community Maps (workshop_ios.m), avec sa note p2workshop.txt. Rien n'est
+  # jamais supprimé sur l'appareil (tools/workshop_push.py).
+  [ "${2:-}" = push ] || { echo "usage: $0 workshop push [--dry-run]"; exit 2; }
+  [ "$MOD" = portal2 ] || { echo "workshop: Portal 2 only"; exit 2; }
+  dry=""; [ "${3:-}" = --dry-run ] && dry=--dry-run
+  mkdir -p "$IOS_DIR"
+  listing="$IOS_DIR/workshop-listing.json"; : > "$listing"
+  if ! dc device info files --domain-type appDataContainer --domain-identifier "$APP_ID" \
+       --subdirectory Documents/portal2-userdata/portal2/maps/workshop --json-output "$listing" >/dev/null 2>&1; then
+    : > "$listing"   # no workshop folder yet, or no device: tell them apart
+    dc device info files --domain-type appDataContainer --domain-identifier "$APP_ID" \
+      --subdirectory Documents --no-recurse >/dev/null 2>&1 ||
+      { echo "cannot list the app's files on the device: is it unlocked, and is Portal 2 installed?"; exit 1; }
+  fi
+  stage="$IOS_DIR/workshop-stage"; rm -rf "$stage"; mkdir -p "$stage"
+  out=$(python3 tools/workshop_push.py plan --listing "$listing" --stage "$stage" $dry) || exit $?
+  total=$(awk -F'\t' '$1 == "total" {print $2}' <<< "$out")
+  [ -n "$dry" ] && { echo "dry run: nothing copied"; exit 0; }
+  [ "${total:-0}" -gt 0 ] && { need_space "$total" || exit 1; }
+  n=0
+  while IFS=$'\t' read -r op from to; do   # </dev/null : devicectl ne doit pas lire la liste
+    [ "$op" = copy ] || continue
+    echo "$to"
+    copy_to "$APP_ID" "$from" "$to" >/dev/null </dev/null
+    n=$((n + 1))
+  done <<< "$out"
+  rm -rf "$stage"
+  echo "$n copied. In the game: pause menu > Touch Controls > Maps & Mods > Community Maps > Downloaded"
   ;;
 saves)
   # tools/save_sync.py knows Portal 2's folders only (portal2-userdata/portal2).

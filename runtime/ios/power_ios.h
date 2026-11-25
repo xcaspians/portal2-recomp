@@ -8,6 +8,9 @@
 // (present.maxFps de mtld3d, fixé à l'initialisation) ; suivi en cours de
 // partie par le limiteur du rendu OpenGL (gl_ios.m).
 int rt_ios_max_fps(void);
+// P2_IOS_MAX_FPS changed in game: recomputed (OpenGL follows at once; Metal
+// at the next launch, mtld3d reads its cap once).
+void rt_ios_power_reload(void);
 // Suit les changements d'état thermique et du mode économie d'énergie (une
 // fois, n'importe quel thread). metal : le changement ne s'appliquera qu'au
 // prochain lancement (le journal le dit).

@@ -57,6 +57,9 @@
 #include "touch_layout.h"
 #include "touch_test.h"
 #include "lifecycle_ios.h"
+#include "icloud_saves.h"
+#include "live_settings.h"
+#include "settings_menu_ios.h"
 
 int rt_ios_game_ui_visible(void);   // game_state.c
 extern _Atomic unsigned long rt_ios_frames;  // gl_ios.m : images présentées
@@ -123,10 +126,10 @@ static const CGFloat kButtonSize = 54;   // boutons : touch_layout.c
 static const float kStickLook = 90;      // comptes de souris par image, stick à fond (≈ 360°/s à la sensibilité 3 du jeu)
 static const float kTrackpadLook = 3.5f; // comptes de souris par point de glissement
 static NSString *const kTrackpadKey = @"P2TouchTrackpad";
+static float look_speed_cache;   // 0 : à relire (réglage changé en jeu)
 static float look_speed(void) {
-    static float speed;
-    if (!speed) speed = rt_ios_env_float("P2_TOUCH_LOOK", 1, 1e-6f);   // > 0
-    return speed;
+    if (!look_speed_cache) look_speed_cache = rt_ios_env_float("P2_TOUCH_LOOK", 1, 1e-6f);   // > 0
+    return look_speed_cache;
 }
 
 // Accélération du trackpad : gain 1 sous P2_TOUCH_ACCEL_LOW pt/s (visée fine
@@ -168,8 +171,8 @@ static float trackpad_gain(double speed) {
 // d'avance (en partie, au plus une fois par seconde, et après chaque tir) :
 // sans cela, la première vibration part avec un retard.
 static UIImpactFeedbackGenerator *haptic;
+static int wanted = -1;   // -1 : à relire (réglage changé en jeu)
 static void haptic_prepare(void) {
-    static int wanted = -1;
     if (wanted < 0) {
         // Portal 2 seulement : HL2 n'a pas ce réglage (tir tenu, pas de portails).
         wanted = rt_ios_current_game()->layout == RT_IOS_LAYOUT_PORTAL2 && rt_ios_env_flag("P2_HAPTICS", 1);
@@ -226,7 +229,14 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
     int held[ACTION_COUNT];   // nombre de doigts par action
     BOOL toggled[ACTION_COUNT]; // boutons à bascule enfoncés (sprint, accroupi de HL2)
     BOOL wasd[4];             // W, A, S, D enfoncées
-    BOOL concealed;           // cachée pour une manette ou un clavier
+    BOOL concealed;           // cachée pour une manette ou un clavier (= overlay.concealed)
+    rt_overlay_state overlay; // règles de rt_touch_overlay_update (touch_layout.c)
+    BOOL hasGamepad, hasKeyboard;
+    float opacity;            // P2_TOUCH_OPACITY : boutons et sticks (0 à 1)
+    float sizeScale;          // P2_TOUCH_SIZE : taille des boutons et sticks (0,75 à 1,5)
+    CGFloat knobSize;         // diamètre dessiné des boutons des sticks
+    UIView *settingsMenu;     // menu des réglages en jeu (settings_menu_ios.m), sous-vue
+    BOOL preview;             // menu ouvert : boutons dessinés derrière, pour voir les réglages
     BOOL menu;                // interface du jeu affichée : surcouche effacée
     NSTimer *tick;            // caméra : un pas par image tant que le stick est incliné
     float lookCarry[2];       // fractions de comptes de souris reportées
@@ -277,11 +287,16 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
                                           GCKeyboardDidConnectNotification, GCKeyboardDidDisconnectNotification])
             [center addObserver:self selector:@selector(devicesChanged) name:name object:nil];
         [self devicesChanged];
+        [self readLooks];
+        [center addObserver:self selector:@selector(settingsChanged:) name:@"P2SettingsChanged" object:nil];
         dataTaps = -1;
         fpsHidden = !rt_ios_env_flag("P2_SHOW_FPS", 1);   // posée par les Réglages (runtime/ios/settings.c)
         rt_ios_backtap_start();
         rt_ios_gyro_start(rt_ios_current_game()->layout == RT_IOS_LAYOUT_HL2);
         [self setupLayers];
+        // Menu des réglages : sous-vue, gardée devant les vues de SDL avec la surcouche.
+        settingsMenu = (__bridge_transfer UIView *)rt_ios_settings_menu_create();
+        [self addSubview:settingsMenu];
         __weak P2TouchControls *weakSelf = self;
         // Fin de chaque passage de la boucle (SDL la fait tourner à chaque
         // lecture d'événements) : les touchers de ce passage sont affichés d'un coup.
@@ -301,9 +316,47 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
     for (GCController *c in GCController.controllers) gamepad |= c.extendedGamepad != nil;
     // Manette que le jeu verra (sauf pilote MFi de SDL coupé, SDL_JOYSTICK_MFI=0).
     physicalPad = gamepad && SDL_GetHintBoolean(SDL_HINT_JOYSTICK_MFI, SDL_TRUE);
-    BOOL any = gamepad || GCKeyboard.coalescedKeyboard != nil;
-    if (rt_ios_env_flag("P2_TOUCH_CONTROLS", 0)) any = NO;   // 1 : jamais cachée (essais sur simulateur)
-    if (any != concealed) { concealed = any; [self setNeedsRender]; }
+    hasGamepad = gamepad; hasKeyboard = GCKeyboard.coalescedKeyboard != nil;
+    [self overlayEvent:RT_OVERLAY_DEVICES padActive:NO];
+}
+
+// Opacity and size of the buttons and sticks (Settings app or in-game menu).
+- (void)readLooks {
+    opacity = fminf(rt_ios_env_float("P2_TOUCH_OPACITY", 1, 0), 1);
+    sizeScale = fminf(fmaxf(rt_ios_env_float("P2_TOUCH_SIZE", 1, .5f), .5f), 2);
+}
+// A setting changed in game (live_settings_ios.m): caches read again, layout redone.
+- (void)settingsChanged:(NSNotification *)note {
+    (void)note;
+    look_speed_cache = 0; wanted = -1;   // relus au prochain usage
+    [self readLooks];
+    [self invalidateLayout];
+}
+
+// Applies one overlay event. P2_TOUCH_CONTROLS (Settings): auto, 1 (never
+// hidden, simulator tests), pad (off while a controller is connected).
+- (void)overlayEvent:(rt_overlay_event)event padActive:(BOOL)active {
+    BOOL was = concealed;
+    rt_touch_overlay_update(&overlay, event, hasGamepad, hasKeyboard, active, getenv("P2_TOUCH_CONTROLS"));
+    concealed = overlay.concealed != 0;
+    if (concealed == was) return;
+    // The controller takes over: no finger keeps a stick or a button held.
+    if (concealed && event == RT_OVERLAY_PAD_POLL) [self releaseAll];
+    [self setNeedsRender];
+}
+
+// A button pressed or a stick, d-pad or trigger moved on a physical controller
+// (GCController lists only real ones, not SDL's virtual touch controller).
+static BOOL pad_input_active(void) {
+    const float dead = .3f;   // a resting stick drifts: ignore small deflections
+    for (GCController *c in GCController.controllers) {
+        if (!c.extendedGamepad) continue;
+        GCPhysicalInputProfile *p = c.physicalInputProfile;
+        for (GCControllerButtonInput *b in p.allButtons) if (b.isPressed) return YES;
+        for (GCControllerDirectionPad *d in p.allDpads)
+            if (fabsf(d.xAxis.value) > dead || fabsf(d.yAxis.value) > dead) return YES;
+    }
+    return NO;
 }
 
 // À chaque image : rester devant la vue OpenGL de SDL (ajoutée après la
@@ -320,7 +373,11 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
         [self setNeedsRender];
     }
     [self updateFPS:now];
+    rt_ios_settings_menu_tick((__bridge void *)settingsMenu);
+    if ((rt_ios_settings_menu_open() != 0) != preview) { preview = !preview; [self setNeedsRender]; }
     [self syncPad];
+    // Overlay shown by a touch: the next controller input hides it again.
+    if (hasGamepad && !concealed) [self overlayEvent:RT_OVERLAY_PAD_POLL padActive:pad_input_active()];
     if (pad && rt_ios_move_response() != padResponse) { padResponse = rt_ios_move_response(); [self updateMove]; }
     [self testStep];
     // Capteurs de mouvement : orientation de l'écran lue une fois par image.
@@ -334,7 +391,7 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit; }
         haptic_prepare();
     }
     if (host.subviews.lastObject != self) [host bringSubviewToFront:self];
-    if (!CGRectEqualToRect(self.frame, host.bounds)) { self.frame = host.bounds; [self invalidateLayout]; }
+    if (!CGRectEqualToRect(self.frame, host.bounds)) { self.frame = host.bounds; settingsMenu.frame = self.bounds; [self invalidateLayout]; }
     [self renderIfNeeded];
     if (trackpad) return;   // trackpad : mouvements envoyés au glissement (touchesMoved)
     for (P2Finger *f in fingers.objectEnumerator) {
@@ -430,6 +487,9 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
 
 // Hors partie, les doigts passent à la vue de SDL (clics dans les menus).
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    // Menu des réglages d'abord (son engrenage vit dans le menu pause du jeu).
+    UIView *hit = [settingsMenu hitTest:[self convertPoint:point toView:settingsMenu] withEvent:event];
+    if (hit) return hit;
     return menu ? nil : [super hitTest:point withEvent:event];
 }
 - (void)releaseAll {
@@ -513,7 +573,7 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
 
 // ---- disposition (points, dans la zone sûre) ----
 - (CGRect)area { return UIEdgeInsetsInsetRect(self.bounds, self.safeAreaInsets); }
-- (CGFloat)stickRadius { return MIN(66, self.area.size.height * .15); }
+- (CGFloat)stickRadius { return MIN(66, self.area.size.height * .15) * sizeScale; }
 - (CGPoint)restingStick:(BOOL)right {
     CGRect a = self.area;
     // HL2 : stick de la caméra plus au centre, à l'écart de la grappe du tir.
@@ -522,8 +582,9 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
 }
 // Les tapes au dos tirent les portails : leurs boutons ne servent que sans
 // elles, sauf choix contraire (P2_PORTAL_BUTTONS=1 toujours, =0 jamais).
-// Décidé une fois, après le démarrage des capteurs (initWithWindow:).
-static BOOL portal_buttons(void) { return RT_IOS_ENV_FLAG("P2_PORTAL_BUTTONS", !rt_ios_backtap_available()); }
+// Relu à chaque disposition (après le démarrage des capteurs, et quand le
+// réglage change en jeu).
+static BOOL portal_buttons(void) { return rt_ios_env_flag("P2_PORTAL_BUTTONS", !rt_ios_backtap_available()); }
 // Couleurs et icônes de la surcouche, créées une fois : renderIfNeeded est
 // appelé à chaque mouvement de doigt (jusqu'à 120 fois par seconde).
 static UIColor *blue, *orange, *ink, *icon_tint, *stick_ink, *line_ink, *red, *flag_red;
@@ -576,13 +637,13 @@ static UIImage *icon_image(NSString *symbol, CGFloat point_size) {
         if ((t->flags & RT_TOUCH_PORTAL) && !portal_buttons()) continue;
         if ((t->flags & RT_TOUCH_DATASET) && !rt_ios_backtap_dataset_on()) continue;
         double cx, cy;
-        rt_touch_place(t, CGRectGetMinX(a), CGRectGetMinY(a), a.size.width, a.size.height, &cx, &cy);
+        rt_touch_place_scaled(t, sizeScale, CGRectGetMinX(a), CGRectGetMinY(a), a.size.width, a.size.height, &cx, &cy);
         UIColor *color = t->color == RT_TOUCH_BLUE ? blue : t->color == RT_TOUCH_ORANGE ? orange
                        : t->color == RT_TOUCH_RED ? red : t->color == RT_TOUCH_FLAG ? flag_red : ink;
         // Mode de la caméra : l'icône montre le mode actuel.
         NSString *symbol = t->action == RT_TOUCH_LOOK_MODE ? (trackpad ? @"hand.draw.fill" : @"r.joystick.fill")
                          : t->symbol ? @(t->symbol) : nil;
-        b[n++] = (Button){t->action, symbol, color, CGPointMake(cx, cy), t->size, t->flags};
+        b[n++] = (Button){t->action, symbol, color, CGPointMake(cx, cy), t->size * sizeScale, t->flags};
     }
     return n;
 }
@@ -707,8 +768,11 @@ static void backtap_touches(NSSet<UITouch *> *touches) {
 }
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     (void)event;
-    concealed = NO;   // un toucher ramène la surcouche cachée pour une manette
+    // A touch brings back the overlay hidden for a controller, except with
+    // "Off with a controller": then touches drive no hidden control at all.
+    [self overlayEvent:RT_OVERLAY_TOUCH padActive:hasGamepad && pad_input_active()];
     backtap_touches(touches);
+    if (concealed) return;
     for (UITouch *t in touches) {
         P2Finger *f = [P2Finger new];
         f.start = f.at = [t locationInView:self];
@@ -899,7 +963,8 @@ static void set_circle(CAShapeLayer *l, CGFloat diameter) {
     needsRender = NO;
     [CATransaction begin]; [CATransaction setDisableActions:YES];
     [self renderFPS];
-    BOOL shown = !concealed && !menu && !rt_ios_touch_test_active();   // essai : écran dégagé
+    // Menu des réglages ouvert : boutons dessinés derrière (opacité et taille en direct).
+    BOOL shown = ((!concealed && !menu) || preview) && !rt_ios_touch_test_active();   // essai : écran dégagé
     for (int right = 0; right < 2; ++right) {
         BOOL hidden = !shown || (right && trackpad);
         stickRing[right].hidden = stickKnob[right].hidden = hidden;
@@ -911,6 +976,9 @@ static void set_circle(CAShapeLayer *l, CGFloat diameter) {
         CGFloat dx = knob.x - origin.x, dy = knob.y - origin.y, dist = hypot(dx, dy);
         if (dist > r) knob = CGPointMake(origin.x + dx * r / dist, origin.y + dy * r / dist);
         if (r != ringRadius[right]) { ringRadius[right] = r; set_circle(stickRing[right], 2 * r); }
+        CGFloat knob_size = kButtonSize * sizeScale;
+        if (knob_size != knobSize) { knobSize = knob_size; set_circle(stickKnob[0], knob_size); set_circle(stickKnob[1], knob_size); }
+        stickRing[right].opacity = stickKnob[right].opacity = opacity;
         stickRing[right].position = origin; stickKnob[right].position = knob;
     }
     Button *b = NULL;
@@ -923,6 +991,7 @@ static void set_circle(CAShapeLayer *l, CGFloat diameter) {
         CGFloat s = b[i].size;
         if (s != buttonSize[i]) { buttonSize[i] = s; set_circle(l, s); }
         l.position = b[i].at;
+        l.opacity = opacity;   // l'icône, sous-calque, suit
         l.fillColor = (held[b[i].action] ? [b[i].color colorWithAlphaComponent:.9] : b[i].color).CGColor;
         CALayer *icon = iconLayer[i];
         icon.hidden = !b[i].symbol;
@@ -970,6 +1039,8 @@ static P2TouchControls *controls;
 
 // Appelé à la création de la fenêtre du jeu (sdl_ios.m), sur le thread principal.
 void rt_ios_touch_controls_attach(SDL_Window *window) {
+    rt_ios_settings_watch();   // réglages changés en jeu ou dans l'app Réglages (live_settings_ios.m)
+    rt_ios_icloud_start();     // sauvegardes iCloud (Portal 2 ; icloud_saves_ios.m)
     if (controls || !window || !rt_ios_env_flag("P2_TOUCH_CONTROLS", 1)) return;
     SDL_SysWMinfo info;
     SDL_VERSION(&info.version);

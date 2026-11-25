@@ -1,18 +1,23 @@
 #!/bin/bash
 # Dépendances hôtes du port iOS (simulateur arm64 par défaut), construites dans
 # ../work/ios-deps à côté du dépôt (là où tools/build_ios.py les cherche).
-#   ios/deps/build.sh [sim|device]
+#   ios/deps/build.sh [sim|device] [--prefix]   (--prefix : affiche le dossier d'installation, sans rien construire)
 # Sources à versions fixées : SDL2 2.30.9, FreeType 2.13.3, gl4es (commit
 # ci-dessous) avec les correctifs de gl4es-ios.patch.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WORK="${P2_IOS_DEPS:-$(cd "$HERE/../../.." && pwd)/work/ios-deps}"
+# Chemin absolu : le script se place ensuite dans WORK, et un P2_IOS_DEPS
+# relatif (docs/ios.md : P2_IOS_DEPS=deps/ios-deps) installait sinon dans
+# deps/ios-deps/deps/ios-deps/<cible>, où tools/build_ios.py --deps ne cherche pas.
+case "$WORK" in /*) ;; *) WORK="$PWD/$WORK" ;; esac
 TARGET="${1:-sim}"
 case "$TARGET" in
   sim)    SYSROOT=iphonesimulator ;;
   device) SYSROOT=iphoneos ;;
-  *) echo "usage: $0 [sim|device]"; exit 2 ;;
+  *) echo "usage: $0 [sim|device] [--prefix]"; exit 2 ;;
 esac
+if [ "${2:-}" = --prefix ]; then echo "$WORK/$TARGET"; exit 0; fi
 GL4ES_COMMIT=a025615bc79ac43ec911dced8fe5b8eb45a0b72d
 mkdir -p "$WORK/src"
 cd "$WORK"
@@ -28,12 +33,8 @@ if [ ! -d src/gl4es ]; then
   git clone https://github.com/ptitSeb/gl4es.git src/gl4es
   git -C src/gl4es checkout -q "$GL4ES_COMMIT"
 fi
-# Correctifs : appliqués si l'arbre est propre, vérifiés sinon.
-if git -C src/gl4es diff --quiet; then
-  git -C src/gl4es apply "$HERE/gl4es-ios.patch"
-elif ! git -C src/gl4es diff | cmp -s - "$HERE/gl4es-ios.patch"; then
-  echo "src/gl4es modifié et différent de gl4es-ios.patch : à réconcilier" >&2; exit 1
-fi
+# Correctifs : appliqués si l'arbre est propre, vérifiés sinon (patch_state.sh).
+"$HERE/patch_state.sh" src/gl4es "$HERE/gl4es-ios.patch"
 
 PREFIX="$WORK/$TARGET"
 COMMON=(-G Ninja -DCMAKE_SYSTEM_NAME=iOS "-DCMAKE_OSX_SYSROOT=$SYSROOT" -DCMAKE_OSX_ARCHITECTURES=arm64

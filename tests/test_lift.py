@@ -425,3 +425,23 @@ class LazyInsnsResync(unittest.TestCase):
             count = len(calls)
             self.assertNotIn(0x14a33099, insns)
             self.assertEqual(len(calls), count)
+
+    def test_resync_does_not_depend_on_lookup_history(self):
+        from unittest.mock import patch
+        layout = {'modules': [{
+            'name': 'engine.so', 'base': 0x1000000, 'image': 'fake.so',
+            'loads': [{'vaddr': 0x1000000, 'filesz': 0x50000, 'flags': 5}],
+        }]}
+        linear = {0x100001d: (0x1000022, 'add', 'eax, 0x55')}
+        resynced = {0x1000020: (0x1000021, 'push', 'ebp')}
+        def fake_disassemble(image, base, objdump, start=None, stop=None):
+            return dict(linear if start is None else resynced)
+        with patch.object(lift, 'disassemble', side_effect=fake_disassemble):
+            insns = lift.LazyInsns(layout, 'objdump', None)
+            # The lookup that loads the module already finds the missed entry.
+            self.assertIn(0x1000020, insns)
+            # A worker that dropped the module finds it again in its next job.
+            insns.drop_transient()
+            self.assertNotIn(0x1000020, dict(insns))
+            self.assertIn(0x1000020, insns)
+            self.assertEqual(insns.get(0x1000020), (0x1000021, 'push', 'ebp'))

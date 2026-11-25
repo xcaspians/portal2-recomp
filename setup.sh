@@ -744,7 +744,11 @@ if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
         game_info "$id"
         BUNDLE_ID=$(python3 tools/ios_bundle_id.py --game "$id")
         step "Getting a provisioning profile for $BUNDLE_ID ($TITLE)"
-        (cd ios/signing && P2_BUNDLE_ID="$BUNDLE_ID" xcodegen -q &&
+        # iCloud saves (Portal 2): "ios_icloud": true in config/local.json asks Apple for
+        # iCloud Documents on this identifier (ios/signing/project-icloud.yml).
+        SPEC=project.yml
+        case "$id:$(config_get ios_icloud)" in portal2:True|portal2:true|portal2:1) SPEC=project-icloud.yml ;; esac
+        (cd ios/signing && P2_BUNDLE_ID="$BUNDLE_ID" xcodegen -q --spec "$SPEC" &&
             xcodebuild -quiet -project P2Signing.xcodeproj -scheme Portal2 -destination generic/platform=iOS \
                 -allowProvisioningUpdates DEVELOPMENT_TEAM="$TEAM" build >/dev/null) \
             || die "Xcode could not create a profile. Connect and unlock the iPhone, enable Developer Mode
