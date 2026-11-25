@@ -90,6 +90,25 @@ static SDL_Joystick *virtual_pad(void) {
     fprintf(stderr, "[ios] manette virtuelle : %s\n", pad ? "créée" : SDL_GetError());
     return pad;
 }
+// Round 23: a full controller (both sticks, triggers, A/B/X/Y, Start...) for
+// touch as player 2 in Portal 2's co-op split-screen. Created after the real
+// controller is back in the first slot, it takes the second. Axis and button
+// numbers are SDL_GameController's (rt_touch_pad_button, rt_touch_pad_trigger).
+static SDL_Joystick *full_pad(void) {
+    SDL_VirtualJoystickDesc desc = {0};
+    desc.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
+    desc.type = SDL_JOYSTICK_TYPE_GAMECONTROLLER;
+    desc.naxes = SDL_CONTROLLER_AXIS_MAX;
+    desc.nbuttons = SDL_CONTROLLER_BUTTON_DPAD_RIGHT + 1;
+    desc.axis_mask = (1u << SDL_CONTROLLER_AXIS_MAX) - 1;
+    desc.button_mask = (1u << (SDL_CONTROLLER_BUTTON_DPAD_RIGHT + 1)) - 1;
+    desc.name = "Commandes tactiles (joueur 2)";
+    int index = SDL_JoystickAttachVirtualEx(&desc);
+    SDL_Joystick *pad = index < 0 ? NULL : SDL_JoystickOpen(index);
+    if (index >= 0 && !pad) SDL_JoystickDetachVirtual(index);
+    fprintf(stderr, "[ios] commandes tactiles pour le joueur 2 : %s\n", pad ? "manette créée (deuxième place)" : SDL_GetError());
+    return pad;
+}
 // Le jeu range les manettes dans quatre places fixes, une par joueur d'écran
 // partagé (inputsystem.so, 0x125a0), et le joueur 1 ne lit que la première.
 // Une vraie manette connectée pendant que la virtuelle tient cette place
@@ -270,6 +289,8 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, h
     CFTimeInterval flagAt;    // dernier appui sur ✗ (la ligne DATA s'allume une seconde)
     BOOL flagLit;
     SDL_Joystick *pad;        // manette virtuelle du stick gauche (NULL : W/A/S/D)
+    SDL_Joystick *coopPad;    // touch as player 2 (round 23): the full virtual controller, also `pad` meanwhile
+    Sint16 coopLook[2];       // its right stick (look)
     BOOL padRefused;          // création refusée : ne pas réessayer à chaque image
     Sint16 padAxes[2];        // dernières valeurs envoyées
     int padResponse;          // courbe du jeu pour ces valeurs (joy_response_move)
@@ -363,6 +384,7 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, h
     BOOL was = concealed;
     // On a TV, gear menu > TV > Touch controls: Always on keeps them on the iPad (round 23).
     const char *mode = rt_tv_touch_mode(getenv("P2_TOUCH_CONTROLS"), rt_ios_tv_hz() > 0, getenv("P2_TV_TOUCH"));
+    if (coopPad) mode = "1";   // touch is player 2: shown whatever controller is connected
     rt_touch_overlay_update(&overlay, event, hasGamepad, hasKeyboard, active, mode);
     concealed = overlay.concealed != 0;
     if (concealed == was) return;
@@ -423,6 +445,18 @@ static BOOL pad_input_active(void) {
     if (host.subviews.lastObject != self) [host bringSubviewToFront:self];
     if (!CGRectEqualToRect(self.frame, host.bounds)) { self.frame = host.bounds; settingsMenu.frame = self.bounds; [self invalidateLayout]; }
     [self renderIfNeeded];
+    if (coopPad) {   // player 2 looks with the right stick (the look stick's deflection, also in trackpad mode)
+        Sint16 look[2] = {0, 0};
+        for (P2Finger *f in fingers.objectEnumerator) {
+            if (f.role != ROLE_LOOK) continue;
+            CGFloat x, y; [self deflectionOf:f x:&x y:&y];
+            look[0] = (Sint16)lround(fmax(-1, fmin(1, x)) * 32767);
+            look[1] = (Sint16)lround(fmax(-1, fmin(1, -y)) * 32767);
+        }
+        for (int i = 0; i < 2; ++i)
+            if (look[i] != coopLook[i]) { coopLook[i] = look[i]; SDL_JoystickSetVirtualAxis(coopPad, SDL_CONTROLLER_AXIS_RIGHTX + i, look[i]); }
+        return;
+    }
     if (trackpad) return;   // trackpad : mouvements envoyés au glissement (touchesMoved)
     for (P2Finger *f in fingers.objectEnumerator) {
         if (f.role != ROLE_LOOK) continue;
@@ -438,6 +472,7 @@ static BOOL pad_input_active(void) {
 }
 // Mouvement de souris relatif, fractions de comptes reportées.
 - (void)lookBy:(float)x y:(float)y {
+    if (coopPad) return;   // player 2 looks with the virtual right stick; the mouse is player 1's
     lookCarry[0] += x; lookCarry[1] += y;
     int dx = (int)lookCarry[0], dy = (int)lookCarry[1];
     lookCarry[0] -= (float)dx; lookCarry[1] -= (float)dy;
@@ -570,6 +605,12 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
     int before = held[action];
     held[action] = MAX(0, held[action] + (down ? 1 : -1));
     if ((before > 0) == (held[action] > 0)) return;
+    if (coopPad) {   // player 2: the full controller's buttons and triggers, never keys or the mouse
+        int button = rt_touch_pad_button(action), trigger = rt_touch_pad_trigger(action);
+        if (button >= 0) SDL_JoystickSetVirtualButton(coopPad, button, down ? SDL_PRESSED : SDL_RELEASED);
+        if (trigger >= 0) { SDL_JoystickSetVirtualAxis(coopPad, trigger, down ? 32767 : 0); if (down) haptic_fire(); }
+        return;
+    }
     CGPoint centre = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
     switch (action) {
     case RT_TOUCH_JUMP: [self key:SDL_SCANCODE_SPACE down:down]; break;
@@ -757,7 +798,40 @@ static UIImage *icon_image(NSString *symbol, CGFloat point_size) {
 // Présente tant qu'aucune vraie manette n'est connectée, une fois les manettes
 // de SDL initialisées par le jeu (inputsystem) : elle lui arrive comme une
 // manette branchée en cours de partie.
+// Real controllers (GCController lists only those).
+static int controller_count(void) {
+    int n = 0;
+    for (GCController *c in GCController.controllers) n += c.extendedGamepad != nil;
+    return n;
+}
+// Portal 2 co-op split-screen with one controller: touch drives player 2
+// (rt_touch_player2_wanted). P2_TOUCH_PLAYER2=1 forces it (tests without a controller).
+- (BOOL)syncCoop {
+    BOOL want = SDL_WasInit(SDL_INIT_GAMECONTROLLER) && !padRefused &&
+        (rt_ios_env_flag("P2_TOUCH_PLAYER2", 0) ||
+         rt_touch_player2_wanted(rt_ios_game_kind(rt_ios_current_game()), rt_ios_level_map(), controller_count()));
+    if (want && !coopPad) {
+        [self releaseAll];
+        if (pad) { remove_virtual_pad(pad); pad = NULL; }   // the real controller back in the first slot
+        coopPad = full_pad();
+        if (!coopPad) { padRefused = YES; return NO; }
+        pad = coopPad;
+        rt_ios_move_response_linear(0);   // the response is the game's (both players share it)
+        padAxes[0] = padAxes[1] = coopLook[0] = coopLook[1] = 0;
+        [self overlayEvent:RT_OVERLAY_DEVICES padActive:NO];   // shown even with a controller
+        [self updateMove];
+    } else if (!want && coopPad) {
+        [self releaseAll];
+        remove_virtual_pad(coopPad);   // the real controller replugged, first slot
+        coopPad = NULL; pad = NULL;
+        fprintf(stderr, "[ios] commandes tactiles : joueur 1 de nouveau\n");
+        [self overlayEvent:RT_OVERLAY_DEVICES padActive:NO];
+        [self updateMove];
+    }
+    return coopPad != NULL;
+}
 - (void)syncPad {
+    if ([self syncCoop]) return;
     if (rt_ios_touch_test_wasd()) padRefused = YES;   // essai témoin : touches W/A/S/D
     BOOL wanted = !physicalPad && !padRefused && SDL_WasInit(SDL_INIT_GAMECONTROLLER);
     if (wanted && !pad) {

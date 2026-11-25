@@ -127,6 +127,22 @@ void rt_touch_overlay_update(rt_overlay_state *s, rt_overlay_event event, int pa
     }
 }
 
+int rt_touch_player2_wanted(const char *game, const char *map, int controllers) {
+    return game && !strcmp(game, "portal2") && map && !strncmp(map, "mp_coop", 7) && controllers == 1;
+}
+int rt_touch_pad_button(rt_touch_action action) {
+    switch (action) {
+    case RT_TOUCH_JUMP: return 0;     // A
+    case RT_TOUCH_CROUCH: return 1;   // B
+    case RT_TOUCH_USE: return 2;      // X
+    case RT_TOUCH_PAUSE: return 6;    // Start
+    default: return -1;
+    }
+}
+int rt_touch_pad_trigger(rt_touch_action action) {
+    return action == RT_TOUCH_FIRE ? 5 : action == RT_TOUCH_ALT_FIRE ? 4 : -1;
+}
+
 // ---- Button layout editor ----
 static const char *const action_names[RT_TOUCH_ACTION_COUNT] = {
     "jump", "crouch", "use", "pause", "fire", "alt_fire", "look_mode", "flag", "reload", "sprint", "flashlight",
