@@ -132,3 +132,35 @@ rotation x y z, rise (time to maximum), duration, before (agitation), gravity (c
 vector), touch (gap in ms), orientation -> side or rejection reason). Findings: a back tap has
 a_z < 0 at the peak, a tap on the screen a_z > 0.
 
+
+## Calibration
+
+The detector's defaults were tuned on an iPhone 15 Pro Max. A bigger or
+heavier device (an iPad mini) moves differently, so the in-game menu has
+**Calibrate back taps** (Settings menu > Back taps): tap the back on the
+left 8 times, on the right 8 times, then hold still for 5 seconds. Each tap
+shows as it lands. The values are fitted by `runtime/ios/backtap_calibrate.c`
+from the taps (a wide-gate detector catches them, `backtap_ios.m` capture
+mode) and the noise held still, one rule each:
+
+- **Thresholds** (acceleration, jerk, gyroscope rotation): 60 % of the
+  player's softest taps (20th percentile), never under 3 times the noise held
+  still, never above the defaults (a calibration only makes taps easier to
+  catch).
+- **Side weight**: the mix of rotations around x and z that puts the most
+  taps on their side, then the one keeping them furthest from the line.
+- **Wrong-side margin**: just above the strongest wrong-side tap seen, as long
+  as 3 good taps in 4 stay above it. A tap under it is "côté incertain": no
+  portal at all, since a missed tap is better than the wrong portal.
+
+The screen shows before and after counts on those same taps, then Save and
+test: a test mode counts what the game would fire, left and right, with the
+new values. Stored per device model (`P2BackTapCal.<model>`, one line of
+text); "Calibrated on <date>", Re-calibrate, Reset to defaults. Tap
+sensitivity and the `P2_BACKTAP_*` variables still apply on top; with no
+calibration (or a damaged one) the defaults apply exactly.
+
+Checked by `tests/checks_back_tap.c`: on iPad-like soft taps with a contrary
+x rotation the defaults fire under half on the right side and the fit puts
+all but the margin's on their side, none wrong; played through the detector,
+soft taps go from 0 of 8 to 8 of 8.

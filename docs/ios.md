@@ -226,15 +226,17 @@ The page is in English, and in French on a device set to French
 
 ## In-game settings menu (Portal 2)
 
-A **Touch Controls** gear button shows at the top right **only while the
-game's pause menu is open** (never in gameplay or the main menu). It opens a
+A **Touch Controls** gear button shows at the top right **while a game menu
+is open: the main menu or the pause menu** (never in gameplay); Portal 2 and
+Mel. Every item works from the main menu. It opens a
 dark, translucent panel drawn by the runtime over the game
 (`runtime/ios/settings_menu_ios.m`, items in `runtime/ios/settings_menu.c`):
 
 | Section | Items |
 |---|---|
 | On-screen buttons | Button opacity, Button size, Show portal buttons |
-| Back taps | Tap sensitivity (0.5 to 3), Swap left and right, Vibrate when firing |
+| On-screen buttons | also **Edit button layout** (below) |
+| Back taps | **Back taps** on/off (the Settings app's switch; off shows the portal buttons), Tap sensitivity (0.5 to 3), **Calibrate back taps** ([backtap.md](backtap.md#calibration)), Swap left and right, Vibrate when firing |
 | Camera | Camera speed, Gyro aiming, Gyro speed |
 | Display | Frames per second (including Auto) |
 | Maps & Mods | **Community Maps** (Steam Workshop browser and downloader, [mods.md](mods.md#community-maps-steam-workshop-in-the-game)), then the custom maps found in `portal2/maps/custom` and `maps/workshop` (game and user folders) and `portal2_dlcN/maps` (N ≥ 3); a tap starts one ([mods.md](mods.md)) |
@@ -246,6 +248,20 @@ dark, translucent panel drawn by the runtime over the game
   open panel so opacity and size changes show while you drag. One exception:
   with the Metal renderer the frame rate cap applies on the next launch
   (mtld3d reads it once); the panel says so under that item.
+- **Edit button layout:** the panel closes and the game's buttons show where
+  they are; drag one to move it, its white dot to resize it (0.6× to 1.8×);
+  the sticks' resting areas show as guides. Reset, Cancel, Save. A button
+  stays whole on screen, snaps to an 8-point grid and is pushed out of the
+  sticks' resting areas (`rt_touch_custom_*` in `touch_layout.c`). Saved per
+  device kind (phone, iPad) and per game; Button opacity and size still apply
+  on top.
+- **The game's own Community button:** Community Test Chambers > Play
+  Single Player Chambers opens Community Maps instead of the game's empty
+  dialog (no Steam on iOS). The runtime reads the game's UI (VGUI's panel
+  tree, a visible `CommunityMapDialog`), closes that dialog like a player
+  would (Escape) and opens Community Maps; Back returns to the game's
+  Perpetual Testing screen. Nothing in the game is changed and no Steam
+  interface is faked.
 - **Touch:** sliders, switches and segmented choices; the ✕ closes it.
 - **Controller:** the options button (View, Select or −; its name is shown
   under the gear when a controller is connected) opens and closes it; d-pad or
@@ -272,6 +288,10 @@ dark, translucent panel drawn by the runtime over the game
   map of Maps & Mods; `=display` scrolls to "Defaults for <device>". Checked in the simulator on 24 November 2026: a map in
   `portal2_dlc3/maps` was listed, started and loaded, so the runtime mounts
   addon folders (still to confirm on a device).
+  `=main` opens it on the main menu, `=editor` opens the layout editor
+  there, `=display` and `=end` scroll to the defaults row or the bottom.
+  `P2_TOUCH_TEST_CLICK=s,x,y;s,x,y` clicks several times (seconds after the
+  first menu, points).
 
 The touch overlay must be on (On-screen controls not set to "Never") for the
 gear to exist; the Settings app page always works.
