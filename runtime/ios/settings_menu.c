@@ -26,8 +26,10 @@ const rt_menu_item rt_menu_items[] = {
     {"P2TouchLook", "Camera", "Camera speed", RT_MENU_CHOICE, "1", 0, 0, 0, 0, NULL, look_values, look_labels, 0},
     {"P2Gyro", NULL, "Gyro aiming", RT_MENU_TOGGLE, "0", 0, 0, 0, 0, NULL, NULL, NULL, 0},
     {"P2GyroSpeed", NULL, "Gyro speed", RT_MENU_CHOICE, "1", 0, 0, 0, 0, NULL, gyro_values, gyro_labels, 0},
-    {"P2MaxFPS", "Display", "Frames per second", RT_MENU_CHOICE, "60", 0, 0, 0, 0, NULL, fps_values, fps_labels,
-     RT_MENU_RELAUNCH_ON_METAL},
+    // Applies at once, Metal too (round 11: metal_ios.m paces under mtld3d's launch cap).
+    {"P2MaxFPS", "Display", "Frames per second", RT_MENU_CHOICE, "60", 0, 0, 0, 0, NULL, fps_values, fps_labels, 0},
+    // Corner readout: frames per second, the display's refresh rate, the cap asked for.
+    {"P2ShowFPS", NULL, "FPS counter", RT_MENU_TOGGLE, "0", 0, 0, 0, 0, NULL, NULL, NULL, 0},
     {"P2ICloudSaves", "iCloud", "iCloud saves", RT_MENU_TOGGLE, "1", 0, 0, 0, 0, NULL, NULL, NULL, 0},
 };
 const int rt_menu_item_count = (int)(sizeof(rt_menu_items) / sizeof(*rt_menu_items));

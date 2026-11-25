@@ -207,7 +207,7 @@ The page is in English, and in French on a device set to French
 | Auto power saving | `P2_IOS_POWER_SAVE` | on by default: at most 30 fps in Low Power Mode or when the phone is hot |
 | Renderer | `P2_RENDERER` | Metal: `d3d9` (default), `opengl`; see "Metal renderer" |
 | Upscaling (MetalFX) | `P2_IOS_UPSCALE` | Off (1, default), Quality (0.75), Performance (0.5); Metal only, see "Metal renderer" |
-| FPS counter | `P2_SHOW_FPS` | shown by default; tapping the top-left corner shows or hides it (choice is remembered) |
+| FPS counter | `P2_SHOW_FPS` | off by default; also in the gear menu; a tap on the counter hides it |
 | On-screen controls | `P2_TOUCH_CONTROLS` | automatic (hidden while a controller is connected; a touch shows them, the next controller input hides them again), always, never, off with a controller (`pad`: hidden and touches ignored while a controller is connected) |
 | Trackpad camera | key `P2TouchTrackpad` | also toggled by the button at the bottom left (top left in Half-Life 2) |
 | Camera speed | `P2_TOUCH_LOOK` | ×0.5 to ×3 |
@@ -372,20 +372,32 @@ otherwise, from `UIScreen.maximumFramesPerSecond`; `rt_ios_fps_choice` in
 `settings.c`, checked by `tests/checks_ios_settings.c`). 60 stays the default
 until 120 is measured to hold in a busy chamber on the test devices:
 
-- Metal: `present.maxFps=<cap>` in `MTLD3D_CONFIG`; mtld3d holds presents to it.
-- OpenGL: 60 and 120 are paced by the display; under 60 the runtime waits
-  before each present (`gl_ios.m`, `limit_frame_rate`).
-- Display: 120 asks the ProMotion panel for 120 Hz, as before; so does 40,
-  which then lands on every third refresh (on a 60 Hz panel 40 fps would
+- **It applies at once, without a restart** (round 11). mtld3d reads its
+  configuration once, at initialization, so Metal starts with
+  `present.maxFps=<the screen's maximum>` (120 on ProMotion, 60 otherwise;
+  `rt_ios_metal_launch_cap`), and a lower cap is paced by the app after each
+  Present, the guest lock released while it waits (`metal_ios.m`,
+  `rt_ios_pace` in `settings.c`). OpenGL: 60 and 120 are paced by the
+  display; under 60 the runtime waits before each present (`gl_ios.m`,
+  `limit_frame_rate`).
+- Display: on a ProMotion screen a display link always asks for the cap
+  itself (min = max = preferred; `rt_ios_display_range`: Auto asks for 120
+  on a 120 Hz screen and 60 on a 60 Hz one) and follows every change; 40 asks
+  for 120 and lands on every third refresh (on a 60 Hz panel 40 fps would
   alternate one and two refreshes; on a phone without ProMotion choose 30).
 
 Auto power saving (on by default, `P2_IOS_POWER_SAVE=0` turns it off) lowers
 the cap to 30 when Low Power Mode is on or the thermal state is serious or
 critical, and logs `[ios] économie d'énergie (<reason>) : 30 i/s au lieu de
-<cap>`. mtld3d reads its configuration once, at initialization, and has no way
-to change `present.maxFps` afterwards: with Metal the check happens at launch
-only (a later change is logged as applying at the next launch); with OpenGL
-the cap follows thermal and power changes during play.
+<cap>`; it applies at once too, on both renderers.
+
+**FPS counter** (gear menu > Display > FPS counter, off by default, shared by
+every game): a small readout with the renderer, frames per second over the
+last half second, and the display's current refresh rate as the system
+reports it (the display link's interval) with the cap the game asks for:
+`120 HZ CAP 120`. It sits at the top centre in Portal's layout (top left in
+Half-Life 2's), checked clear of every button at any Button size
+(`tests/checks_touch_layout.c`); a tap on it hides it.
 
 Simulator: `xcrun simctl spawn <device> defaults write <bundle id>
 P2ResolutionScale -string 1.5`. `tests/checks_ios_settings.c` checks the

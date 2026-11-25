@@ -19,6 +19,7 @@
 #import <Metal/Metal.h>
 #import <UIKit/UIKit.h>
 #include <math.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +27,7 @@
 #include "metal_ios.h"
 #include "power_ios.h"
 #include "settings.h"
+#include "rt.h"
 
 extern _Atomic unsigned long rt_ios_frames;   // gl_ios.m
 float rt_ios_render_scale(void);                    // sdl_ios.m
@@ -34,7 +36,22 @@ void rt_ios_request_frame_rate(void);  // gl_ios.m
 
 int rt_renderer_request(const char *value);   // runtime/d3d9.c
 _Atomic int rt_ios_metal_active;   // une image présentée par Direct3D 9 (compteur : « METAL »)
-static void presented(void) { ++rt_ios_frames; rt_ios_metal_active = 1; }
+// Metal's own cap (mtld3d present.maxFps), set once at launch: the screen's maximum.
+static int metal_cap = 60;
+// A lower cap (Frames per second, power saving) is paced here, after each
+// Present, the guest lock released while waiting (as OpenGL's limiter does).
+static void pace(void) {
+    static double last;
+    double until = rt_ios_pace(CACurrentMediaTime(), &last, rt_ios_max_fps(), metal_cap);
+    if (until <= 0) return;
+    unsigned saved = rt_guest_suspend();
+    for (double now; (now = CACurrentMediaTime()) < until;) {
+        struct timespec wait = {0, (long)((until - now) * 1e9)};
+        nanosleep(&wait, NULL);
+    }
+    rt_guest_resume(saved);
+}
+static void presented(void) { ++rt_ios_frames; rt_ios_metal_active = 1; pace(); }
 // libd3d9metal.a n'est liée dans l'exécutable qu'avec tools/build_ios.py
 // --d3d9metal, qui définit alors RT_D3D9METAL_STATIC pour ce fichier (et pour
 // runtime/d3d9.c). Sans elle, annoncer Metal ferait retomber src/main.c sur
@@ -66,7 +83,12 @@ int rt_ios_metal_usable(char *why, size_t size) {
 // ensuite le tampon arrière jusqu'à sa taille native.
 void rt_ios_metal_config(char *out, size_t size) {
     double scale;
-    rt_ios_metal_keys(out, size, rt_ios_max_fps(), getenv("P2_IOS_UPSCALE"), &scale);
+    // The screen's maximum, not the cap: mtld3d reads it once, and the cap may
+    // change in game (pace() keeps a lower one).
+    metal_cap = rt_ios_metal_launch_cap((int)UIScreen.mainScreen.maximumFramesPerSecond);
+    rt_ios_metal_keys(out, size, metal_cap, getenv("P2_IOS_UPSCALE"), &scale);
+    fprintf(stderr, "[ios] Metal : plafond de mtld3d %d i/s, plafond du jeu %d i/s (suivi en cours de partie)\n", metal_cap,
+            rt_ios_max_fps());
     if (scale < 1) fprintf(stderr, "[ios] MetalFX : rendu à %.0f %% du tampon arrière, agrandi par MetalFX\n", scale * 100);
 }
 // Réglage d'agrandissement MetalFX sans rendu Metal : sans effet, dit une fois.
