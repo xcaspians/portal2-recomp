@@ -40,6 +40,13 @@ static uint64_t call(const char *name, int count, const uint64_t *args) {
 #define CALL(name, ...) call(name, sizeof((uint64_t[]){__VA_ARGS__}) / 8, (uint64_t[]){__VA_ARGS__})
 #define CALL0(name) call(name, 0, NULL)
 
+// Native host functions called the way lifted code calls them (P2CE piece D, round 23).
+static uint64_t native_mix(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f, uint64_t g,
+                           uint64_t h, double x, double y) {
+    return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h + (uint64_t)(x * 10) + (uint64_t)(y * 100);
+}
+static double native_half(double x) { return x / 2; }
+
 static uint64_t out(int offset) { return R64(sym("x64_out") + offset); }
 static uint8_t out8(int offset) { return (uint8_t)R8(sym("x64_out") + offset); }
 
@@ -83,6 +90,9 @@ int main(void) {
 
     for (uint64_t i = 0; i < 4; ++i) EXPECT(CALL("x64_switch", i) == 10 + i);
     EXPECT((uint32_t)CALL("x64_switch", 4) == 0xffffffffu);
+    // Round 23: instructions between the add and the jmp (P2CE's launcher.so).
+    EXPECT(CALL("x64_switch_gap", 0) == 20 && CALL("x64_switch_gap", 1) == 21 && CALL("x64_switch_gap", 2) == 22);
+    EXPECT((uint32_t)CALL("x64_switch_gap", 3) == 0xfffffffeu);
     EXPECT(CALL("x64_callptr", 0, 21) == 42);
     EXPECT(CALL("x64_callptr", 1, 12) == 144);
     EXPECT(CALL("x64_tail", 6) == 49);
@@ -155,6 +165,35 @@ int main(void) {
     EXPECT(CALL0("x64b_tls_ie") == 77);                  // TPOFF64 from fs
     EXPECT(CALL0("x64b_setjmp") == 42);                  // longjmp across a lifted frame, rbx restored
     EXPECT(CALL0("x64b_threads") == 1000 * (1 + 2 + 3 + 4));   // pthread_create/join, own CPU and stack
+
+    // Round 23: lifted code calling native arm64 code (Valve's Steam interfaces):
+    // System V registers and stack arguments to arm64, doubles both ways.
+    rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+    cpu.r[RDI] = 1; cpu.r[RSI] = 2; cpu.r[RDX] = 3; cpu.r[RCX] = 4; cpu.r[R8] = 5; cpu.r[R9] = 6;
+    cpu.xmm[0].g[0] = 1.5; cpu.xmm[1].g[0] = 0.25;
+    PUSH64(&cpu, 8); PUSH64(&cpu, 7);                    // 8th and 7th integer arguments
+    PUSH64(&cpu, 0x1234);                                // return address slot (as at a call)
+    rt64_native_call(&cpu, (uint64_t)(uintptr_t)native_mix);
+    EXPECT(cpu.r[RAX] == 1 + 4 + 9 + 16 + 25 + 36 + 49 + 64 + 15 + 25);
+    cpu.xmm[0].g[0] = 7.0;
+    rt64_native_call(&cpu, (uint64_t)(uintptr_t)native_half);
+    EXPECT(cpu.xmm[0].g[0] == 3.5);
+    EXPECT(rt64_is_native((uint64_t)(uintptr_t)native_half) && !rt64_is_native(sym("x64_sum8")));
+    // Through the dispatcher, as an indirect call from lifted code would arrive.
+    rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+    cpu.xmm[0].g[0] = 9.0;
+    rt64_call(&cpu, (uint64_t)(uintptr_t)native_half);
+    EXPECT(cpu.xmm[0].g[0] == 4.5);
+
+    // --wrap'd file functions of Steam runtime builds resolve to the plain shims.
+    EXPECT(rt64_find_shim("__wrap_access") == rt64_find_shim("access") && rt64_find_shim("access"));
+    EXPECT(rt64_find_shim("__wrap_fopen") == rt64_find_shim("fopen") && !rt64_find_shim("__wrap_"));
+    // P2CE's Steam bridge answers by name (steam64.c), RestartAppIfNecessary never relaunches.
+    EXPECT(rt64_find_shim("SteamInternal_SteamAPI_Init") && rt64_find_shim("SteamAPI_RestartAppIfNecessary"));
+    rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+    cpu.r[RDI] = 440000;
+    rt64_find_shim("SteamAPI_RestartAppIfNecessary")(&cpu);
+    EXPECT(cpu.r[RAX] == 0);
 
     if (failures) { fprintf(stderr, "x64-check: %d of %d checks failed\n", failures, checks); return 1; }
     printf("x64-check: PASS, %d checks (System V calls, 16 registers, RIP-relative data, "

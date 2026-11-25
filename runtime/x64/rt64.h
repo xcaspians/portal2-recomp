@@ -262,6 +262,10 @@ void rt64_dispatch(CPU64 *c, uint64_t target);
 __attribute__((noreturn)) void rt64_trap(CPU64 *c, uint64_t pc, const char *why);
 __attribute__((noreturn)) void rt64_bad_return(CPU64 *c, uint64_t expected);
 void rt64_cpuid(CPU64 *c);
+// Native arm64 code called from lifted code (native64.c): System V arguments
+// moved to arm64 registers, x0/x1 and d0/d1 back as rax/rdx and xmm0/xmm1.
+void rt64_native_call(CPU64 *c, uint64_t fn);
+int rt64_is_native(uint64_t address);   // an address in a dyld-loaded (native) image
 void rt64_syscall(CPU64 *c);                        // the SYSCALL instruction (posix64.c)
 RT64_ALWAYS_INLINE uint64_t rt64_get_rflags(CPU64 *c, const FL64 *f) {
     return f->cf | ((uint64_t)parity64(f->pf) << 2) | (f->af << 4) | (f->zf << 6) | (f->sf << 7) | ((uint64_t)c->df << 10)
