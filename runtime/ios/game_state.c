@@ -288,6 +288,70 @@ static void update_level(CPU *c, int visible) {
     command_count = 0;
 }
 
+// ---- The game's own Community Test Chambers dialog (Portal 2, Mel) ----
+// Without Steam its list is empty and its way back is unclear, so the overlay
+// opens Community Maps instead (settings_menu_ios.m). Found by reading the
+// game's UI: VGUI's panel tree (VGUI_Panel009 in vgui2.so; slots from the
+// Mac edition's vgui2.dylib: IsVisible 16, GetChildCount 18, GetChild 19,
+// GetName 37) from IEngineVGui::GetPanel(PANEL_ROOT) (slot 2), looking for a
+// visible panel named CommunityMapDialog (its name in the game's
+// communitymapdialog.res). Nothing in the game is changed or faked; the
+// dialog is then closed like a player would (Escape).
+enum { PANEL_IS_VISIBLE = 16, PANEL_CHILD_COUNT = 18, PANEL_CHILD = 19, PANEL_NAME = 37 };
+static uint32_t vgui_panel;        // VGUI_Panel009 (0: not yet; 1: unavailable)
+static int community_wanted;       // the dialog was seen open: Community Maps should show
+int rt_ios_game_take_community_request(void) { int w = community_wanted; community_wanted = 0; return w; }
+static uint32_t panel_call(CPU *c, int slot, uint32_t *args, int n) {
+    return rt_invoke(c, R32(R32(vgui_panel) + (uint32_t)slot * 4), args, (size_t)n);
+}
+static int find_panel(CPU *c, uint32_t vpanel, const char *name, int depth, int *budget) {
+    if (depth > 7 || --*budget < 0) return 0;
+    uint32_t a1[2] = {vgui_panel, vpanel};
+    if (!(panel_call(c, PANEL_IS_VISIBLE, a1, 2) & 0xff)) return 0;
+    uint32_t text = panel_call(c, PANEL_NAME, a1, 2);
+    if (plausible(text) && !strcmp(GPTR(text), name)) return 1;
+    int n = (int)panel_call(c, PANEL_CHILD_COUNT, a1, 2);
+    if (n < 0 || n > 256) return 0;
+    for (int i = 0; i < n; ++i) {
+        uint32_t a2[3] = {vgui_panel, vpanel, (uint32_t)i};
+        uint32_t child = panel_call(c, PANEL_CHILD, a2, 3);
+        if (child && find_panel(c, child, name, depth + 1, budget)) return 1;
+    }
+    return 0;
+}
+static void watch_community_dialog(CPU *c, int visible) {
+    static uint64_t next;
+    static int was_open;
+    uint64_t now = SDL_GetTicks64();
+    if (!visible || engine_client <= 1 || vgui_panel == 1 || now < next) { if (!visible) was_open = 0; return; }
+    next = now + 300;
+    if (!vgui_panel) {
+        const GuestModule *vgui = rt_find_module("vgui2.so");
+        uint32_t create = vgui ? rt_module_symbol(vgui, "CreateInterface") : 0;
+        uint32_t text = create ? guest_text("VGUI_Panel009") : 0;
+        uint32_t args[2] = {text, 0};
+        uint32_t found = text ? rt_invoke(c, create, args, 2) : 0;
+        rt_free(text);
+        vgui_panel = plausible(found) && plausible(R32(found)) ? found : 1;
+        if (vgui_panel == 1) { fprintf(stderr, "[ios] VGUI_Panel009 introuvable : bouton Communauté du jeu laissé tel quel\n"); return; }
+    }
+    uint32_t args[2] = {engine_vgui, 0};   // PANEL_ROOT
+    uint32_t root = rt_invoke(c, R32(R32(engine_vgui) + 2 * 4), args, 2);
+    int budget = 600;
+    int open = root && find_panel(c, root, "CommunityMapDialog", 0, &budget);
+    if (open && !was_open) {
+        fprintf(stderr, "[ios] dialogue Communauté du jeu : Community Maps à la place\n");
+        community_wanted = 1;
+        SDL_Event e;   // close the game's dialog the way a player would
+        memset(&e, 0, sizeof(e));
+        e.type = SDL_KEYDOWN; e.key.keysym.scancode = SDL_SCANCODE_ESCAPE; e.key.keysym.sym = SDLK_ESCAPE; e.key.state = SDL_PRESSED;
+        SDL_PushEvent(&e);
+        e.type = SDL_KEYUP; e.key.state = SDL_RELEASED;
+        SDL_PushEvent(&e);
+    }
+    was_open = open;
+}
+
 void rt_ios_game_state_poll(void) {
     uint64_t now = SDL_GetTicks64();
     if (now < next_query) return;
@@ -316,6 +380,7 @@ void rt_ios_game_state_poll(void) {
     if (visible && !ui_visible) rt_input_nudge_mouse();
     ui_visible = visible;
     update_level(c, visible);
+    watch_community_dialog(c, visible);
     if (linear_wanted || saved_response[0]) update_move_response(c);
     autoexec(c);
 }

@@ -84,6 +84,7 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     UIView *community;        // Community Maps browser (workshop_ios.m), over the panel while open
     UIView *calibration;      // "Calibrate back taps" (backtap_calibration_ios.m), over the panel while open
     UIView *editor;           // "Edit button layout" (touch_editor_ios.m), full screen while open
+    BOOL communityFromGame;   // Community Maps opened by the game's own Community button
     UILabel *icloudStatus;    // "Last synced ..." under the iCloud switch
     CFTimeInterval icloudShownAt;
 }
@@ -276,7 +277,9 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     [community removeFromSuperview];
     community = nil;
     [self closeMenu];
-    if (!all) [self openMenu];   // back to the settings, Maps & Mods read again (new downloads)
+    // Opened from the game's own Community button: back to the game's menu.
+    if (!all && !communityFromGame) [self openMenu];   // back to the settings, Maps & Mods read again (new downloads)
+    communityFromGame = NO;
 }
 - (void)closeMenu {
     if (!menu_open) return;
@@ -852,6 +855,12 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
 - (void)tick {
     // The gear shows in the main menu and the pause menu (game UI up), never in gameplay.
     BOOL paused = rt_ios_game_menu_shown() != 0;
+    // The game's own Community Test Chambers button (game_state.c): Community Maps instead.
+    if (rt_ios_game_take_community_request() && !community && !editor) {
+        [self openMenu];
+        communityFromGame = YES;
+        [self openCommunity];
+    }
     if (menu_open && !paused) [self closeMenu];   // the game left its pause menu
     gear.hidden = menu_open || editor != nil || !paused;
     if (!gear.hidden) [self updateGearHint];
@@ -861,9 +870,14 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     if (auto_open < 0) {
         const char *e = getenv("P2_SETTINGS_MENU_OPEN");
         auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : !strcmp(e, "display") || !strcmp(e, "end") ? 3
-                  : !strcmp(e, "main") ? 4 : 0;
+                  : !strcmp(e, "main") ? 4 : !strcmp(e, "editor") ? 5 : 0;
     }
     // In a level's pause menu, as before; =main: on the main menu (no level).
+    if (auto_open == 5 && !gear.hidden && !rt_ios_game_in_level()) {   // =editor: the layout editor, on the main menu
+        auto_open = 0;
+        [self openMenu];
+        [self openEditor];
+    }
     if (auto_open && !gear.hidden && (auto_open == 4 ? !rt_ios_game_in_level() : rt_ios_game_paused())) {
         int start = auto_open == 2;
         auto_open = 0;
