@@ -565,9 +565,58 @@ were locked for the last run of this checkout, so the app was not exercised
 again. Same experimental status as the Mac app
 ([portal1.md](portal1.md#what-was-tested)).
 
+## One Portal app: Portal 2 and Mel
+
+Portal 2 and Portal Stories: Mel (and later any game on Portal 2's engine,
+`ios_guests` in `tools/games.py`) live in **one app**: Portal 2's, with its
+identifier, profile and increased memory limit, which Mel now shares.
+Half-Life 2 and Portal stay separate apps.
+
+- **One executable, two games.** `tools/build_ios.py` compiles each hosted
+  game's generated code in its own cache and links it into one relocatable
+  object (`ld -r`) whose only exports are six `<game>_rt_...` functions
+  (`runtime/ios/guest_glue.c`); its ~135,000 `fn_<address>` functions stay
+  local, so they never meet Portal 2's. The runtime is built once with
+  `RT_MULTI_GAME` and reaches the running game's code through `rt_code`
+  (`runtime/rt.h`, table generated as `build/ios/<target>/game_codes.c`).
+  Only one game runs per launch. The executable is 686 MB (Portal 2 alone:
+  315 MB). `--no-guests` builds Portal 2 alone.
+- **Game picker** at launch (`runtime/ios/game_picker_ios.m`, rules in
+  `game_picker.c`): each game's cover (made at build time from the game's own
+  icon on the Mac, `covers/<game>.png`), title and size; "Not installed" when
+  its files aren't on the device. **Remember my choice** skips it next time;
+  **Switch game** at the bottom of the in-game settings menu brings it back
+  (press twice: the app closes, open it again).
+- **Manage games** (in the picker): data size, saves size and last played
+  for each game; **Remove game data** deletes that game's `game`, `prep` and
+  `linux` folders only (never its saves or settings, never the other game's),
+  after a confirmation that says how much it frees; **Get it from your Mac**
+  says how.
+- **Each game keeps its own things.** Portal 2's data, saves, settings and
+  `launch.args` stay exactly where they were (`Documents/game`, `prep`,
+  `linux`, `portal2-userdata`, the Settings app page). Mel's data is in
+  `Documents/mel/` (`game`, `prep`, `linux`, `launch.args`), its saves in
+  `Documents/mel-userdata`, its settings under `mel.`-prefixed preference keys
+  (its own first-launch defaults too; the Settings app page shows Portal 2's).
+  iCloud saves sync Mel in its own folder (`Documents/mel/SAVE` in the
+  container). Community Maps and Maps & Mods stay Portal 2 only. The menu's
+  version line names the game.
+- **Tools:** `tools/ios_device.sh mel data push` copies Mel into the Portal
+  app (`Documents/mel`); `tools/ios_device.sh mel saves migrate [--dry-run]`
+  copies Mel's saves from the old standalone Mel app through the Mac and checks
+  every file arrived (the old app is not touched). `run`, `install` and the
+  simulator script start the game asked for (`P2_GAME_CHOICE`); an empty
+  `SIMCTL_CHILD_P2_GAME_CHOICE` and `P2_PICKER_TEST=<game>` show the picker
+  and pick that game after six seconds (screenshots).
+- **From the Mac without Terminal:** the Natif Installer's **Devices** step
+  (`tools/devices.py`, docs/usage.md) lists the iPhones and iPads plugged in or
+  paired on the Wi-Fi, their free space and games, and downloads Portal 2,
+  Mel or the Mac's Workshop maps, installing the app first when needed.
+
 ## Portal Stories: Mel (phase 1)
 
-The same checkout builds Mel's own app ([mel.md](mel.md), plan in
+Mel now lives in the Portal app (above); a standalone Mel app can still be
+built (`P2_STANDALONE=1` for the device tools). The same checkout builds Mel's own app ([mel.md](mel.md), plan in
 [fork/MEL_IOS_PLAN.md](fork/MEL_IOS_PLAN.md)): `tools/build_ios.py --game mel`
 writes `P2Game` = `mel` and builds `build/mel/ios/<target>/PortalStoriesMel.app`
 ("Portal Stories Mel" on the home screen). At launch `runtime/ios/game_ios.c`

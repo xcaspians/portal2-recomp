@@ -14,6 +14,9 @@ esac
 # Chemins et identifiant du jeu (tools/ios_game.py) : GAME_ROOT, LINUX_ROOT, PREP, IOS_DIR, IOS_APP, APP_ID, MOD...
 VARS=$(python3 tools/ios_game.py ${GAME_OPT[@]+"${GAME_OPT[@]}"} --target sim) || exit 2
 eval "$VARS"
+# The Portal app hosts several games (game picker): start the one asked for,
+# unless SIMCTL_CHILD_P2_GAME_CHOICE is set (empty: the picker, for its checks).
+export SIMCTL_CHILD_P2_GAME_CHOICE=${SIMCTL_CHILD_P2_GAME_CHOICE-$GAME}
 # Simulateur : P2_SIM_DEVICE (UDID), sinon le premier démarré, sinon le premier iPhone disponible.
 DEVICE=${P2_SIM_DEVICE:-$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1 || true)}
 DEVICE=${DEVICE:-$(xcrun simctl list devices available | grep iPhone | grep -oE '[0-9A-F-]{36}' | head -1 || true)}

@@ -117,7 +117,7 @@ class IosProfiles(unittest.TestCase):
     def c_table(self):
         import re
         text = (self.ROOT / 'runtime/ios/game_ios.c').read_text()
-        rows = re.findall(r'\{"(\w+)", "(\w+)", "([\w-]+)", "(\d+)", (\d), (\w+), "(\w+)", (\d+)\}', text)
+        rows = re.findall(r'\{"(\w+)", "(\w+)", "([\w-]+)", "(\d+)", (\d), (\w+), "(\w+)", (\d+), "(\w*)",\s*"([^"]+)"\}', text)
         return {r[0]: r for r in rows}
 
     def test_every_game_has_an_ios_profile(self):

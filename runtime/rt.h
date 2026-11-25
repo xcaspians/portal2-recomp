@@ -286,6 +286,34 @@ int rt_time_data_import(const char *name, uint32_t address);  // time.c
 int rt_load_images(const char *directory);  // généré par lift.py
 uint32_t rt_export(const char *name);       // 0 si export non recompilé
 gfn rt_lookup(uint32_t target);
+const char *rt_import_name(uint32_t target);
+// One app, several games (iOS Portal app: Portal 2 and Portal Stories: Mel,
+// tools/build_ios.py "ios_guests"): the runtime is built once with
+// RT_MULTI_GAME and reaches the chosen game's generated code through rt_code
+// (set at launch by ios/main_ios.c). Generated code is compiled without it and
+// calls its own game's functions directly; a hosted game's code is linked into
+// one object whose only exports are its <name>_rt_... functions
+// (runtime/ios/guest_glue.c), so the games' fn_<address> never meet.
+#ifdef RT_MULTI_GAME
+struct GuestModuleS;
+typedef struct RtGameCode {
+    const char *name;                          // P2Game value: "portal2", "mel"
+    int (*load_images)(const char *directory);
+    uint32_t (*export_symbol)(const char *name);
+    gfn (*lookup)(uint32_t target);
+    const char *(*import_name)(uint32_t target);
+    const struct GuestModuleS *(*modules)(void);
+    size_t (*module_count)(void);
+} RtGameCode;
+extern const RtGameCode rt_game_codes[];       // generated per app (build/ios/<target>/game_codes.c)
+extern const size_t rt_game_code_count;
+extern const RtGameCode *rt_code;              // the running game's (rt_game_codes[0] until chosen)
+int rt_select_game_code(const char *name);     // 1 if found
+#define rt_load_images(directory) (rt_code->load_images(directory))
+#define rt_export(name) (rt_code->export_symbol(name))
+#define rt_lookup(target) (rt_code->lookup(target))
+#define rt_import_name(target) (rt_code->import_name(target))
+#endif
 // Opérations atomiques invitées (lock, xchg, cmpxchg) : intégrées au code
 // généré. `pc` est l'adresse de l'instruction, pour le message du piège.
 // Accès non aligné : piège (pas d'atomique hôte sur une adresse non alignée).
@@ -405,7 +433,6 @@ RT_ALWAYS_INLINE void rt_jump_fn(CPU *c, gfn fn, uint32_t target) {
     rt_poll(c); c->eip = target; fn(c);
 #endif
 }
-const char *rt_import_name(uint32_t target);
 int rt_shim(CPU *c, const char *name);
 int rt_guest_readable(uint32_t address);   // diagnostic : page hôte lisible
 CPU *rt_shim_cpu(void);   // CPU du shim en cours sur ce thread, NULL hors shim
