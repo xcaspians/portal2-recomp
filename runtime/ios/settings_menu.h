@@ -37,3 +37,11 @@ double rt_menu_slider_value(const rt_menu_item *it, const char *value);
 const char *rt_menu_step(const rt_menu_item *it, const char *value, int dir, char *out, size_t size);
 // Text shown next to the title: "75 %", "×1.25", "Auto", "On".
 void rt_menu_display(const rt_menu_item *it, const char *value, char *out, size_t size);
+
+// Controller events kept from the game around the menu (sdl_ios.m). kind:
+// what the event is; value: an axis's position (-32768..32767). In the game's
+// pause menu the options button belongs to our menu; while the menu holds the
+// controller, presses and deflections stay away from the game, but releases
+// and a stick's return to centre go through, so nothing stays held.
+typedef enum { RT_PAD_BUTTON_DOWN, RT_PAD_BUTTON_UP, RT_PAD_AXIS, RT_PAD_OTHER_MOTION, RT_PAD_NOT_PAD } rt_pad_event;
+int rt_menu_pad_dropped(rt_pad_event kind, int options_button, int value, int paused, int captured);

@@ -1,7 +1,7 @@
 // Live settings (see live_settings.h).
 #include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
-#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,5 +72,14 @@ void rt_ios_settings_watch(void) {
     [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification object:nil
                                                      queue:NSOperationQueue.mainQueue
                                                 usingBlock:^(NSNotification *n) { (void)n; refresh(); }];
+    // That notice is documented for changes made in this process: a change in
+    // the Settings app is read again when the game comes back.
+    [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillEnterForegroundNotification object:nil
+                                                     queue:NSOperationQueue.mainQueue
+                                                usingBlock:^(NSNotification *n) {
+        (void)n;
+        [NSUserDefaults.standardUserDefaults synchronize];   // reread what another process wrote
+        refresh();
+    }];
 }
 #endif

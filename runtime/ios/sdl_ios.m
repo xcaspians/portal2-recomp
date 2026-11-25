@@ -9,6 +9,7 @@
 #include <string.h>
 #include "lifecycle_ios.h"
 #include "settings.h"
+#include "settings_menu.h"
 #include "settings_menu_ios.h"
 
 // Échelle points -> pixels. Sur simulateur (rendu OpenGL ES logiciel,
@@ -107,13 +108,20 @@ void rt_ios_warp_mouse_in_window(SDL_Window *window, int x, int y) { SDL_WarpMou
 // Menu des réglages ouvert (settings_menu_ios.m) : la manette le pilote, le
 // jeu ne voit ni appui ni mouvement de stick ; les relâchements passent, pour
 // qu'aucun bouton ne reste enfoncé côté jeu.
+int rt_ios_game_paused(void);   // game_state.c
 static int pad_event_dropped(const SDL_Event *e) {
-    if (!rt_ios_settings_menu_captures_pad()) return 0;
+    rt_pad_event kind = RT_PAD_NOT_PAD;
+    int options = 0, value = 0;
     switch (e->type) {
-    case SDL_CONTROLLERBUTTONDOWN: case SDL_CONTROLLERAXISMOTION: case SDL_JOYBUTTONDOWN:
-    case SDL_JOYAXISMOTION: case SDL_JOYHATMOTION: case SDL_JOYBALLMOTION: return 1;
+    case SDL_CONTROLLERBUTTONDOWN: kind = RT_PAD_BUTTON_DOWN; options = e->cbutton.button == SDL_CONTROLLER_BUTTON_BACK; break;
+    case SDL_CONTROLLERBUTTONUP: kind = RT_PAD_BUTTON_UP; options = e->cbutton.button == SDL_CONTROLLER_BUTTON_BACK; break;
+    case SDL_JOYBUTTONDOWN: kind = RT_PAD_BUTTON_DOWN; break;
+    case SDL_CONTROLLERAXISMOTION: kind = RT_PAD_AXIS; value = e->caxis.value; break;
+    case SDL_JOYAXISMOTION: kind = RT_PAD_AXIS; value = e->jaxis.value; break;
+    case SDL_JOYHATMOTION: case SDL_JOYBALLMOTION: kind = RT_PAD_OTHER_MOTION; break;
     default: return 0;
     }
+    return rt_menu_pad_dropped(kind, options, value, rt_ios_game_paused(), rt_ios_settings_menu_captures_pad());
 }
 
 int rt_ios_poll_event(SDL_Event *event) {
