@@ -242,3 +242,22 @@ RT_CHECK(ios_setting_env_value_matches_launch) {
     assert(!strcmp(rt_ios_setting_env_value(rt_ios_setting_named("P2BackTapRecord"), "1"), "Documents/backtap/"));
     assert(!rt_ios_setting_env_value(rt_ios_setting_named("P2BackTapRecord"), "0"));
 }
+
+// Controller around the in-game menu (audit, round 4): the options button
+// stays away from the game's pause menu, and a stick's return to centre
+// reaches the game even while the menu holds the controller.
+RT_CHECK(ios_menu_pad_filter_lets_releases_and_centring_through) {
+    // menu open (captured), game paused
+    assert(rt_menu_pad_dropped(RT_PAD_BUTTON_DOWN, 0, 0, 1, 1));
+    assert(!rt_menu_pad_dropped(RT_PAD_BUTTON_UP, 0, 0, 1, 1));         // releases pass
+    assert(rt_menu_pad_dropped(RT_PAD_AXIS, 0, 20000, 1, 1));
+    assert(!rt_menu_pad_dropped(RT_PAD_AXIS, 0, 0, 1, 1));               // back to centre: passes
+    assert(!rt_menu_pad_dropped(RT_PAD_AXIS, 0, -3000, 1, 1));
+    assert(rt_menu_pad_dropped(RT_PAD_OTHER_MOTION, 0, 0, 1, 1));
+    // menu closed, pause menu open: only the options button is ours
+    assert(rt_menu_pad_dropped(RT_PAD_BUTTON_DOWN, 1, 0, 1, 0) && rt_menu_pad_dropped(RT_PAD_BUTTON_UP, 1, 0, 1, 0));
+    assert(!rt_menu_pad_dropped(RT_PAD_BUTTON_DOWN, 0, 0, 1, 0) && !rt_menu_pad_dropped(RT_PAD_AXIS, 0, 20000, 1, 0));
+    // gameplay: the options button is the game's
+    assert(!rt_menu_pad_dropped(RT_PAD_BUTTON_DOWN, 1, 0, 0, 0));
+    assert(!rt_menu_pad_dropped(RT_PAD_NOT_PAD, 0, 0, 1, 1));
+}

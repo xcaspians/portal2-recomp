@@ -169,8 +169,11 @@ The game's page in the Settings app ("Portal 2" or "Half-Life 2"; `ios/Settings.
 by `tools/build_ios.py`). At launch, `runtime/ios/settings.c` turns each
 changed setting into a `P2_*` variable; a variable that is already set (devicectl,
 simctl) takes precedence, and a setting that was never touched leaves the code's
-default in place. Settings you change there while the game is in the
-background apply when you come back to it.
+default in place. The settings that are also in the in-game menu (see
+below) apply when you come back to the game after changing them there; the
+others (Resolution, Renderer, Upscaling, On-screen controls, Trackpad camera
+and acceleration, FPS counter, Auto power saving, Log, Record taps) apply at
+the next launch.
 
 **Source of truth: the app's preferences (`NSUserDefaults`).** The Settings
 app and the in-game menu (pause menu, gear button; see "In-game settings
@@ -238,8 +241,10 @@ dark, translucent panel drawn by the runtime over the game
   left stick up and down move between items, left and right change the
   focused item; A flips a switch, steps a choice or presses a button; B
   closes. While the panel is open the game gets no controller presses or stick
-  motion (`sdl_ios.m`), and a button still held when it closes is kept from
-  the game until released.
+  motion (`sdl_ios.m`, rule in `rt_menu_pad_dropped`), only releases and a
+  stick's return to centre, so nothing stays held; a button still held when it
+  closes is kept from the game until released. In the pause menu the options
+  button is the panel's alone.
 - **When the gear shows:** game UI visible (`IEngineVGui::IsGameUIVisible`)
   and a level loaded: `IVEngineClient::IsInGame` and not
   `IsLevelMainMenuBackground` (`VEngineClient015`, entries 25 and 90, read
