@@ -290,13 +290,20 @@ class Module:
         if self.image is None:
             return None
         before = self.previous(pc, 40)
-        if not before or before[0][1][1] != 'add':
-            return None
-        parts = [x.strip() for x in before[0][1][2].split(',')]
-        if len(parts) != 2 or GPR.get(parts[0], (None,))[0] != GPR[reg][0]:
+        # The add that forms the target, possibly followed by a few instructions
+        # that leave its register alone (GCC: `add rcx, rdx; xor ebx, ebx; jmp rcx`).
+        at = None
+        for k, (_, (_, op, args)) in enumerate(before[:4]):
+            parts = [x.strip() for x in args.split(',')]
+            if op == 'add' and len(parts) == 2 and GPR.get(parts[0], (None,))[0] == GPR[reg][0]:
+                at = k
+                break
+            if op in ('ret', 'jmp', 'call') or any(GPR.get(x, (None,))[0] == GPR[reg][0] for x in parts[:1]):
+                return None   # control leaves, or the register is written: not this pattern
+        if at is None:
             return None
         table = load = index = base_reg = None
-        for p, (nxt, op, args) in before[1:]:
+        for p, (nxt, op, args) in before[at + 1:]:
             if op in ('ret', 'jmp', 'call') and load is None:
                 return None
             m = re.fullmatch(r'(\w+), dword ptr \[(\w+) \+ 4\*(\w+)\]', args)

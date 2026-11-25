@@ -184,6 +184,34 @@ x64_switch:
 9:  mov eax, -1
     ret
 
+# The same with instructions between the add and the jmp (GCC, P2CE's
+# launcher.so: `add rcx, rdx; xor ebx, ebx; jmp rcx`), round 23.
+.globl x64_switch_gap
+.type x64_switch_gap, @function
+x64_switch_gap:
+    push rbx
+    cmp edi, 2
+    ja 8f
+    mov eax, edi
+    lea rdx, [rip + .Ltable2]
+    movsxd rcx, dword ptr [rdx + 4*rax]
+    add rcx, rdx
+    xor ebx, ebx
+    mov esi, 5
+    jmp rcx
+.Lgap0: lea eax, [rbx + 20]
+    pop rbx
+    ret
+.Lgap1: lea eax, [rsi + 16]
+    pop rbx
+    ret
+.Lgap2: mov eax, 22
+    pop rbx
+    ret
+8:  mov eax, -2
+    pop rbx
+    ret
+
 .globl x64_callptr
 .type x64_callptr, @function
 x64_callptr:
@@ -461,6 +489,10 @@ x64_i32: .long -5, 7, 100000, -2
 x64_i16: .short 1, 2, 3, 4, 5, 6, 7, 8
 x64_f4: .float 1.5, -2.5, 3.0, 4.0
 x64_f4b: .float 2.0, -3.0, 3.0, 1.0
+.Ltable2:
+    .long .Lgap0 - .Ltable2
+    .long .Lgap1 - .Ltable2
+    .long .Lgap2 - .Ltable2
 
 .data
 .p2align 3
