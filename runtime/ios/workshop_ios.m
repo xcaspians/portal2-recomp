@@ -73,6 +73,7 @@ void rt_ios_community_cleanup(void) {
     int removed = rt_ws_cleanup(workshop_dir().UTF8String);
     if (removed) fprintf(stderr, "[ios] cartes de la communauté : %d restes de téléchargement retirés\n", removed);
 }
+static const long long kMaxMapBytes = 1LL << 30;
 static NSString *megabytes(long long bytes) {
     return bytes >= 1 << 20 ? [NSString stringWithFormat:@"%.0f MB", bytes / 1048576.0]
                             : [NSString stringWithFormat:@"%lld KB", MAX(1, bytes / 1024)];
@@ -104,6 +105,7 @@ static NSString *failure(NSError *error, NSInteger status, BOOL keyed) {
 @property (nonatomic, copy) NSString *author;
 @property (nonatomic, copy) NSString *failure;            // a download's problem, until it completes
 @property (nonatomic) long long savedUpdated, savedSize;  // the saved copy's note (Downloaded tab)
+@property (nonatomic) BOOL detailsFetched;                // full details asked for once (no refetch loop)
 @end
 @implementation P2WSItem
 @end
@@ -171,7 +173,13 @@ static NSString *failure(NSError *error, NSInteger status, BOOL keyed) {
     [self reload];
     return self;
 }
-- (void)dealloc { [downloads invalidateAndCancel]; }
+// The session keeps its delegate (this page) until invalidated: leaving the
+// page cancels its download (didCompleteWithError cleans the .part up) and
+// lets the page go.
+- (void)willMoveToSuperview:(UIView *)newSuperview {
+    [super willMoveToSuperview:newSuperview];
+    if (!newSuperview) [downloads invalidateAndCancel];
+}
 
 // ---- building blocks ----
 static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat alpha) {
@@ -336,10 +344,10 @@ static UIStackView *row(NSArray<UIView *> *views) {
 - (void)reload {
     ++request;
     [items removeAllObjects];
-    for (UIView *v in cards.arrangedSubviews) [v removeFromSuperview];
     [focus filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(P2Focus *f, NSDictionary *b) {
-        (void)b; return ![f.view isDescendantOfView:self->cards];
+        (void)b; return f.view && ![f.view isDescendantOfView:self->cards];   // before the cards go
     }]];
+    for (UIView *v in cards.arrangedSubviews) [v removeFromSuperview];
     cursor = nil; ended = NO; loading = NO;
     searchRow.hidden = tabs.selectedSegmentIndex != 3;
     modes.hidden = tabs.selectedSegmentIndex == 4;
@@ -414,8 +422,8 @@ static UIStackView *row(NSArray<UIView *> *views) {
     [self fetch:kDetails body:@(body) then:^(NSData *data, NSError *error, NSInteger code) {
         (void)error;
         if (mine != self->request || code != 200) return;
-        rt_ws_item found[50];
-        int got = rt_ws_parse_items(data.bytes, data.length, found, 50, NULL, 0, NULL);
+        rt_ws_item *found = calloc(50, sizeof(*found));
+        int got = found ? rt_ws_parse_items(data.bytes, data.length, found, 50, NULL, 0, NULL) : 0;
         for (int i = 0; i < got; ++i)
             for (P2WSItem *w in list)
                 if (w->it.id == found[i].id && found[i].found) {
@@ -424,20 +432,33 @@ static UIStackView *row(NSArray<UIView *> *views) {
                     if (!w->it.title[0]) snprintf(w->it.title, sizeof(w->it.title), "%s", saved.title);
                     w.savedUpdated = saved.time_updated; w.savedSize = saved.file_size;
                 }
+        free(found);
         [self redrawCards];
     }];
 }
 
 // ---- network ----
+// Requests to Steam's API: no disk cache, cookies or credentials (keyed URLs
+// carry the API key, which must not land in Cache.db).
+static NSURLSession *api_session(void) {
+    static NSURLSession *session;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        session = [NSURLSession sessionWithConfiguration:NSURLSessionConfiguration.ephemeralSessionConfiguration];
+    });
+    return session;
+}
 - (void)fetch:(NSString *)url body:(NSString *)body then:(void (^)(NSData *, NSError *, NSInteger))done {
-    NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]
+    NSURL *address = url ? [NSURL URLWithString:url] : nil;
+    if (!address) { dispatch_async(dispatch_get_main_queue(), ^{ done(nil, nil, 0); }); return; }
+    NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:address
                                                      cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:20];
     if (body) {
         r.HTTPMethod = @"POST";
         r.HTTPBody = [body dataUsingEncoding:NSUTF8StringEncoding];
         [r setValue:@"application/x-www-form-urlencoded" forHTTPHeaderField:@"Content-Type"];
     }
-    [[NSURLSession.sharedSession dataTaskWithRequest:r completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    [[api_session() dataTaskWithRequest:r completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         NSInteger code = [response isKindOfClass:NSHTTPURLResponse.class] ? ((NSHTTPURLResponse *)response).statusCode : 0;
         dispatch_async(dispatch_get_main_queue(), ^{ done(data, error, code); });
     }] resume];
@@ -472,7 +493,9 @@ static UIStackView *row(NSArray<UIView *> *views) {
     UIImage *cached = [images objectForKey:url];
     if (cached) { view.image = cached; return; }
     __weak UIImageView *weakView = view;
-    [[NSURLSession.sharedSession dataTaskWithURL:[NSURL URLWithString:url] completionHandler:^(NSData *data, NSURLResponse *r, NSError *e) {
+    NSURL *address = [NSURL URLWithString:url];
+    if (!address) return;   // odd text from Steam: no preview rather than a crash
+    [[NSURLSession.sharedSession dataTaskWithURL:address completionHandler:^(NSData *data, NSURLResponse *r, NSError *e) {
         (void)r; (void)e;
         UIImage *image = data ? [UIImage imageWithData:data] : nil;
         if (!image) return;
@@ -609,14 +632,15 @@ static UIStackView *row(NSArray<UIView *> *views) {
         rt_ws_details_body(body2, sizeof(body2), ids, n);
         [self fetch:kDetails body:@(body2) then:^(NSData *data2, NSError *error2, NSInteger code2) {
             if (mine != self->request) return;
-            rt_ws_item found[50];
-            int got = data2 && code2 == 200 ? rt_ws_parse_items(data2.bytes, data2.length, found, 50, NULL, 0, NULL) : -1;
-            if (got < 0) { [self setStatus:failure(error2, code2, NO)]; return; }
+            rt_ws_item *found = calloc(50, sizeof(*found));
+            int got = found && data2 && code2 == 200 ? rt_ws_parse_items(data2.bytes, data2.length, found, 50, NULL, 0, NULL) : -1;
+            if (got < 0) { free(found); [self setStatus:failure(error2, code2, NO)]; return; }
             [self clearList];
             NSMutableArray<P2WSItem *> *page = [NSMutableArray array];
             for (int i = 0; i < got; ++i) if (found[i].found && found[i].is_map) {
                 P2WSItem *w = [P2WSItem new]; w->it = found[i]; [page addObject:w];
             }
+            free(found);
             [self setStatus:[NSString stringWithFormat:@"Collection “%@”: %lu maps.", title, (unsigned long)page.count]];
             [self addCards:page];
         }];
@@ -624,10 +648,10 @@ static UIStackView *row(NSArray<UIView *> *views) {
 }
 - (void)clearList {
     [items removeAllObjects];
-    for (UIView *v in cards.arrangedSubviews) [v removeFromSuperview];
     [focus filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(P2Focus *f, NSDictionary *b) {
-        (void)b; return ![f.view isDescendantOfView:self->cards];
+        (void)b; return f.view && ![f.view isDescendantOfView:self->cards];   // before the cards go
     }]];
+    for (UIView *v in cards.arrangedSubviews) [v removeFromSuperview];
     ended = YES;
 }
 
@@ -682,7 +706,9 @@ static UIStackView *row(NSArray<UIView *> *views) {
     if (w->it.description[0]) [s addArrangedSubview:label(@(w->it.description), 15, UIFontWeightRegular, .85)];
     [self updateDetailButtons];
     // Missing description or preview (from a list): fetch the full details.
-    if (!w->it.description[0] || !w->it.file_url[0]) {
+    // Only once: a map with no description or no download link stays that way.
+    if ((!w->it.description[0] || !w->it.file_url[0]) && !w.detailsFetched) {
+        w.detailsFetched = YES;
         unsigned long long one[] = {w->it.id};
         char body[128];
         rt_ws_details_body(body, sizeof(body), one, 1);
@@ -760,8 +786,14 @@ static UIStackView *row(NSArray<UIView *> *views) {
                              "Free some space and try again.", megabytes(w->it.file_size), megabytes(free_bytes)];
         return;
     }
+    // Workshop maps are 5–105 MB (ROUND3_REPORT): a size over 1 GB, or a body
+    // longer than announced, is not a map (didWriteData stops it).
+    if (w->it.file_size > kMaxMapBytes) { detailStatus.text = @"This item is too large to be a Portal 2 map."; return; }
+    NSString *link = @(w->it.file_url);
+    NSURL *url = link ? [NSURL URLWithString:link] : nil;
+    if (!url || ![url.scheme isEqualToString:@"https"]) { detailStatus.text = @"Steam's download link for this chamber can't be read."; return; }
     downloading = w;
-    task = [downloads downloadTaskWithURL:[NSURL URLWithString:@(w->it.file_url)]];
+    task = [downloads downloadTaskWithURL:url];
     [task resume];
     progress.progress = 0;
     detailStatus.text = @"Downloading…";
@@ -771,7 +803,13 @@ static UIStackView *row(NSArray<UIView *> *views) {
 - (void)cancelDownload { [task cancel]; }
 - (void)URLSession:(NSURLSession *)s downloadTask:(NSURLSessionDownloadTask *)t didWriteData:(int64_t)bytes
  totalBytesWritten:(int64_t)written totalBytesExpectedToWrite:(int64_t)expected {
-    (void)s; (void)t; (void)bytes;
+    (void)s; (void)bytes;
+    long long allowed = downloading->it.file_size > 0 ? downloading->it.file_size : kMaxMapBytes;
+    if (written > allowed || (expected > 0 && expected > allowed)) {
+        downloading.failure = @"Steam sent more than this map's size. Try again later.";
+        [t cancel];
+        return;
+    }
     long long total = expected > 0 ? expected : downloading->it.file_size;
     if (total > 0 && shown == downloading) {
         progress.progress = (float)written / (float)total;
@@ -803,12 +841,19 @@ static UIStackView *row(NSArray<UIView *> *views) {
             problem = @"The file Steam sent isn't a complete Portal 2 map. Try again later.";
     }
     if (!problem) {
-        // An update replaces the old copy, whatever its name was.
-        for (NSString *name in [files contentsOfDirectoryAtPath:dir error:nil])
-            if ([name.pathExtension.lowercaseString isEqualToString:@"bsp"]) [files removeItemAtPath:[dir stringByAppendingPathComponent:name] error:nil];
+        // The new map takes its place first (replacing a copy of the same
+        // name in one step); only then do other names of an older version go,
+        // so a failure or a kill never leaves the item without a map.
+        BOOL placed = [files fileExistsAtPath:final]
+            ? [files replaceItemAtURL:[NSURL fileURLWithPath:final] withItemAtURL:[NSURL fileURLWithPath:part] backupItemName:nil
+                              options:0 resultingItemURL:nil error:nil]
+            : [files moveItemAtPath:part toPath:final error:nil];
         NSString *meta = [dir stringByAppendingPathComponent:@"p2workshop.txt"];
-        if (!rt_ws_meta_write(meta.UTF8String, &w->it) || ![files moveItemAtPath:part toPath:final error:nil])
-            problem = @"The map couldn't be saved.";
+        if (!placed || !rt_ws_meta_write(meta.UTF8String, &w->it)) problem = @"The map couldn't be saved.";
+        else
+            for (NSString *name in [files contentsOfDirectoryAtPath:dir error:nil])
+                if ([name.pathExtension.lowercaseString isEqualToString:@"bsp"] && ![name isEqualToString:final.lastPathComponent])
+                    [files removeItemAtPath:[dir stringByAppendingPathComponent:name] error:nil];
     }
     if (problem) {
         [files removeItemAtPath:part error:nil];
@@ -820,7 +865,7 @@ static UIStackView *row(NSArray<UIView *> *views) {
     (void)s; (void)t;
     P2WSItem *w = downloading;
     downloading = nil; task = nil;
-    NSString *problem = error ? failure(error, 0, NO) : w.failure;
+    NSString *problem = w.failure ?: (error ? failure(error, 0, NO) : nil);
     w.failure = nil;
     if (error) rt_ios_community_cleanup();   // canceled or cut: nothing half-written stays
     fprintf(stderr, "[ios] carte %llu : %s\n", w->it.id, problem ? problem.UTF8String : "téléchargée");
