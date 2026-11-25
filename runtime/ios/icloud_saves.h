@@ -14,3 +14,6 @@ void rt_ios_icloud_reload(void);
 // One line for the menu: "Last synced today at 14:05", "Syncing…", "Off",
 // or why it can't ("iCloud isn't set up for this app yet").
 void rt_ios_icloud_status(char *out, size_t size);
+
+// iCloud saves exist for the running game (Portal 2, Mel, Half-Life 2).
+int rt_ios_icloud_supported(void);
