@@ -15,6 +15,7 @@
 #include "settings.h"
 #include "settings_menu.h"
 #include "touch_layout.h"
+#include "tv_output.h"
 
 // Last value applied per menu setting: a change in the Settings app is applied
 // once, and our own writes are not applied twice.
@@ -36,7 +37,8 @@ static void apply(const char *key, const char *value) {
     fprintf(stderr, "[ios] réglage %s = %s (%s=%s)\n", key, value, s->env, env ? env : "défaut");
     if (!strncmp(key, "P2BackTap", 9)) rt_ios_backtap_reload();
     if (!strncmp(key, "P2Gyro", 6)) rt_ios_gyro_reload();
-    if (!strcmp(key, "P2MaxFPS")) rt_ios_power_reload();
+    if (!strcmp(key, "P2MaxFPS") || !strcmp(key, "P2TVMaxFPS")) rt_ios_power_reload();
+    if (!strcmp(key, "P2TVOutput") || !strcmp(key, "P2TVResolution")) rt_ios_tv_refresh();   // round 20
     if (!strcmp(key, "P2ICloudSaves")) rt_ios_icloud_reload();
     [NSNotificationCenter.defaultCenter postNotificationName:@"P2SettingsChanged" object:@(key)];
 }

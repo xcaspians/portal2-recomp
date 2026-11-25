@@ -11,6 +11,10 @@ static const char *const fps_values[] = {"30", "40", "60", "120", "auto", NULL};
 static const char *const fps_labels[] = {"30", "40", "60", "120", "Auto", NULL};
 static const char *const look_values[] = {"0.5", "0.75", "1", "1.5", "2", "3", NULL};
 static const char *const look_labels[] = {"×0.5", "×0.75", "Normal", "×1.5", "×2", "×3", NULL};
+static const char *const tv_res_values[] = {"auto", "1080", "1440", "2160", NULL};
+static const char *const tv_res_labels[] = {"Auto", "1080p", "1440p", "4K", NULL};
+static const char *const tv_fps_values[] = {"auto", "30", "60", "120", NULL};
+static const char *const tv_fps_labels[] = {"TV's rate", "30", "60", "120", NULL};
 static const char *const gyro_values[] = {"0.5", "0.75", "1", "1.5", "2", NULL};
 static const char *const gyro_labels[] = {"×0.5", "×0.75", "Normal", "×1.5", "×2", NULL};
 
@@ -31,6 +35,10 @@ const rt_menu_item rt_menu_items[] = {
     // Corner readout: frames per second, the display's refresh rate, the cap asked for.
     {"P2ShowFPS", NULL, "FPS counter", RT_MENU_TOGGLE, "0", 0, 0, 0, 0, NULL, NULL, NULL, 0},
     {"P2ICloudSaves", "iCloud", "iCloud saves", RT_MENU_TOGGLE, "1", 0, 0, 0, 0, NULL, NULL, NULL, 0},
+    // A connected TV (round 20, tv_output_ios.m): applies at once, mid-game too.
+    {"P2TVOutput", "TV", "Picture on the TV", RT_MENU_TOGGLE, "1", 0, 0, 0, 0, NULL, NULL, NULL, 0},
+    {"P2TVResolution", NULL, "TV resolution", RT_MENU_CHOICE, "auto", 0, 0, 0, 0, NULL, tv_res_values, tv_res_labels, 0},
+    {"P2TVMaxFPS", NULL, "TV frame rate", RT_MENU_CHOICE, "auto", 0, 0, 0, 0, NULL, tv_fps_values, tv_fps_labels, 0},
 };
 const int rt_menu_item_count = (int)(sizeof(rt_menu_items) / sizeof(*rt_menu_items));
 

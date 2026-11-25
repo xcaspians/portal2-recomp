@@ -36,6 +36,10 @@ const rt_ios_setting rt_ios_settings[] = {
     {"P2TouchOpacity", "P2_TOUCH_OPACITY", NULL, NULL},         // 0 à 1 : opacité des boutons et sticks (touch_controls.m)
     {"P2TouchSize", "P2_TOUCH_SIZE", NULL, NULL},               // 0,75 à 1,5 : taille des boutons et sticks
     {"P2ICloudSaves", "P2_ICLOUD_SAVES", "1", "0"},              // sauvegardes iCloud (icloud_saves_ios.m)
+    // A connected TV (round 20, tv_output.h): picture on the TV, its size, its frame cap.
+    {"P2TVOutput", "P2_TV_OUTPUT", "1", "0"},
+    {"P2TVResolution", "P2_TV_RESOLUTION", NULL, NULL},           // auto, 1080, 1440, 2160
+    {"P2TVMaxFPS", "P2_TV_MAX_FPS", NULL, NULL},                 // auto (the TV's rate), 30, 60, 120
 };
 const int rt_ios_settings_count = (int)(sizeof(rt_ios_settings) / sizeof(*rt_ios_settings));
 
