@@ -1,7 +1,9 @@
 # Fork round 3 report: community map browser (24 November 2026)
 
-**Status: Part A done, waiting for Caspian's OK before Part B.** No code
-changed in this part. Part B gets added to this file when it's built.
+**Status: Part A done; Part B approved and built** (merged into the fork's
+`main`). The device build is ready (`build/ios/device/Portal2.app`,
+`0.4.0-fork.2 (69b5236)`). Your iPhone and iPad mini were offline the whole
+round, so it was checked on the Mac and in the iOS Simulator.
 
 ## Part A: can it be done?
 
@@ -126,16 +128,137 @@ of the sample, but it's a free extra.
   mode if you want it.
 - **Effort for Part B:** about 2–3 days, plus device testing.
 
+## Part B: what shipped
+
+**Community Maps**, inside the in-game menu (pause > gear > Maps & Mods >
+Community Maps), on the route you approved:
+
+- **Browse** with your own free Steam Web API key:
+  - Popular (most subscribed), Newest, Trending (this week) and Search;
+  - **single player by default**, or co-op;
+  - 20 at a time, with more loading as you scroll;
+  - each card shows the preview, title, author, subscribers and size, plus
+    badges: **Co-op**, **Downloaded** and **Update available**.
+- **The key:**
+  - Paste it in the page; it's kept in the device's Keychain only, and
+    "API key saved · Change" removes it.
+  - Without a key, the page explains how to get a free one (with a link)
+    instead of showing an empty list.
+  - A refused key gets its own message.
+- **Without a key:** "Paste a Workshop link or ID" works, and a pasted
+  collection opens as the list of its maps. Collections never appear in the
+  browse lists.
+- **Details:**
+  - larger preview, description, size and update date;
+  - **Download** with progress and **Cancel**, then **Play**, **Update**
+    and **Delete** (press twice);
+  - co-op maps say they need a second player, and Play is off for them.
+- **Downloaded tab:** the maps on the device, checked against the Workshop
+  for the update badge.
+- **Where maps go:**
+  `Documents/portal2-userdata/portal2/maps/workshop/<id>/<name>.bsp`.
+  - The engine reads that folder first, and the Maps & Mods list shows the
+    maps too.
+  - It's kept out of iCloud backups.
+  - A download is written as `.part` and becomes a map only once its size
+    matches and it's a real map file. A cancel, a failure or a crash leaves
+    nothing broken in the list.
+- **Failures:** each gets a plain sentence:
+  - offline;
+  - Steam not answering;
+  - a refused key;
+  - Steam limiting requests;
+  - no download link;
+  - not enough storage;
+  - an unreadable answer;
+  - no results.
+- **Controller:**
+  - d-pad or stick moves;
+  - left/right on the tabs switches tab, and on the mode row switches
+    single player / co-op;
+  - A opens or presses;
+  - B goes back.
+  - Typing (search, key, link) needs touch.
+- **No web-page scraping mode**, as agreed.
+
+**Checks:** 8 new checks, 286 in all, plus 236 Python tests, all passing.
+They cover:
+- reading the API's answers: details, browse pages, collections, names,
+  plus broken and empty answers, escapes and emoji;
+- the browse URL and request bodies, and pasted links;
+- file names and paths;
+- the update badge;
+- cleaning up canceled and half-finished downloads.
+
+The device and simulator apps compile with no warnings.
+
+**Simulator:**
+- A chamber (`3845455194`, 4.8 MB) was downloaded without a key and saved
+  with its note. It started from the menu: the game's console log shows
+  `Host_NewGame on map workshop/3845455194/1795496734`.
+- A second run started it again from the saved copy.
+- The details page of "12 Angry Tests: Part 2" drew with its preview,
+  subscribers, size, date and the Download button.
+- Browsing with a key couldn't be tried: there's no key yet.
+
 ## Needs Caspian (for Part A)
 
 1. **OK on the route above** (or pick: key-based browsing, page-reading
    without a key, or both).
 2. **A free Steam Web API key**, if you agree: steamcommunity.com/dev/apikey,
    any domain name (for example `localhost`). Paste it into the app's key
-   field once Part B is built (not into a chat). The simulator test of
-   browsing with a key happens then.
+   field (not into a chat).
 3. **The 809 MB of Workshop maps** the Mac game downloaded on its own: keep
    them (they can go to the phone later), or delete
    `~/Library/Application Support/Portal 2 Natif/userdata/portal2/maps/workshop`
    to free the space. The game downloads them again whenever it starts with
    Steam, as on PC.
+
+## Needs Caspian (everything, batched)
+
+1. **Plug in and unlock your iPhone and iPad mini.** I install this build on
+   both; your game data stays.
+2. **Get your free Steam Web API key** (steamcommunity.com/dev/apikey) and
+   paste it in Community Maps on each device. This is the first real test
+   of browsing with a key.
+3. **The hand tests below.**
+4. **The 809 MB of Workshop maps** the Mac game downloaded on its own
+   (Part A): keep them or delete them.
+5. **Left over from rounds 1 and 2:**
+   - the controller test of the overlay fix;
+   - a back-tap recording with light taps;
+   - the 120 Hz measurement;
+   - the `portal2_dlc3` addon test;
+   - the one-time iCloud setup (`docs/ios.md`, "iCloud saves");
+   - the OK on the upstream PR (E).
+
+## Hand-test checklist (iPhone and iPad mini)
+
+- [ ] Pause > gear > Maps & Mods > **Community Maps**. Without a key, the
+  page explains how to get one, and "Get a free key" opens the Steam page.
+- [ ] Paste the key and Save: **Popular** fills with single-player
+  chambers, with previews, authors and subscriber counts. Scroll down: more
+  load.
+- [ ] **Newest** and **Trending** fill too. **Co-op** shows co-op maps,
+  each labelled "Co-op".
+- [ ] **Search** for a chamber by name (for example "12 Angry Tests"): it's
+  found.
+- [ ] Open a map: description, larger preview, size, update date.
+- [ ] **Download** it: the bar fills. Start another one and press
+  **Cancel**: nothing broken shows up in Downloaded or in Maps & Mods.
+- [ ] **Play** the downloaded map: the menu closes and the chamber loads.
+- [ ] It's in **Downloaded** and in **Maps & Mods**.
+- [ ] **Delete** it (press twice): it's gone from both lists.
+- [ ] Airplane mode, then Community Maps: "You're offline…", not an empty
+  screen. Downloaded maps still play.
+- [ ] Without a key (Change), paste a Workshop link (for example
+  `https://steamcommunity.com/sharedfiles/filedetails/?id=68539885`): its
+  details open and it downloads. Paste a collection's link: its maps are
+  listed.
+- [ ] A wrong key: "Steam refused the API key…".
+- [ ] Controller:
+  - left/right on the tabs switches tab, and on the mode row switches
+    single player / co-op;
+  - up/down moves through the cards;
+  - A opens a card and presses Download or Play;
+  - B goes back to the list, then to the settings.
