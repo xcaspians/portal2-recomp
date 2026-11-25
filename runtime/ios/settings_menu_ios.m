@@ -22,6 +22,7 @@
 #include <string.h>
 #include "device_defaults_ios.h"
 #include "game_ios.h"
+#include "game_picker_ios.h"
 #include "icloud_saves.h"
 #include "live_settings.h"
 #include "mods_list.h"
@@ -37,7 +38,7 @@ static int menu_open, closing_hold;
 int rt_ios_settings_menu_captures_pad(void) { return menu_open || closing_hold; }
 int rt_ios_settings_menu_open(void) { return menu_open; }
 
-typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED } RowKind;
+typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED, ROW_SWITCH_GAME } RowKind;
 
 @interface P2MenuRow : NSObject
 @property (nonatomic) RowKind kind;
@@ -74,7 +75,7 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     BOOL prevA, prevB, prevOptions;
     int held[2];
     CFTimeInterval repeatAt[2];
-    CFTimeInterval resetArmedUntil;
+    CFTimeInterval resetArmedUntil, switchArmedUntil;
     NSString *padName;        // localized name of the options button, for the gear
     UIView *community;        // Community Maps browser (workshop_ios.m), over the panel while open
     UILabel *icloudStatus;    // "Last synced ..." under the iCloud switch
@@ -234,9 +235,11 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     if (portal2) [self addMapsSection];
     [self addSection:@""];
     [self addResetRow];
+    if (rt_ios_has_game_choice()) [self addSwitchGameRow];
     [rows addObject:close];   // last in controller order, first on screen
     NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"P2ForkVersion"] ?: @"unknown";
-    UILabel *footer = label([NSString stringWithFormat:@"Portal 2 recomp fork · version %@", version], 13,
+    UILabel *footer = label([NSString stringWithFormat:@"%@ · recomp fork · version %@", @(rt_ios_current_game()->title),
+                                                       version], 13,
                             UIFontWeightRegular, .5);
     footer.textAlignment = NSTextAlignmentCenter;
     [stack addArrangedSubview:footer];
@@ -441,6 +444,49 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
         conf.title = @"Recommended settings applied";
         r.button.configuration = conf;
     }
+}
+// "Switch game" (the Portal app, several games): the game runs in this
+// process, so switching means a new launch. First press: what will happen;
+// second press: the remembered choice is forgotten and the app closes, and
+// the picker shows when it is opened again.
+- (void)addSwitchGameRow {
+    P2MenuRow *row = [P2MenuRow new];
+    row.kind = ROW_SWITCH_GAME;
+    __weak P2SettingsMenu *weakSelf = self;
+    UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
+    conf.title = @"Switch game";
+    conf.image = [UIImage systemImageNamed:@"square.grid.2x2"];
+    conf.imagePadding = 6;
+    conf.baseForegroundColor = UIColor.whiteColor;
+    conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+        (void)a; [weakSelf switchGamePressed:nil];
+    }]];
+    row.view = row.button;
+    row.view.layer.cornerRadius = 12;
+    [row.button.heightAnchor constraintGreaterThanOrEqualToConstant:48].active = YES;
+    [stack addArrangedSubview:row.button];
+    [rows addObject:row];
+}
+- (void)switchGamePressed:(id)unused {
+    (void)unused;
+    CFTimeInterval now = CACurrentMediaTime();
+    P2MenuRow *row = nil;
+    for (P2MenuRow *r in rows) if (r.kind == ROW_SWITCH_GAME) row = r;
+    if (!row) return;
+    if (now > switchArmedUntil) {
+        switchArmedUntil = now + 4;
+        UIButtonConfiguration *conf = row.button.configuration;
+        conf.title = @"Press again to close the app";
+        conf.subtitle = @"Save first. Open the app again to pick a game.";
+        conf.baseBackgroundColor = [UIColor colorWithRed:.55 green:.35 blue:.1 alpha:1];
+        row.button.configuration = conf;
+        return;
+    }
+    rt_ios_forget_game_choice();
+    [NSUserDefaults.standardUserDefaults synchronize];
+    fprintf(stderr, "[ios] jeux : changer de jeu, l'app se ferme\n");
+    exit(0);
 }
 - (void)addResetRow {
     P2MenuRow *row = [P2MenuRow new];
@@ -668,6 +714,7 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     case ROW_CLOSE: [self closeMenu]; return;
     case ROW_RESET: [self resetPressed]; return;
     case ROW_RECOMMENDED: [self useRecommended]; return;
+    case ROW_SWITCH_GAME: [self switchGamePressed:nil]; return;
     case ROW_MAP: [self startMap:row]; return;
     case ROW_COMMUNITY: [self openCommunity]; return;
     case ROW_SETTING: break;
@@ -727,13 +774,18 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     static int auto_open = -1;
     if (auto_open < 0) {
         const char *e = getenv("P2_SETTINGS_MENU_OPEN");
-        auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : !strcmp(e, "display") ? 3 : 0;
+        auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : !strcmp(e, "display") || !strcmp(e, "end") ? 3 : 0;
     }
     if (auto_open && !gear.hidden) {
         int start = auto_open == 2;
         auto_open = 0;
         [self openMenu];
         for (P2MenuRow *row in rows) if (start && row.kind == ROW_MAP) { [self startMap:row]; break; }
+        // =end: scrolled to the bottom (Reset, Switch game, the version line).
+        if (auto_open == 0 && getenv("P2_SETTINGS_MENU_OPEN") && !strcmp(getenv("P2_SETTINGS_MENU_OPEN"), "end")) {
+            [scroll layoutIfNeeded];
+            [scroll setContentOffset:CGPointMake(0, MAX(0, scroll.contentSize.height - scroll.bounds.size.height)) animated:NO];
+        }
         // =display: scrolled to "Defaults for <device>" (screenshots of the defaults row).
         if (auto_open == 0 && getenv("P2_SETTINGS_MENU_OPEN") && !strcmp(getenv("P2_SETTINGS_MENU_OPEN"), "display"))
             for (P2MenuRow *row in rows) if (row.kind == ROW_RECOMMENDED) {

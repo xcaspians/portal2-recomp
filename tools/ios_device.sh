@@ -17,8 +17,10 @@
 #                                                (tools/mods_dest.py; docs/mods.md)
 #   tools/ios_device.sh workshop push [--dry-run]   the Mac's Workshop maps onto the device, as Community
 #                                                Maps keeps them (tools/workshop_push.py; docs/mods.md)
-#   tools/ios_device.sh mel data push [--dry-run]   Portal Stories: Mel's data onto the device (the Mel app
-#                                                installed first; free space checked; tools/ios_data_plan.py)
+#   tools/ios_device.sh mel data push [--dry-run]   Portal Stories: Mel's data into the Portal app (Documents/mel;
+#                                                free space checked; tools/ios_data_plan.py)
+#   tools/ios_device.sh mel saves migrate [--dry-run]  Mel's saves from the old standalone Mel app into the Portal
+#                                                app, through the Mac, checked file by file; nothing deleted
 #   tools/ios_device.sh space [bytes]            the device's free space (the app reports it: P2_DEVICE_REPORT=1)
 #   tools/ios_device.sh saves status|pull|push [--force] [--dry-run]   saves between the Mac and the iPhone
 #                                                (tools/save_sync.py; docs/usage.md#saves-between-mac-and-iphone-portal-2; Portal 2 only)
@@ -27,14 +29,19 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 GAME_OPT=()
 case "${1:-}" in
-  mel) [ "${2:-}" = data ] && [ "${3:-}" = push ] || { echo "usage: $0 mel data push [--dry-run]"; exit 2; }
-       GAME_OPT=(--game mel); set -- mel-data-push "${@:4}" ;;
+  mel) GAME_OPT=(--game mel)
+       case "${2:-} ${3:-}" in
+         "data push") set -- mel-data-push "${@:4}" ;;
+         "saves migrate") set -- mel-saves-migrate "${@:4}" ;;
+         *) echo "usage: $0 mel data push [--dry-run] | mel saves migrate [--dry-run]"; exit 2 ;;
+       esac ;;
   --game) GAME_OPT=(--game "${2:?--game needs a value}"); shift 2 ;;
   --game=*) GAME_OPT=(--game "${1#--game=}"); shift ;;
 esac
 # Paths and identifiers of the game (tools/ios_game.py): GAME_ROOT, LINUX_ROOT,
 # PREP, IOS_DIR, IOS_APP, APP_ID, PROBE_ID, MOD, IOS_DATA.
-VARS=$(python3 tools/ios_game.py ${GAME_OPT[@]+"${GAME_OPT[@]}"} --target device)
+# P2_STANDALONE=1: a hosted game's own former app (the standalone Mel app).
+VARS=$(python3 tools/ios_game.py ${GAME_OPT[@]+"${GAME_OPT[@]}"} --target device ${P2_STANDALONE:+--standalone})
 eval "$VARS"
 DEVICE=${P2_DEVICE:-$(xcrun devicectl list devices 2>/dev/null |
   awk '/physical/ && / connected|available \(paired\)/ {for (i = 1; i <= NF; ++i) if ($i ~ /^[0-9A-F]{8}-[0-9A-F]{16}$/) {print $i; exit}}')}
@@ -47,7 +54,7 @@ dc() {  # sous-commande de trois mots, --device, puis le reste (options et argum
 env_json() {  # VAR=valeur... -> {"VAR":"valeur",...}
   python3 -c 'import json,sys; print(json.dumps(dict(a.split("=",1) for a in sys.argv[1:])))' "$@"
 }
-DATA_MARK=Documents/.p2-data-state  # « incomplete » pendant « data », « complete » à la fin
+DATA_MARK=$DATA_ROOT/.p2-data-state  # « incomplete » pendant « data », « complete » à la fin (Documents/mel pour Mel)
 mark_data() {  # état écrit sur l'appareil (devicectl ne sait pas supprimer un fichier)
   local mark; mark=$(mktemp); echo "$1" > "$mark"
   copy_to "$APP_ID" "$mark" "$DATA_MARK" >/dev/null; rm -f "$mark"
@@ -108,10 +115,10 @@ data)
   # Dossiers du profil (ios_data) : Portal 2 sans la bande son ni sdk_content
   # (~11,5 Go), Half-Life 2 avec les épisodes et Lost Coast (~10 Go).
   mark_data incomplete
-  copy_to "$APP_ID" "$PREP" Documents/prep
-  copy_to "$APP_ID" "$LINUX_ROOT" Documents/linux
+  copy_to "$APP_ID" "$PREP" "$DATA_ROOT/prep"
+  copy_to "$APP_ID" "$LINUX_ROOT" "$DATA_ROOT/linux"
   for d in $IOS_DATA; do
-    [ -e "$GAME_ROOT/$d" ] && copy_to "$APP_ID" "$GAME_ROOT/$d" "Documents/game/$d"
+    [ -e "$GAME_ROOT/$d" ] && copy_to "$APP_ID" "$GAME_ROOT/$d" "$DATA_ROOT/game/$d"
   done
   mark_data complete
   ;;
@@ -125,12 +132,12 @@ has-mark)  # un état existe (copie commencée par cette version du script)
   has_file "$DATA_MARK"
   ;;
 has-game)  # copies antérieures au marqueur : le dossier du jeu suffit
-  has_file "Documents/game/$MOD"
+  has_file "$DATA_ROOT/game/$MOD"
   ;;
 prep)
   # Le dossier entier en un appel : chaque fichier remplace son homologue (les
   # adresses des modules suivent $PREP, celui avec lequel l'app a été construite).
-  copy_to "$APP_ID" "$PREP" Documents/prep >/dev/null
+  copy_to "$APP_ID" "$PREP" "$DATA_ROOT/prep" >/dev/null
   echo "Documents/prep : $(ls "$PREP" | wc -l | tr -d ' ') fichiers copiés"
   ;;
 run)
@@ -138,7 +145,7 @@ run)
   SECONDS_MAX=180
   case "${1:-}" in ''|*=*) ;; *) SECONDS_MAX=$1; shift ;; esac   # seconds are optional: `run P2_RENDERER=opengl`
   dc device process launch --terminate-existing \
-    --environment-variables "$(env_json P2_LOG_FILE=Documents/game.log P2_FRAME_LOG=1 "$@")" "$APP_ID"
+    --environment-variables "$(env_json P2_LOG_FILE=Documents/game.log P2_FRAME_LOG=1 P2_GAME_CHOICE="$GAME" "$@")" "$APP_ID"
   sleep "$SECONDS_MAX"
   mkdir -p "$IOS_DIR"
   dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" \
@@ -172,7 +179,7 @@ mel-data-push)
   # Toutes les données de Mel (~9,3 Go), sans les restes du joueur dans son
   # dossier de jeu (SAVE, captures, journaux : tools/ios_data_plan.py).
   out=$(python3 tools/ios_data_plan.py --game-root "$GAME_ROOT" --linux-root "$LINUX_ROOT" --prep "$PREP" \
-        --folders "$IOS_DATA") || exit 2
+        --folders "$IOS_DATA" --dest-root "$DATA_ROOT") || exit 2
   total=$(awk -F'\t' '$1 == "total" {print $2}' <<< "$out")
   awk -F'\t' '$1 == "copy" {printf "  %-55s %6.0f MB\n", $3, $4 / 1048576}' <<< "$out"
   echo "total: $((total / 1048576)) MB, to the app $APP_ID"
@@ -186,6 +193,26 @@ mel-data-push)
   done <<< "$out"
   mark_data complete
   echo "Mel's data is on the device. Open the app, or: tools/ios_device.sh --game mel run"
+  ;;
+mel-saves-migrate)
+  # Les sauvegardes de l'ancienne app Mel autonome vers l'app Portal (Mel y est
+  # hébergé : mêmes dossiers mel-userdata), en passant par le Mac. Rien n'est
+  # supprimé dans l'ancienne app ; chaque fichier est vérifié à l'arrivée.
+  OLD_ID=$(python3 tools/ios_bundle_id.py --game mel)
+  [ "$OLD_ID" != "$APP_ID" ] || { echo "Mel isn't hosted in the Portal app here (no ios_host)"; exit 2; }
+  SAVE_DIR=Documents/mel-userdata/$MOD/SAVE
+  work="$IOS_DIR/mel-saves-migration"; rm -rf "$work"; mkdir -p "$work"
+  dc device copy from --domain-type appDataContainer --domain-identifier "$OLD_ID" --source "$SAVE_DIR" \
+    --destination "$work/SAVE" >/dev/null 2>&1 || { echo "no saves found in the old Mel app ($OLD_ID): nothing to move"; exit 0; }
+  n=$(find "$work/SAVE" -type f \( -iname '*.sav' -o -iname '*.tga' \) | wc -l | tr -d ' ')
+  echo "$n save files in the old Mel app, kept there:"; (cd "$work/SAVE" && find . -type f | sed 's/^/  /')
+  [ "${2:-}" = --dry-run ] && { echo "dry run: nothing copied"; exit 0; }
+  copy_to "$APP_ID" "$work/SAVE" "$SAVE_DIR" >/dev/null
+  listing="$work/after.json"
+  dc device info files --domain-type appDataContainer --domain-identifier "$APP_ID" --subdirectory "$SAVE_DIR" \
+    --json-output "$listing" >/dev/null 2>&1 || { echo "couldn't list the saves in the Portal app afterwards"; exit 1; }
+  python3 tools/ios_data_plan.py verify --local "$work/SAVE" --listing "$listing" || exit 1
+  echo "Mel's saves are in the Portal app. Check them in the game, then remove the old Mel app (Needs Caspian)."
   ;;
 workshop)
   # Documents/portal2-userdata/portal2/maps/workshop/<id>/ : la disposition de

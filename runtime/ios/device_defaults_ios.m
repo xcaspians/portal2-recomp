@@ -11,6 +11,7 @@
 #include "device_defaults.h"
 #include "device_defaults_ios.h"
 #include "device_ios.h"
+#include "game_ios.h"
 #include "live_settings.h"
 #include "settings.h"
 
@@ -36,7 +37,8 @@ const rt_dd_choice *rt_ios_device_choice(void) {
 static int get(void *ctx, const char *key, char *out, size_t size) { (void)ctx; return rt_ios_preference(key, out, size); }
 static void set_pref(void *ctx, const char *key, const char *value) {
     (void)ctx;
-    CFStringRef k = CFStringCreateWithCString(NULL, key, kCFStringEncodingUTF8);
+    char own[160];
+    CFStringRef k = CFStringCreateWithCString(NULL, rt_ios_pref_key(key, own, sizeof(own)), kCFStringEncodingUTF8);
     CFStringRef v = CFStringCreateWithCString(NULL, value, kCFStringEncodingUTF8);
     CFPreferencesSetAppValue(k, v, kCFPreferencesCurrentApplication);
     CFRelease(k); CFRelease(v);

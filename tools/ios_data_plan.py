@@ -37,9 +37,10 @@ def size_of(path):
     return total
 
 
-def plan(game_root, linux_root, prep, folders):
-    """[(source, destination, bytes)]; a folder missing on the Mac is skipped (as `data` does)."""
-    out = [(str(prep), 'Documents/prep', size_of(prep)), (str(linux_root), 'Documents/linux', size_of(linux_root))]
+def plan(game_root, linux_root, prep, folders, dest_root='Documents'):
+    """[(source, destination, bytes)]; a folder missing on the Mac is skipped (as `data` does).
+    dest_root: Documents, or Documents/mel for Mel hosted in the Portal app."""
+    out = [(str(prep), f'{dest_root}/prep', size_of(prep)), (str(linux_root), f'{dest_root}/linux', size_of(linux_root))]
     for name in folders:
         src = Path(game_root) / name
         if not src.exists():
@@ -49,24 +50,69 @@ def plan(game_root, linux_root, prep, folders):
             for e in sorted(entries):
                 if e.name.lower() in LEFTOVERS or e.name.startswith('.'):
                     continue
-                out.append((str(e), f'Documents/game/{name}/{e.name}', size_of(e)))
+                out.append((str(e), f'{dest_root}/game/{name}/{e.name}', size_of(e)))
         else:
-            out.append((str(src), f'Documents/game/{name}', size_of(src)))
+            out.append((str(src), f'{dest_root}/game/{name}', size_of(src)))
     return out
 
 
+def device_files(report):
+    """{relative path: size} of the files in a devicectl JSON listing."""
+    out = {}
+    for item in ((report or {}).get('result') or {}).get('files') or []:
+        meta = item.get('metadata') if isinstance(item.get('metadata'), dict) else {}
+        if 'dir' in str(meta.get('type', item.get('type', ''))).lower():
+            continue
+        path = str(item.get('relativePath') or item.get('path') or item.get('name') or '').rstrip('/')
+        size = meta.get('size', item.get('size', item.get('fileSize')))
+        if path and size is not None:
+            out[path] = int(size)
+    return out
+
+
+def missing_after_copy(local, listing):
+    """Files of the local folder not on the device with the same size afterwards
+    (paths matched from their end, since devicectl may list them relative to the
+    folder or to the container): [] when the copy is complete."""
+    on_device = device_files(listing)
+    missing = []
+    for path in sorted(p for p in Path(local).rglob('*') if p.is_file()):
+        rel = path.relative_to(local).as_posix()
+        size = path.stat().st_size
+        if not any((d == rel or d.endswith('/' + rel)) and s == size for d, s in on_device.items()):
+            missing.append(rel)
+    return missing
+
+
+def verify(argv):
+    ap = argparse.ArgumentParser(description='every file of --local is on the device (--listing: devicectl JSON)')
+    ap.add_argument('--local', type=Path, required=True)
+    ap.add_argument('--listing', type=Path, required=True)
+    a = ap.parse_args(argv)
+    import json
+    missing = missing_after_copy(a.local, json.loads(a.listing.read_text()))
+    if missing:
+        print(f'{len(missing)} file(s) did not arrive: ' + ', '.join(missing[:10]), file=sys.stderr)
+        return 1
+    print(f'all {sum(1 for p in a.local.rglob("*") if p.is_file())} files arrived, same sizes')
+    return 0
+
+
 def main(argv):
+    if argv[:1] == ['verify']:
+        return verify(argv[1:])
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('--game-root', required=True)
     ap.add_argument('--linux-root', required=True)
     ap.add_argument('--prep', required=True)
     ap.add_argument('--folders', required=True, help='space-separated (ios_data of the game profile)')
+    ap.add_argument('--dest-root', default='Documents', help='Documents/mel for Mel hosted in the Portal app')
     a = ap.parse_args(argv)
     for p in (a.game_root, a.linux_root, a.prep):
         if not Path(p).is_dir():
             print(f'{p}: no such folder (config/local.json, gameprep)', file=sys.stderr)
             return 2
-    rows = plan(a.game_root, a.linux_root, a.prep, a.folders.split())
+    rows = plan(a.game_root, a.linux_root, a.prep, a.folders.split(), a.dest_root)
     for src, dest, n in rows:
         print(f'copy\t{src}\t{dest}\t{n}')
     print(f'total\t{sum(n for _, _, n in rows)}')
