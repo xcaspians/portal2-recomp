@@ -10,16 +10,19 @@
 // Documents (s'ils existent). Le jeu vient de l'Info.plist (runtime/ios/game_ios.c).
 #include <SDL_main.h>
 #include <CoreFoundation/CoreFoundation.h>
+#include <dirent.h>
 #include <limits.h>
 #include <mach-o/dyld.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "device_defaults_ios.h"
 #include "device_ios.h"
+#include "env_ios.h"
 #include "game_ios.h"
 #include "game_picker_ios.h"
 #include "metal_ios.h"
@@ -77,6 +80,47 @@ static void exclude_from_backup(const char *documents) {
     if (done[0] || already[0])
         fprintf(stderr, "[ios] sauvegarde iCloud : exclus %s%s%s%s, %s gardé\n", done,
                 done[0] && already[0] ? " ; " : "", already[0] ? "déjà exclus " : "", already, rt_ios_current_game()->userdata);
+}
+
+// The slim switch-over's last step: removes Mel's own VPK in Documents/<data_dir>/
+// game/{portal2,portal2_dlc2} (pak01_dir.vpk and its archives; pak01_slim.vpk
+// stays, and reads Portal 2's archives) and writes the marker. Refuses when
+// Portal 2's archives or the slim directory aren't there.
+static int slim_commit(const rt_ios_game *game, const char *base, const char *marker) {
+    static const char *const shared[] = {"portal2", "portal2_dlc2"};
+    char path[PATH_MAX];
+    struct stat st;
+    for (size_t i = 0; i < 2; ++i) {
+        snprintf(path, sizeof(path), "%s/%s/pak01_dir.vpk", base, shared[i]);
+        if (stat(path, &st)) { fprintf(stderr, "[ios] jeu : paquet allégé refusé, %s absent\n", path); return 1; }
+    }
+    snprintf(path, sizeof(path), "%s/Documents/%s/game/portal2/pak01_slim.vpk", getenv("HOME"), game->data_dir);
+    if (stat(path, &st)) { fprintf(stderr, "[ios] jeu : paquet allégé refusé, %s absent\n", path); return 1; }
+    long long freed = 0;
+    int removed = 0;
+    for (size_t i = 0; i < 2; ++i) {
+        char folder[PATH_MAX], slim[PATH_MAX];
+        snprintf(folder, sizeof(folder), "%s/Documents/%s/game/%s", getenv("HOME"), game->data_dir, shared[i]);
+        snprintf(slim, sizeof(slim), "%s/pak01_slim.vpk", folder);
+        if (stat(slim, &st)) continue;   // no slim directory there: its own VPK stays
+        DIR *d = opendir(folder);
+        if (!d) continue;
+        for (struct dirent *e; (e = readdir(d));) {
+            size_t n = strlen(e->d_name);
+            if (n < 10 || strncasecmp(e->d_name, "pak01_", 6) || strcasecmp(e->d_name + n - 4, ".vpk") ||
+                !strcasecmp(e->d_name, "pak01_slim.vpk")) continue;
+            snprintf(path, sizeof(path), "%s/%s", folder, e->d_name);
+            if (!stat(path, &st) && !unlink(path)) { freed += st.st_size; ++removed; }
+        }
+        closedir(d);
+    }
+    FILE *f = fopen(marker, "w");
+    if (!f) { fprintf(stderr, "[ios] jeu : marqueur %s impossible\n", marker); return 1; }
+    fputs("slim\n", f);
+    fclose(f);
+    fprintf(stderr, "[ios] jeu : paquet allégé en place, %d archives de Mel supprimées, %.2f Go libérés\n", removed,
+            (double)freed / 1e9);
+    return 0;
 }
 
 int main(int argc, char **argv) {
@@ -141,6 +185,23 @@ int main(int argc, char **argv) {
     }
     const rt_ios_game *game = rt_ios_current_game();
     fprintf(stderr, "[ios] jeu : %s (mod %s, %s)\n", game->name, game->mod, game->userdata);
+    // Slim pack of a hosted game (Mel, tools/mel_slim.py; marker Documents/<data_dir>/.p2-slim,
+    // or P2_MEL_SLIM=1 for the switch-over's boot test): Portal 2's archives come
+    // from Portal 2's own data (runtime/paths.c, P2_BASE_GAME_ROOT). P2_MEL_SLIM=0: never.
+    if (game->data_dir[0] && getenv("HOME")) {
+        char marker[PATH_MAX], base[PATH_MAX];
+        struct stat st;
+        const char *force = getenv("P2_MEL_SLIM");
+        snprintf(marker, sizeof(marker), "%s/Documents/%s/.p2-slim", getenv("HOME"), game->data_dir);
+        snprintf(base, sizeof(base), "%s/Documents/game", getenv("HOME"));
+        // P2_MEL_SLIM_COMMIT=1 (tools/ios_device.sh mel slim switch, after its boot
+        // test): Mel's own copies of Portal 2's archives go, the marker is written.
+        if (rt_ios_env_flag("P2_MEL_SLIM_COMMIT", 0)) return slim_commit(game, base, marker);
+        if (force && *force ? *force == '1' : !stat(marker, &st)) {
+            setenv("P2_BASE_GAME_ROOT", base, 0);
+            fprintf(stderr, "[ios] jeu : paquet allégé, archives de Portal 2 lues dans %s\n", base);
+        }
+    }
     // Tapes au dos coupées par défaut dans HL2 (game_ios.c) ; P2_BACKTAP=1 les rend.
     if (!game->back_taps) setenv("P2_BACKTAP", "0", 0);
     // Rendu Metal (P2_RENDERER=d3d9, Réglages > Rendu) : vérifié avant que
@@ -173,6 +234,12 @@ int main(int argc, char **argv) {
                 read_launch_file(own, "launch.args");
             } else read_launch_file(documents, "launch.args");
         }
+    }
+    // P2_EXTRA_ARGS (devicectl tests: "+load quick"): words added after the launch files.
+    if (getenv("P2_EXTRA_ARGS")) {
+        char words[512];
+        snprintf(words, sizeof(words), "%s", getenv("P2_EXTRA_ARGS"));
+        for (char *save = NULL, *w = strtok_r(words, " \t", &save); w; w = strtok_r(NULL, " \t", &save)) push(w);
     }
     // Options du runtime absentes : dossiers de Documents (sur appareil, les
     // données du jeu y sont copiées ; voir tools/ios_device.sh). Elles

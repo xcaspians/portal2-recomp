@@ -1,15 +1,27 @@
 #include "posix.h"
 #include <TargetConditionals.h>
+#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 static char game_root[PATH_MAX], linux_root[PATH_MAX], user_root[PATH_MAX];
+// Base game (a hosted game borrowing Portal 2's archives, tools/mel_slim.py):
+// P2_BASE_GAME_ROOT=<Portal 2's game folder>. In each shared folder
+// (P2_BASE_SHARED, default "portal2 portal2_dlc2") that holds the slim pack's
+// directory pak01_slim.vpk, the engine's pak01_dir.vpk is that file and its
+// archives pak01_NNN.vpk are Portal 2's. Everything else, loose files
+// included, stays the game's; a folder without pak01_slim.vpk is untouched.
+static char base_root[PATH_MAX];
+enum { BASE_SHARED_MAX = 4 };
+static char base_shared[BASE_SHARED_MAX][32];
+static int base_shared_count;
 static _Thread_local char buffers[4][PATH_MAX];
 static _Thread_local unsigned next_buffer;
 static char *buffer(void) { return buffers[next_buffer++ % 4]; }
@@ -92,8 +104,49 @@ int rt_paths_case_insensitive(void) { return insensitive[0] && insensitive[1] &&
 const char *rt_user_root(void) { return user_root; }
 const char *rt_game_root(void) { return game_root; }
 const char *rt_linux_root(void) { return linux_root; }
+static int join(char out[PATH_MAX],const char *root,const char *relative);
+const char *rt_paths_base_root(void) { return base_root; }
+int rt_paths_base_shared(int i,char *out,size_t size) {
+    if(i<0 || i>=base_shared_count)return 0;
+    snprintf(out,size,"%s",base_shared[i]); return 1;
+}
+void rt_paths_set_base(const char *root,const char *shared) {
+    ++generation;
+    base_root[0]=0; base_shared_count=0;
+    if(!root || !*root)return;
+    if(!realpath(root,base_root))snprintf(base_root,sizeof(base_root),"%s",root);
+    char list[256]; snprintf(list,sizeof(list),"%s",shared && *shared?shared:"portal2 portal2_dlc2");
+    char *save=NULL;
+    for(char *w=strtok_r(list," ,",&save);w && base_shared_count<BASE_SHARED_MAX;w=strtok_r(NULL," ,",&save))
+        snprintf(base_shared[base_shared_count++],sizeof(base_shared[0]),"%s",w);
+}
+// relative ("portal2/pak01_003.vpk") read from the base game: its path there;
+// "portal2/pak01_dir.vpk": the game's own slim directory. 0: not concerned.
+static int base_path(const char *relative,char out[PATH_MAX]) {
+    if(!base_root[0])return 0;
+    for(int i=0;i<base_shared_count;++i){
+        size_t n=strlen(base_shared[i]);
+        if(strncasecmp(relative,base_shared[i],n) || relative[n]!='/')continue;
+        const char *name=relative+n+1; size_t len=strlen(name);
+        if(strchr(name,'/') || len<10 || strncasecmp(name,"pak01_",6) || strcasecmp(name+len-4,".vpk"))return 0;
+        char slim[PATH_MAX]; struct stat info;
+        if(snprintf(slim,sizeof(slim),"%s/%s/pak01_slim.vpk",game_root,base_shared[i])>=(int)sizeof(slim) || stat(slim,&info))
+            return 0;   // no slim directory here: the game's own files
+        if(!strcasecmp(name,"pak01_dir.vpk")){ strcpy(out,slim); return 1; }
+        if(!strcasecmp(name,"pak01_slim.vpk"))return 0;
+        char lower[PATH_MAX];
+        snprintf(lower,sizeof(lower),"%s/",base_shared[i]);
+        size_t k=strlen(lower);
+        for(const char *p=name;*p && k+1<sizeof(lower);++p)lower[k++]=(char)tolower((unsigned char)*p);
+        lower[k]=0;
+        return !join(out,base_root,lower);
+    }
+    return 0;
+}
+
 int rt_paths_init(const char *game,const char *linux,const char *user) {
     ++generation;   // nouvelles racines : caches invalides
+    rt_paths_set_base(getenv("P2_BASE_GAME_ROOT"),getenv("P2_BASE_SHARED"));
     if(!realpath(game,game_root) || !realpath(linux,linux_root))return -1;
     if(absolute_path(user,user_root))return -1;
     if(mkdir(user_root,0755) && errno!=EEXIST)return -1;
@@ -204,6 +257,12 @@ static const char *read_path_uncached(const char *path) {
     const char *relative=canonical+strlen(game_root); while(*relative=='/')++relative;
     if(reserved(relative)){errno=ENOENT;return NULL;}
     char *result=buffer();
+    if(*relative && base_path(relative,result)){   // the base game's archive, or the slim directory
+#if TARGET_OS_IPHONE
+        {int own=within(result,game_root); const char *c=rt_ios_case_path(result,strlen(own?game_root:base_root)); if(c && c!=result)strcpy(result,c);}
+#endif
+        return result;
+    }
     int count=snprintf(result,PATH_MAX,"%s/%s",user_root,relative);
     if(count<0 || count>=PATH_MAX){errno=ENAMETOOLONG;return NULL;}
     const char *linked;
@@ -323,6 +382,7 @@ int rt_path_is_game_source(const char *host) { return game_root[0] && within(hos
 int rt_path_lower(const char *relative,char out[2][PATH_MAX]) {
     int count=0; struct stat info;
     if(!join(out[count],linux_root,relative) && !lstat(out[count],&info))++count;
+    if(base_path(relative,out[count])){ if(!lstat(out[count],&info))++count; return count; }
     if(!rt_path_windows_binary(relative) && !join(out[count],game_root,relative) && !lstat(out[count],&info))++count;
     return count;
 }

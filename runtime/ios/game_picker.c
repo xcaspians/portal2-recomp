@@ -27,6 +27,14 @@ const char *rt_picker_removable(const rt_picker_game *g, int which, char *out, s
     return in_data_dir(g, folders[which], out, size);
 }
 
+const char *rt_picker_slim_marker(const rt_picker_game *g, char *out, size_t size) {
+    if (!g->data_dir || !g->data_dir[0]) return NULL;
+    snprintf(out, size, "%s/.p2-slim", g->data_dir);
+    return out;
+}
+
+int rt_picker_playable(int installed, int slim, int base_present) { return installed && (!slim || base_present); }
+
 const char *rt_picker_autostart(const char *const *names, const int *installed, int count, const char *forced,
                                 const char *remembered, int remember) {
     for (int i = 0; forced && forced[0] && i < count; ++i)

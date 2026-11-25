@@ -47,6 +47,11 @@ int rt_path_relative(const char *path, char relative[PATH_MAX]);
 int rt_path_overlay(const char *relative, char out[PATH_MAX]);
 // Sources originales en lecture seule (dépôt Linux, puis jeu) : 0, 1 ou 2.
 int rt_path_lower(const char *relative, char out[2][PATH_MAX]);
+// Base game (runtime/paths.c): Portal 2's folder whose VPK archives a hosted
+// game reads (P2_BASE_GAME_ROOT, read by rt_paths_init); "" when unset.
+void rt_paths_set_base(const char *root, const char *shared);
+const char *rt_paths_base_root(void);
+int rt_paths_base_shared(int i, char *out, size_t size);
 // Répertoire des marques de suppression, à la racine des données utilisateur.
 #define RT_WHITEOUTS ".portal2-whiteouts"
 // Suppression logique d'un fichier original (comme un « whiteout » overlayfs).
