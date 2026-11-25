@@ -3,7 +3,8 @@
 // (left ×8, right ×8) and 5 s held still, per-device thresholds, the side
 // weight and the wrong-side margin. Every rule is one sentence:
 //   thresholds: 60 % of the player's softest taps (20th percentile), never
-//     under 3 times the noise measured while holding still, never over the
+//     under 3 times the noise measured while holding still nor under the
+//     calibration screen's gate (calib_gate), never over the
 //     default (calibration only makes taps easier to catch, not harder);
 //   side weight: the mix of rotations (x against z) that puts the most taps
 //     on their side, then the one that keeps them furthest from the line;
