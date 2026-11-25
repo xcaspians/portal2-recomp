@@ -235,7 +235,10 @@ static NSString *const kFromMac = @"The game's files come from your Mac: open th
         buttons.spacing = 8;
         __weak P2GamePicker *weakSelf = self;
         NSString *name = @(g->name);
-        if (here) {
+        rt_picker_game pg = picker_game(g);
+        if (!rt_picker_can_remove(&pg)) {   // Portal 2: one line in place of Remove
+            [row addArrangedSubview:text(@RT_PICKER_BASE_NOTE, 13, UIFontWeightRegular, .7)];
+        } else if (here) {
             UIButtonConfiguration *c = [UIButtonConfiguration grayButtonConfiguration];
             c.title = @"Remove game data"; c.baseForegroundColor = [UIColor colorWithRed:1 green:.45 blue:.4 alpha:1];
             [buttons addArrangedSubview:[UIButton buttonWithConfiguration:c primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
@@ -268,6 +271,7 @@ static NSString *const kFromMac = @"The game's files come from your Mac: open th
 - (void)remove:(NSString *)name {
     const rt_ios_game *g = rt_ios_game_named(name.UTF8String);
     rt_picker_game p = picker_game(g);
+    if (!rt_picker_can_remove(&p)) return;   // the base game (rt_picker_removable gives nothing either)
     char rel[256];
     NSError *error = nil;
     BOOL ok = YES;

@@ -611,6 +611,10 @@ struct DevicesPanel: View {
                                         .disabled(devices.busy != nil)
                                 }
                             }
+                            if g.id == "portal2" {   // never offered for removal (tools/devices.py removable)
+                                Text("The base the other games run on, so it stays on the device.")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                             if devices.busy == key {
                                 Text(devices.stepText).font(.caption)
                                 Text(devices.line).font(.caption.monospaced()).lineLimit(1).foregroundStyle(.secondary)

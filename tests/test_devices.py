@@ -55,5 +55,12 @@ class DevicesTest(unittest.TestCase):
         self.assertIn('unknown', devices.plan('hl3', tight, built, 1)[1])
 
 
+class BaseGameTest(unittest.TestCase):
+    def test_portal2_is_never_removable(self):
+        self.assertFalse(devices.removable('portal2'))
+        self.assertTrue(devices.removable('mel'))
+        self.assertFalse(devices.removable('nonsense'))
+
+
 if __name__ == '__main__':
     unittest.main()

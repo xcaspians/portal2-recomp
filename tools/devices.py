@@ -28,6 +28,13 @@ from ios_bundle_id import bundle_id  # noqa: E402
 MARGIN = 1 << 30   # kept free on the device (tools/workshop_push.py)
 DOWNLOADS = ('portal2', 'mel', 'workshop')
 TITLES = {'portal2': 'Portal 2', 'mel': 'Portal Stories: Mel', 'workshop': "Workshop maps (the Mac's)"}
+# Portal 2 is the base the other games in the Portal app run on (Mel borrows
+# its files): nothing offers to remove it, on the device (game_picker.c) or here.
+BASE_GAME = 'portal2'
+
+
+def removable(game):
+    return game in TITLES and game != BASE_GAME
 
 
 # ---- devices ----
