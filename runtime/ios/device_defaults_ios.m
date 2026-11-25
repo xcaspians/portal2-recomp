@@ -46,6 +46,15 @@ int rt_ios_device_defaults_first_launch(char *summary, size_t size) {
     if (size) summary[0] = 0;
     const rt_dd_choice *c = rt_ios_device_choice();
     if (!c) { snprintf(summary, size, "pas de table device_defaults.txt dans l'app"); return 0; }
+#if TARGET_OS_SIMULATOR
+    // The simulator renders in software at ×1 unless told otherwise: its own
+    // model's defaults (×2) would only slow every simulator check down. Only
+    // P2_DEVICE_MODEL (a phone being imitated on purpose) picks them.
+    if (!getenv("P2_DEVICE_MODEL")) {
+        snprintf(summary, size, "simulateur (%s) : défauts de l'appareil non posés (P2_DEVICE_MODEL pour les essayer)", c->model);
+        return 0;
+    }
+#endif
     int written = rt_dd_first_launch(c, get, set_pref, NULL);
     if (written) CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication);
     snprintf(summary, size, "%s (%s, %u Mo%s), palier %s : résolution %s, MetalFX %s, %s i/s%s ; %d réglage(s) posé(s)",

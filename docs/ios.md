@@ -400,9 +400,9 @@ a busy chamber (round 1 rule).
   `[ios] mémoire (niveau chargé) : empreinte N Mo, pic N Mo, encore N Mo avant
   la limite d'iOS (<model>, <RAM> Mo)`, so a crash can be diagnosed later.
   The launch line `[ios] appareil : …` says which tier was picked.
-- Simulator: it reports the simulated model (`SIMULATOR_MODEL_IDENTIFIER`);
-  `P2_DEVICE_MODEL=iPhone14,5` and `P2_DEVICE_RAM_MB=3700` stand in for
-  another phone. It always renders at ×1 with OpenGL, whatever the table says.
+- Simulator: no defaults are written there (it stays at ×1, OpenGL), unless
+  `P2_DEVICE_MODEL=iPhone14,5` (and `P2_DEVICE_RAM_MB=3700` for the
+  low-memory guard) asks for a phone's defaults on purpose.
 
 ## Gyro aiming
 

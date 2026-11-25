@@ -269,7 +269,12 @@ static void sync_now(const char *why) {
     NSURL *container = [files URLForUbiquityContainerIdentifier:nil];   // never on the main thread
     if (!container) {
         set_status(@"iCloud isn't available: sign in to iCloud, or iCloud isn't set up for this app yet");
-        fprintf(stderr, "[ios] iCloud : conteneur indisponible (%s)\n", why);
+        // Logged once per cause, not at every 10 s check: the saves as they are
+        // now count as seen, so only a new save (or start, return) asks again.
+        static char last_why[32];
+        if (strcmp(last_why, why)) fprintf(stderr, "[ios] iCloud : conteneur indisponible (%s)\n", why);
+        snprintf(last_why, sizeof(last_why), "%s", why);
+        seen_print = fingerprint();
         return;
     }
     set_status(@"Syncing…");

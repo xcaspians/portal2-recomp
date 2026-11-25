@@ -219,6 +219,8 @@ def stage(copies, root):
 
 
 def megabytes(n):
+    if n <= 0:
+        return '0 MB'
     return f'{n / 1048576:.0f} MB' if n >= 1048576 else f'{max(1, n // 1024)} KB'
 
 
