@@ -27,6 +27,9 @@ typedef struct {
     float pre_rms_max;   // g : agitation maximale (moyenne quadratique) avant le pic
     float gravity_max;   // g : variation maximale de la gravité dans les 200 ms avant le pic
     float onset_factor;  // candidats dès cette fraction des seuils (jugés ensuite aux seuils entiers)
+    // Wrong-side guard (calibration, backtap_calibrate.c): a rotation side score
+    // under this is a coin toss, so no portal at all. 0: off (the default).
+    float side_margin;
 } rt_backtap_params;
 
 typedef struct {
@@ -83,6 +86,10 @@ void rt_backtap_defaults(rt_backtap_params *p);
 // _INVERT ; docs/ios.md), qui priment. Une valeur sous la borne de chaque
 // seuil est ignorée. Partagé par touch_controls.m et tools/backtap_replay.c.
 void rt_backtap_params_from_env(rt_backtap_params *p);
+// The same, over a device's calibration (backtap_calibrate.h, stored text; NULL
+// or unreadable: the defaults): calibration, then Tap sensitivity and the
+// variables on top.
+void rt_backtap_params_from_env_calibrated(rt_backtap_params *p, const char *calibration);
 // Variable flottante : sa valeur si elle est définie, non vide et >= min, def sinon.
 float rt_backtap_env_float(const char *name, float def, float min);
 // Variable de signe : 1 (> 0), -1 (< 0) ou 0 ; def si absente ou vide.

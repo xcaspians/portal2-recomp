@@ -22,19 +22,30 @@ double rt_ios_touch_test_angle(void) {
     return angle;
 }
 
+// P2_TOUCH_TEST_CLICK=s,x,y[;s,x,y...]: up to 4 clicks, each s seconds after the
+// first menu (hover, then press and release on separate frames).
 int rt_ios_touch_test_click(int menu, double *x, double *y) {
-    static double at = -1, cx, cy; static Uint64 when; static int step;
-    if (at == -1) { const char *e = getenv("P2_TOUCH_TEST_CLICK");
-        if (!e || sscanf(e, "%lf,%lf,%lf", &at, &cx, &cy) != 3 || at <= 0) at = -2; }
-    if (at <= 0 || !menu) return 0;
+    static double at[4], cx[4], cy[4]; static int count = -1, current, step; static Uint64 first, when;
+    if (count < 0) {
+        count = 0;
+        const char *e = getenv("P2_TOUCH_TEST_CLICK");
+        while (e && *e && count < 4 && sscanf(e, "%lf,%lf,%lf", &at[count], &cx[count], &cy[count]) == 3 && at[count] > 0) {
+            ++count;
+            e = strchr(e, ';');
+            if (e) ++e;
+        }
+    }
+    if (current >= count || !menu) return 0;
     Uint64 now = SDL_GetTicks64();
-    if (!when) { when = now + (Uint64)(at * 1000); return 0; }
+    if (!first) first = now;
+    if (!when) when = first + (Uint64)(at[current] * 1000);
     if (now < when) return 0;
-    *x = cx; *y = cy;
-    int result = step + 1;   // survol, puis appui et relâchement sur des images distinctes
-    if (step == 2) at = -2;
-    fprintf(stderr, "[ios] essai clic %d à (%.0f, %.0f), %llu ms\n", step, cx, cy, (unsigned long long)now);
-    ++step; when = now + 300;
+    *x = cx[current]; *y = cy[current];
+    int result = step + 1;
+    fprintf(stderr, "[ios] essai clic %d.%d à (%.0f, %.0f), %llu ms\n", current, step, cx[current], cy[current],
+            (unsigned long long)now);
+    if (++step == 3) { step = 0; ++current; when = 0; }
+    else when = now + 300;
     return result;
 }
 

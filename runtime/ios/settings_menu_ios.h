@@ -17,5 +17,10 @@ int rt_ios_settings_menu_open(void);
 // From game_state.c: game UI visible with a level loaded (the pause menu),
 // and commands for the engine (Portal 2; 0 when unavailable).
 int rt_ios_game_paused(void);
+// The main menu or the pause menu is up (game_state.c): the gear shows.
+int rt_ios_game_menu_shown(void);
+int rt_ios_game_in_level(void);   // game_state.c: a level is loaded
+// The game's own Community Test Chambers dialog opened since the last call (game_state.c).
+int rt_ios_game_take_community_request(void);
 int rt_ios_game_commands_available(void);
 int rt_ios_game_command(const char *line);

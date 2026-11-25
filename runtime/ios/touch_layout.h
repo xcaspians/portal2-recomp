@@ -2,6 +2,7 @@
 // les dessine et les traduit en touches ; tests/checks_touch_layout.c vérifie
 // qu'ils tiennent à l'écran sans se chevaucher).
 #pragma once
+#include <stddef.h>
 #include "game_ios.h"
 
 typedef enum {
@@ -52,6 +53,28 @@ void rt_touch_place(const rt_touch_button *b, double x, double y, double w, doub
 // button would cross its edge.
 void rt_touch_place_scaled(const rt_touch_button *b, double scale, double x, double y, double w, double h,
                            double *cx, double *cy);
+
+// ---- Button layout editor (settings menu, touch_editor_ios.m) ----
+// A player's own place and size for some buttons, per device kind (phone or
+// iPad) and per game; the others keep the built-in layout.
+typedef struct { int set; float fx, fy, scale; } rt_touch_custom;   // centre as fractions of the area; size multiplier
+typedef struct { rt_touch_custom b[RT_TOUCH_ACTION_COUNT]; } rt_touch_custom_layout;
+// Stored as "v1 jump=0.930,0.600,1.10 use=...": unknown or damaged entries are skipped.
+int rt_touch_custom_format(const rt_touch_custom_layout *l, char *out, size_t size);
+int rt_touch_custom_parse(const char *text, rt_touch_custom_layout *out);
+// Where a dragged button may go (area w x h, its diameter d): fully inside the
+// area, snapped to a grid of `grid` points, and pushed out of the sticks'
+// resting areas (centres stick[i] and radius stick_r) so a thumb on a stick
+// doesn't press it. Moves (*cx, *cy) in place (points from the area's corner).
+void rt_touch_custom_clamp(double *cx, double *cy, double d, double w, double h, const double (*stick)[2], int nstick,
+                           double stick_r, double grid);
+// Resting centres of the move and camera sticks (fractions of the area).
+void rt_touch_stick_rests(rt_ios_layout layout, double out[2][2]);
+// A button's centre and diameter with a custom entry (else rt_touch_place_scaled).
+void rt_touch_place_custom(const rt_touch_button *b, const rt_touch_custom *c, double scale, double x, double y,
+                           double w, double h, double *cx, double *cy, double *size);
+// Action names in the stored text ("jump", "use"...).
+const char *rt_touch_action_name(rt_touch_action a);
 
 // Overlay hidden for a controller or a keyboard (touch_controls.m draws it,
 // tests/checks_touch_layout.c checks these rules). mode is P2_TOUCH_CONTROLS:
