@@ -28,3 +28,18 @@ void rt_ios_backtap_look(long counts);
 int rt_ios_backtap_dataset_on(void);
 void rt_ios_backtap_flag(void);
 void rt_ios_backtap_counts(long *taps, long *fixes, long *reported);
+
+// ---- Calibration (settings menu, backtap_calibration_ios.m; fit in backtap_calibrate.c) ----
+#include <stddef.h>
+#include "back_tap.h"
+// This device model's stored calibration (text, backtap_calibrate.h), or NULL.
+const char *rt_ios_backtap_calibration(char *out, size_t size);
+// Stores it (NULL: back to the defaults) and applies it at once.
+void rt_ios_backtap_store_calibration(const char *text);
+// Capture for the calibration screen: sensors on even in a menu, every tap
+// reported. judge NULL: a wide gate (calibration); else these values (test mode).
+// No portal is fired while it runs.
+void rt_ios_backtap_capture(int on, const rt_backtap_params *judge);
+int rt_ios_backtap_capture_take(rt_backtap_report *out);   // 1 when a tap was waiting
+// Noise since the last reset (held still): RMS acceleration, jerk, rotation.
+void rt_ios_backtap_capture_noise(float *a_rms, float *jerk_rms, float *w_rms, int reset);
