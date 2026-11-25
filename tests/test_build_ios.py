@@ -121,6 +121,16 @@ class LaunchArgs(unittest.TestCase):
             self.assertEqual(build_ios.launch_args(games.profile(p2), p2)[-4:],
                              ['-novid', '-fullscreen', '-language', 'english'])
 
+    def test_hosted_game_names_its_own_program(self):
+        # Portal 1 in the Portal app: the app is built as portal2_linux, Portal
+        # is hl2_linux (without it the launch stopped on Portal 2's data check).
+        p2, p1, mel = (dict(games.GAMES[g], name=g) for g in ('portal2', 'portal1', 'mel'))
+        with no_bundle_env():
+            args = build_ios.launch_args(p1, {}, host=p2)
+            self.assertEqual(args[:4], ['--program', 'hl2_linux', '--', '-game'])
+            self.assertEqual(build_ios.launch_args(mel, {}, host=p2)[:2], ['--', '-game'])   # same program
+            self.assertEqual(build_ios.launch_args(p1, {})[:2], ['--', '-game'])   # its own app
+
 
 if __name__ == '__main__':
     unittest.main()
