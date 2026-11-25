@@ -97,9 +97,10 @@ test: build/tier0-smoke build/abi-smoke
 	./build/abi-smoke
 
 # What CI runs (make -j check): Python tests and the runtime against generated fixtures, no game files needed.
-check: build/abi-smoke
+check: build/abi-smoke build/x64-check
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
 	./build/abi-smoke
+	./build/x64-check
 
 clean:
 	rm -rf build
@@ -137,3 +138,19 @@ build/d3d9metal-check: tests/d3d9metal_native_check.c runtime/d3d9/d3d9metal.h $
 	$(CC) -O1 -g -Wall -Wextra -Werror tests/d3d9metal_native_check.c $(D3D9METAL_A) $(D3D9METAL_LIBS) -o $@
 d3d9metal-check: build/d3d9metal-check
 	./build/d3d9metal-check
+
+# x86-64 (P2CE, docs/fork/P2CE_PLAN.md): its own runtime (runtime/x64), never
+# linked into the i386 binaries. build/x64-check lifts tests/x64_programs.s
+# (linked by tests/x64_link.py, no ELF linker needed) and runs it; part of
+# `make check`.
+X64_RUNTIME := $(sort $(wildcard runtime/x64/*.c))
+X64_CFLAGS ?= -O1 -g -Wall -Wextra -Werror
+build/x64/libx64fixture.so: tests/x64_programs.s tests/x64_link.py
+	@mkdir -p build/x64
+	$(CC) -target x86_64-linux-gnu -c tests/x64_programs.s -o build/x64/x64_programs.o
+	$(PYTHON) tests/x64_link.py build/x64/x64_programs.o $@
+build/x64/fixture.c: build/x64/libx64fixture.so tools/elfprep64.py tools/lift64.py
+	$(PYTHON) tools/elfprep64.py --out build/x64 build/x64/libx64fixture.so
+	$(PYTHON) tools/lift64.py --layout build/x64/libx64fixture.so.layout.json --all --symbol x64_fixture --out $@
+build/x64-check: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c tests/x64_checks.c
+	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) build/x64/fixture.c tests/x64_checks.c -o $@
