@@ -321,3 +321,24 @@ RT_CHECK(numeric_narrow_division) {
     assert(narrow_div_traps(0, 1, 1, 16, 0));                               // quotient > 0xffff
     assert(!narrow_div_traps(0x0004, 0, 0xfffe, 16, 1));                    // 4 / -2 : correct
 }
+
+// ---- bsearch: glibc's halving, compare(key, element) ----
+static int search_compare(CPU *c, const char *name) {
+    if (strcmp(name, "test_bsearch_compare")) return 0;
+    int32_t key = (int32_t)R32(R32(c->esp + 4)), element = (int32_t)R32(R32(c->esp + 8));
+    c->eax = (uint32_t)(key < element ? -1 : key > element);
+    return 1;
+}
+RT_SHIM_PROVIDER(search_compare)
+RT_CHECK(bsearch_finds_or_returns_null) {
+    static const int32_t sorted[] = {1, 3, 5, 7, 9, 11};
+    for (uint32_t i = 0; i < 6; ++i) W32(DATA + 4 * i, (uint32_t)sorted[i]);
+    for (int32_t wanted = 0; wanted <= 12; ++wanted) {
+        W32(DATA + 64, (uint32_t)wanted);
+        Call k; begin(&k);
+        p32(&k, DATA + 64); p32(&k, DATA); p32(&k, 6); p32(&k, 4); p32(&k, rt_dynamic_import("test_bsearch_compare"));
+        invoke(&k, "bsearch");
+        uint32_t want = wanted % 2 && wanted < 12 ? DATA + 4 * (uint32_t)(wanted / 2) : 0;
+        assert(k.cpu.eax == want);
+    }
+}
