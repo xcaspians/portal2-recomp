@@ -45,3 +45,11 @@ void rt_menu_display(const rt_menu_item *it, const char *value, char *out, size_
 // and a stick's return to centre go through, so nothing stays held.
 typedef enum { RT_PAD_BUTTON_DOWN, RT_PAD_BUTTON_UP, RT_PAD_AXIS, RT_PAD_OTHER_MOTION, RT_PAD_NOT_PAD } rt_pad_event;
 int rt_menu_pad_dropped(rt_pad_event kind, int options_button, int value, int paused, int captured);
+
+// Is this item for a game with these traits? Back-tap, portal-button and
+// firing-vibration items only where back taps fire portals (Half-Life 2 has
+// none, like its Settings app page).
+int rt_menu_item_for_game(const rt_menu_item *it, int back_taps);
+// The item's default for this game ("1" for gyro aiming in Half-Life 2, where
+// it is on by default, game_ios.c and touch_controls.m).
+const char *rt_menu_item_default(const rt_menu_item *it, const char *game);

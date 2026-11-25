@@ -501,6 +501,26 @@ home screen is "Half-Life 2".
 
 Settings page: the same as Portal 2 without the Portals group.
 
+**The fork's features in Half-Life 2's app** (round 8, built and checked on
+the Mac and compiled for iOS; not run yet, see below):
+
+- the **gear and settings menu** in the main and pause menus: Half-Life 2's
+  engine is Source 2013 (`VEngineClient014`: IsInGame 26,
+  IsLevelMainMenuBackground 87, ClientCmd_Unrestricted 106, read from the
+  Mac edition's `engine.dylib`, checked at run time like Portal 2's), so the
+  menu, its live settings, the version line naming the game and **Edit
+  button layout** (HL2's own buttons) work there; no back-tap, portal-button
+  or firing-vibration items (`rt_menu_item_for_game`), gyro aiming shown on
+  by default as it is;
+- the **older-phone defaults** (`ios/device_defaults.txt`), shared by every app;
+- **iCloud saves** in Half-Life 2's own folder (`Documents/hl2/SAVE` in its
+  app's container), once its app has the iCloud capability (its own App ID
+  and container: the same one-time setup as Portal 2's, with the HL2 identifier).
+
+Half-Life 2 stays its own app. Building and running it needs its Linux
+binaries: `download_depot 220 224` in the Steam console (depot 224, "linux"
+in Steam's own app info; 337 MB).
+
 ### Touch controls
 
 Same style and behaviour as Portal 2 (hidden in menus and with a controller,

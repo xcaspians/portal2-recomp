@@ -108,3 +108,12 @@ int rt_menu_pad_dropped(rt_pad_event kind, int options_button, int value, int pa
     default: return 0;
     }
 }
+
+int rt_menu_item_for_game(const rt_menu_item *it, int back_taps) {
+    if (back_taps) return 1;
+    return strncmp(it->key, "P2BackTap", 9) && strcmp(it->key, "P2PortalButtons") && strcmp(it->key, "P2Haptics");
+}
+const char *rt_menu_item_default(const rt_menu_item *it, const char *game) {
+    if (!strcmp(it->key, "P2Gyro") && game && !strcmp(game, "hl2")) return "1";
+    return it->def;
+}

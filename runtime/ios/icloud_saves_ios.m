@@ -57,11 +57,16 @@ void rt_ios_icloud_status(char *out, size_t size) {
     snprintf(out, size, "%s", text.UTF8String);
 }
 
-static int wanted_here(void) {
-    // Portal 2, and Portal Stories: Mel in the same app (its own folder in
-    // iCloud: remote_folder). Half-Life 2 and Portal keep their saves on the device.
+// Portal 2, Mel (in the Portal app) and Half-Life 2 (its own app): each in its
+// own folder of the app's container (Portal 2's where it always was,
+// Documents/SAVE; the others Documents/<game>/SAVE). Portal keeps its saves
+// on the device for now.
+int rt_ios_icloud_supported(void) {
     const char *name = rt_ios_current_game()->name;
-    return (!strcmp(name, "portal2") || !strcmp(name, "mel")) && rt_ios_env_flag("P2_ICLOUD_SAVES", 1);
+    return !strcmp(name, "portal2") || !strcmp(name, "mel") || !strcmp(name, "hl2");
+}
+static int wanted_here(void) {
+    return rt_ios_icloud_supported() && rt_ios_env_flag("P2_ICLOUD_SAVES", 1);
 }
 static NSString *userdata(void) {
     NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
@@ -283,8 +288,8 @@ static void sync_now(const char *why) {
     set_status(@"Syncing…");
     // Portal 2's saves where they have always been (Documents/SAVE); a game
     // hosted in the same app in its own folder (Documents/mel/SAVE).
-    const char *data_dir = rt_ios_current_game()->data_dir;
-    NSString *remote_path = data_dir[0] ? [NSString stringWithFormat:@"Documents/%s/SAVE", data_dir] : @"Documents/SAVE";
+    const char *game = rt_ios_current_game()->name;
+    NSString *remote_path = !strcmp(game, "portal2") ? @"Documents/SAVE" : [NSString stringWithFormat:@"Documents/%s/SAVE", game];
     NSURL *remote_root = [container URLByAppendingPathComponent:remote_path isDirectory:YES];
     NSURL *local = local_root();
     [files createDirectoryAtURL:remote_root withIntermediateDirectories:YES attributes:nil error:nil];

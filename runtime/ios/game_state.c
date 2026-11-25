@@ -214,7 +214,23 @@ static void autoexec(CPU *c) {
 // time: every entry must point into the code, both answers must be booleans,
 // and gameplay (game UI hidden) must report a level; otherwise the menu never
 // shows its gear rather than guessing.
-enum { CLIENT_IS_IN_GAME = 25, CLIENT_IS_MENU_BACKGROUND = 90, CLIENT_CMD_UNRESTRICTED = 108 };
+// IVEngineClient per engine generation (slots read from the Mac editions'
+// engine.dylib symbols, CEngineClient's vtable): Portal 2 and Mel's 2021
+// build use VEngineClient015 (IsInGame 25, IsLevelMainMenuBackground 90,
+// ClientCmd_Unrestricted 108); Half-Life 2 and Portal, Source 2013, use
+// VEngineClient014 (26, 87, 106). Checked at run time (game_state.c below):
+// a wrong answer turns the gear off rather than guessing.
+typedef struct { const char *game, *version; int in_game, menu_background, cmd_unrestricted; } client_slots;
+static const client_slots kClientSlots[] = {
+    {"portal2", "VEngineClient015", 25, 90, 108},
+    {"mel", "VEngineClient015", 25, 90, 108},
+    {"hl2", "VEngineClient014", 26, 87, 106},
+    {"portal1", "VEngineClient014", 26, 87, 106},
+};
+static const client_slots *slots;
+#define CLIENT_IS_IN_GAME (slots->in_game)
+#define CLIENT_IS_MENU_BACKGROUND (slots->menu_background)
+#define CLIENT_CMD_UNRESTRICTED (slots->cmd_unrestricted)
 static uint32_t engine_client;    // 0: not yet; 1: unavailable (other game, failed check)
 static int in_level;
 static int level_mismatch;        // polls in gameplay that reported no level
@@ -241,18 +257,19 @@ static void client_unavailable(const char *why) {
     fprintf(stderr, "[ios] IVEngineClient : %s ; menu des réglages sans engrenage\n", why);
 }
 static void find_engine_client(CPU *c) {
-    // Portal 2's interface version: Portal 2 and Mel's 2021 build of its engine.
     const char *name = rt_ios_current_game()->name;
-    if (strcmp(name, "portal2") && strcmp(name, "mel")) { engine_client = 1; return; }
+    for (size_t i = 0; i < sizeof(kClientSlots) / sizeof(*kClientSlots) && !slots; ++i)
+        if (!strcmp(kClientSlots[i].game, name)) slots = &kClientSlots[i];
+    if (!slots) { engine_client = 1; return; }
     const GuestModule *engine = rt_find_module("engine.so");
     uint32_t create = engine ? rt_module_symbol(engine, "CreateInterface") : 0;
-    uint32_t text = create ? guest_text("VEngineClient015") : 0;
+    uint32_t text = create ? guest_text(slots->version) : 0;
     uint32_t args[2] = {text, 0};
     uint32_t client = text ? rt_invoke(c, create, args, 2) : 0;
     rt_free(text);
     if (!plausible(client) || !plausible(R32(client))) { client_unavailable("introuvable"); return; }
     uint32_t table = R32(client);
-    static const int used[] = {CLIENT_IS_IN_GAME, CLIENT_IS_MENU_BACKGROUND, CLIENT_CMD_UNRESTRICTED};
+    const int used[] = {CLIENT_IS_IN_GAME, CLIENT_IS_MENU_BACKGROUND, CLIENT_CMD_UNRESTRICTED};
     for (size_t i = 0; i < sizeof(used) / sizeof(*used); ++i)
         if (!plausible(R32(table + used[i] * 4))) { client_unavailable("table inattendue"); return; }
     engine_client = client;
@@ -323,7 +340,11 @@ static void watch_community_dialog(CPU *c, int visible) {
     static uint64_t next;
     static int was_open;
     uint64_t now = SDL_GetTicks64();
-    if (!visible || engine_client <= 1 || vgui_panel == 1 || now < next) { if (!visible) was_open = 0; return; }
+    // Community Maps is Portal 2's (Workshop app 620).
+    if (!visible || engine_client <= 1 || vgui_panel == 1 || now < next || strcmp(rt_ios_current_game()->name, "portal2")) {
+        if (!visible) was_open = 0;
+        return;
+    }
     next = now + 300;
     if (!vgui_panel) {
         const GuestModule *vgui = rt_find_module("vgui2.so");
