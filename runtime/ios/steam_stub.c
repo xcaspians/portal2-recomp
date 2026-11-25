@@ -64,6 +64,10 @@ uint32_t steam_stub_app_id(void) {
 
 // ---- cycle de vie ----
 EXPORT bool SteamAPI_InitSafe(void) { fprintf(stderr, "[steam-stub] hors ligne : stub iOS, app %u\n", steam_stub_app_id()); return true; }
+// Left 4 Dead 2 starts through SteamAPI_Init and asks SteamAPI_IsSteamRunning:
+// the same offline answers (a logged-in owner, no network).
+EXPORT bool SteamAPI_Init(void) { return SteamAPI_InitSafe(); }
+EXPORT bool SteamAPI_IsSteamRunning(void) { return true; }
 // Initialisation du SDK 1.60+ (Half-Life 2) : ESteamAPIInitResult, 0 = OK.
 EXPORT int32_t SteamInternal_SteamAPI_Init(const char *versions, char *message) {
     (void)versions; if (message) message[0] = 0;

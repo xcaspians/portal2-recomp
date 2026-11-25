@@ -281,6 +281,7 @@ RT_CHECK(ios_menu_items_per_game) {
     assert(rt_menu_item_for_game(rt_menu_item_named("P2Gyro"), 0) && rt_menu_item_for_game(rt_menu_item_named("P2MaxFPS"), 0));
     const rt_menu_item *gyro = rt_menu_item_named("P2Gyro");
     assert(!strcmp(rt_menu_item_default(gyro, "hl2"), "1") && !strcmp(rt_menu_item_default(gyro, "portal2"), "0"));
+    assert(!strcmp(rt_menu_item_default(gyro, "l4d2"), "1"));   // Left 4 Dead 2 aims like Half-Life 2
     assert(!strcmp(rt_menu_item_default(rt_menu_item_named("P2TouchSize"), "hl2"), "1"));
 }
 

@@ -871,7 +871,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     if (auto_open < 0) {
         const char *e = getenv("P2_SETTINGS_MENU_OPEN");
         auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : !strcmp(e, "display") || !strcmp(e, "end") ? 3
-                  : !strcmp(e, "main") ? 4 : !strcmp(e, "editor") ? 5 : 0;
+                  : !strcmp(e, "main") || !strcmp(e, "main-end") ? 4 : !strcmp(e, "editor") ? 5 : 0;
     }
     // In a level's pause menu, as before; =main: on the main menu (no level).
     if (auto_open == 5 && !gear.hidden && !rt_ios_game_in_level()) {   // =editor: the layout editor, on the main menu
@@ -885,7 +885,9 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
         [self openMenu];
         for (P2MenuRow *row in rows) if (start && row.kind == ROW_MAP) { [self startMap:row]; break; }
         // =end: scrolled to the bottom (Reset, Switch game, the version line).
-        if (auto_open == 0 && getenv("P2_SETTINGS_MENU_OPEN") && !strcmp(getenv("P2_SETTINGS_MENU_OPEN"), "end")) {
+        // =main-end: the same on the main menu (screenshots of the version line without a level).
+        if (auto_open == 0 && getenv("P2_SETTINGS_MENU_OPEN") &&
+            (!strcmp(getenv("P2_SETTINGS_MENU_OPEN"), "end") || !strcmp(getenv("P2_SETTINGS_MENU_OPEN"), "main-end"))) {
             [scroll layoutIfNeeded];
             [scroll setContentOffset:CGPointMake(0, MAX(0, scroll.contentSize.height - scroll.bounds.size.height)) animated:NO];
         }
