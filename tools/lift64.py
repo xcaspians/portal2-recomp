@@ -491,8 +491,10 @@ def translate(pc, insn, mod, entry, callees):
         return '__atomic_thread_fence(__ATOMIC_SEQ_CST); ' + end, [nxt]
     if op in ('int3', 'ud2', 'hlt'):
         return f'rt64_trap(c, {here}, "{op}");', []
-    if op in PRIVILEGED or re.fullmatch(r'[0-9a-f]{2}|\(bad\)', op) or (op.startswith('lock_') and op[5:] in
-                                                                         ('mov', 'lea', 'push', 'pop', 'test', 'cmp')):
+    if op in PRIVILEGED or re.fullmatch(r'[0-9a-f]{2}|\(bad\)', op) or (op.startswith('lock_') and op[5:] not in
+                                                                         ('add', 'adc', 'and', 'btc', 'btr', 'bts', 'cmpxchg', 'cmpxchg8b', 'cmpxchg16b', 'dec', 'inc', 'neg', 'not', 'or', 'sbb', 'sub', 'xadd', 'xchg', 'xor')) \
+            or (op == 'lock' and args) or (op in ('int', 'into')) or 'fword ptr' in args or \
+            (op in ('call', 'jmp') and args.startswith('[')):
         # Privileged, I/O or invalid in user mode: Linux would kill the
         # program with SIGSEGV/SIGILL. Mostly data decoded as code.
         return f'rt64_trap(c, {here}, "{op}: privileged or invalid instruction");', []
@@ -504,6 +506,9 @@ def translate(pc, insn, mod, entry, callees):
     if op in ('incsspq', 'incsspd', 'rdsspq', 'rdsspd', 'saveprevssp', 'setssbsy', 'clrssbsy', 'rstorssp',
               'notrack'):
         return end, [nxt]       # CET shadow stack: no-ops while it is off, as on Linux by default
+    if op == 'syscall':
+        # A direct Linux system call: rax and the arguments in rdi, rsi, rdx, r10, r8, r9.
+        return f'rt64_syscall(c); {end}', [nxt]
     if op in ('rep', 'repe', 'repz', 'repne', 'repnz') and args in ('ret', ''):
         if args == 'ret':
             op, args = 'ret', ''
@@ -870,6 +875,12 @@ def integer(op, ops, here):
         return 'rt64_cpuid(c);'
     if op == 'rdtsc':
         return '{ uint64_t t_ = rt64_rdtsc(); c->r[RAX] = (uint32_t)t_; c->r[RDX] = t_ >> 32; }'
+    if op in ('pushfq', 'pushf'):
+        return 'PUSH64(c, rt64_get_rflags(c, &f));'
+    if op in ('popfq', 'popf'):
+        return 'a = POP64(c); rt64_set_rflags(c, &f, a);'
+    if op == 'xlatb':
+        return 'c->r[RAX] = (c->r[RAX] & ~0xffull) | R8(c->r[RBX] + (c->r[RAX] & 0xff));'
     if op in ('clc', 'stc', 'cmc'):
         return {'clc': 'f.cf = 0;', 'stc': 'f.cf = 1;', 'cmc': 'f.cf ^= 1;'}[op]
     if op == 'enter' and len(ops) == 2 and ops[1].imm == 0:
@@ -970,6 +981,8 @@ def flag_effect(op, args):
         return 0, ZF
     if op == 'sahf':
         return 0, CF | PF | AF | ZF | SF
+    if op in ('popfq', 'popf'):
+        return 0, ALL_FLAGS
     if op in ('lahf', 'pushfq', 'pushf'):
         return CF | PF | AF | ZF | SF | OF, 0
     if op in ('clc', 'stc'):
@@ -1000,18 +1013,26 @@ def flag_liveness(order, flow, insns, bodies):
             e = (0, ALL_FLAGS)
         effect[pc] = e
     live_in = dict.fromkeys(order, 0)
-    changed = True
-    while changed:
-        changed = False
-        for pc in reversed(order):
-            out = 0
-            for s in flow.get(pc, ()):
-                out |= live_in.get(s, 0)
-            reads, writes = effect[pc]
-            value = reads | (out & ~writes)
-            if value != live_in[pc]:
-                live_in[pc] = value
-                changed = True
+    predecessors = {}
+    for pc in order:
+        for s in flow.get(pc, ()):
+            predecessors.setdefault(s, []).append(pc)
+    # Worklist: an instruction is revisited only when a successor changed.
+    pending, queued = list(order), set(order)
+    while pending:
+        pc = pending.pop()
+        queued.discard(pc)
+        out = 0
+        for s in flow.get(pc, ()):
+            out |= live_in.get(s, 0)
+        reads, writes = effect[pc]
+        value = reads | (out & ~writes)
+        if value != live_in[pc]:
+            live_in[pc] = value
+            for p in predecessors.get(pc, ()):
+                if p not in queued:
+                    queued.add(p)
+                    pending.append(p)
     return live_in
 
 
@@ -1216,7 +1237,7 @@ def emit(layout, bodies, symbol, shards=1):
                   f'{layout.get("init", 0):#x}, {layout.get("fini", 0):#x}, '
                   f'init_array_, {len(layout.get("init_array") or [])}, fini_array_, {len(layout.get("fini_array") or [])}, '
                   f'{tls["vaddr"]:#x}, {tls["filesz"]:#x}, {tls["memsz"]:#x}, {tls["align"]:#x}, '
-                  f'needed_, {len(layout.get("needed") or [])}}};')
+                  f'needed_, {len(layout.get("needed") or [])}, {layout.get("entry", 0):#x}}};')
     tables.append(f'__attribute__((constructor)) static void register_(void) {{ rt64_register(&{symbol}); }}')
     ordered = [rename(bodies[e]) for e in sorted(bodies)]
     if shards <= 1:

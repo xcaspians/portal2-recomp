@@ -289,6 +289,9 @@ def lower(op, ops):
         if ops[0].xmm is not None:
             return f'c->xmm[{ops[0].xmm}] = {src(ops[1])};'
         return f'WX({ops[0].addr}, c->xmm[{ops[1].xmm}]);'
+    if op == 'maskmovdqu' and n == 2 and ops[1].xmm is not None:
+        return (f'{{ XMM64 v_ = c->xmm[{d}], m_ = c->xmm[{ops[1].xmm}]; for (int i = 0; i < 16; ++i) '
+                'if (m_.b[i] & 0x80) W8(c->r[RDI] + (uint64_t)i, v_.b[i]); }')
     if op == 'movnti' and n == 2:
         return ops[0].write(ops[1].read())
     if op == 'crc32' and n == 2 and ops[0].reg:

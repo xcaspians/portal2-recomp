@@ -94,6 +94,11 @@ class ControlFlow(unittest.TestCase):
             self.assertIn('rt64_trap', code)
             self.assertEqual(successors, [])
 
+    def test_syscall_and_flags_register(self):
+        self.assertIn('rt64_syscall(c)', tr('syscall', '')[0])
+        self.assertIn('rt64_get_rflags', tr('pushfq', '')[0])
+        self.assertIn('rt64_set_rflags', tr('popfq', '')[0])
+
     def test_loop(self):
         code, successors, _ = tr('loopne', '0x1000', size=2)
         self.assertIn('--c->r[RCX]', code)
@@ -107,12 +112,12 @@ class ControlFlow(unittest.TestCase):
 
 class Coverage(unittest.TestCase):
     def test_unsupported_instruction_becomes_a_trap_and_is_counted(self):
-        insns = {0x10: (0x14, 'syscall', ''), 0x14: (0x15, 'ret', '')}
+        insns = {0x10: (0x14, 'fbstp', 'tbyte ptr [rax]'), 0x14: (0x15, 'ret', '')}
         module = FakeModule(insns=insns)
         stats = lift64.new_stats()
         body, _ = lift64.lift_function(0x10, module, stats)
-        self.assertIn('not lifted: syscall', body)
-        self.assertEqual(stats['missing'], collections.Counter({'syscall': 1}))
+        self.assertIn('not lifted: fbstp', body)
+        self.assertEqual(stats['missing'], collections.Counter({'fbstp m80': 1}))
         self.assertEqual(stats['pcs'], {0x10, 0x14})
 
     def test_form(self):

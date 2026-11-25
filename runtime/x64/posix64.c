@@ -41,7 +41,88 @@ static int host_open_flags(int f) {
     return h;
 }
 
-static void s_open(CPU64 *c) { CHECK(c, open(S(0), host_open_flags(I(1)), (mode_t)ARG(c, 2))); }
+
+// /proc emulation: the few Linux files the engine and its libraries read.
+// /proc/self/exe is the program's Linux path (RT64_EXE, set by src/main64.c).
+static int content_fd(const char *text) {
+    char name[] = "/tmp/rt64-procXXXXXX";
+    int fd = mkstemp(name);
+    if (fd < 0) return -1;
+    unlink(name);
+    if (write(fd, text, strlen(text)) < 0) { close(fd); return -1; }
+    lseek(fd, 0, SEEK_SET);
+    return fd;
+}
+
+int rt64_proc_open(const char *path) {
+    char text[16384];
+    if (strncmp(path, "/proc/", 6)) return -2;
+    if (!strcmp(path, "/proc/cpuinfo")) {
+        unsigned n = 0; size_t length = sizeof n;
+        if (sysctlbyname("hw.logicalcpu", &n, &length, NULL, 0) || !n) n = 1;
+        size_t used = 0;
+        for (unsigned i = 0; i < n && used < sizeof text - 512; ++i)
+            used += (size_t)snprintf(text + used, sizeof text - used,
+                "processor\t: %u\nvendor_id\t: GenuineIntel\nmodel name\t: rt64 x86-64 on Apple silicon\n"
+                "cpu MHz\t\t: 3000.000\ncpu cores\t: %u\nflags\t\t: fpu tsc cx8 cmov mmx fxsr sse sse2 ht syscall "
+                "lm pni ssse3 cx16 sse4_1 popcnt lahf_lm abm bmi1 bmi2\n\n", i, n);
+        return content_fd(text);
+    }
+    if (!strcmp(path, "/proc/meminfo")) {
+        uint64_t memory = 0; size_t length = sizeof memory;
+        sysctlbyname("hw.memsize", &memory, &length, NULL, 0);
+        snprintf(text, sizeof text, "MemTotal:       %llu kB\nMemFree:        %llu kB\nMemAvailable:   %llu kB\n"
+                 "SwapTotal:      0 kB\nSwapFree:       0 kB\n", (unsigned long long)(memory / 1024),
+                 (unsigned long long)(memory / 2048), (unsigned long long)(memory / 2048));
+        return content_fd(text);
+    }
+    if (!strcmp(path, "/proc/self/maps")) {
+        size_t used = 0;
+        text[0] = 0;
+        for (size_t i = 0; i < rt64_loaded_count() && used < sizeof text - 256; ++i) {
+            uint64_t base;
+            const RT64Module *m = rt64_loaded_module(i, &base);
+            used += (size_t)snprintf(text + used, sizeof text - used, "%llx-%llx r-xp 00000000 00:00 0 %s\n",
+                                     (unsigned long long)base, (unsigned long long)(base + m->size), m->name);
+        }
+        return content_fd(text);
+    }
+    if (!strcmp(path, "/proc/self/status")) {
+        snprintf(text, sizeof text, "Name:\tp2ce\nState:\tR (running)\nPid:\t%d\nTracerPid:\t0\nThreads:\t1\n", getpid());
+        return content_fd(text);
+    }
+    if (!strcmp(path, "/proc/self/cmdline") || !strcmp(path, "/proc/self/environ") || !strcmp(path, "/proc/stat")) {
+        return content_fd("");
+    }
+    return -2;    // other /proc paths: the host's open() fails with ENOENT
+}
+
+// A game folder mirrored with symlinks to the read-only depot: writing to a
+// file replaces its symlink with a private copy first (RT64_COPY_ON_WRITE).
+static void copy_on_write(const char *path) {
+    struct stat st;
+    if (!getenv("RT64_COPY_ON_WRITE") || lstat(path, &st) || !S_ISLNK(st.st_mode)) return;
+    char target[PATH_MAX];
+    if (!realpath(path, target)) { unlink(path); return; }
+    char temporary[PATH_MAX];
+    snprintf(temporary, sizeof temporary, "%s.rt64-copy", path);
+    FILE *in = fopen(target, "rb"), *out = fopen(temporary, "wb");
+    if (in && out) {
+        char buffer[65536];
+        size_t n;
+        while ((n = fread(buffer, 1, sizeof buffer, in))) fwrite(buffer, 1, n, out);
+    }
+    if (in) fclose(in);
+    if (out) { fclose(out); rename(temporary, path); }
+}
+void rt64_prepare_write(const char *path) { copy_on_write(path); }
+
+static void s_open(CPU64 *c) {
+    int proc = rt64_proc_open(S(0));
+    if (proc != -2) { if (proc < 0) rt64_set_errno(ENOENT); RET(c, proc); return; }
+    if (I(1) & 3) copy_on_write(S(0));
+    CHECK(c, open(S(0), host_open_flags(I(1)), (mode_t)ARG(c, 2)));
+}
 static void s_openat(CPU64 *c) {
     int dir = I(0) == -100 ? AT_FDCWD : I(0);
     CHECK(c, openat(dir, S(1), host_open_flags(I(2)), (mode_t)ARG(c, 3)));
@@ -69,7 +150,16 @@ static void s_link(CPU64 *c) { CHECK(c, link(S(0), S(1))); }
 static void s_truncate(CPU64 *c) { CHECK(c, truncate(S(0), (off_t)ARG(c, 1))); }
 static void s_ftruncate(CPU64 *c) { CHECK(c, ftruncate(I(0), (off_t)ARG(c, 1))); }
 static void s_fsync(CPU64 *c) { CHECK(c, fsync(I(0))); }
-static void s_readlink(CPU64 *c) { CHECK(c, readlink(S(0), PTR(c, 1), (size_t)ARG(c, 2))); }
+static void s_readlink(CPU64 *c) {
+    if (!strcmp(S(0), "/proc/self/exe") && getenv("RT64_EXE")) {
+        const char *exe = getenv("RT64_EXE");
+        size_t n = strlen(exe) < (size_t)ARG(c, 2) ? strlen(exe) : (size_t)ARG(c, 2);
+        memcpy(PTR(c, 1), exe, n);
+        RET(c, (int64_t)n);
+        return;
+    }
+    CHECK(c, readlink(S(0), PTR(c, 1), (size_t)ARG(c, 2)));
+}
 static void s_getcwd(CPU64 *c) {
     char buffer[PATH_MAX];
     if (!getcwd(buffer, sizeof buffer)) { rt64_set_errno(errno); RET(c, 0); return; }
@@ -283,6 +373,22 @@ static void s_syscall(CPU64 *c) {
     case 39: RET(c, getpid()); break;
     default: rt64_set_errno(ENOSYS); RET(c, -1); break;
     }
+}
+// The SYSCALL instruction (inlined system calls): Linux returns -errno in rax.
+void rt64_syscall(CPU64 *c) {
+    int64_t r;
+    uint64_t a0 = c->r[RDI], a1 = c->r[RSI], a2 = c->r[RDX];
+    switch ((int)c->r[RAX]) {
+    case 0: r = read((int)a0, (void *)(uintptr_t)a1, (size_t)a2); break;
+    case 1: r = write((int)a0, (const void *)(uintptr_t)a1, (size_t)a2); break;
+    case 3: r = close((int)a0); break;
+    case 39: r = getpid(); break;
+    case 186: { uint64_t tid; pthread_threadid_np(NULL, &tid); r = (int64_t)(tid & 0x7fffffff); break; }
+    case 318: arc4random_buf((void *)(uintptr_t)a0, (size_t)a1); r = (int64_t)a1; break;
+    case 60: case 231: fflush(NULL); _exit((int)a0);
+    default: c->r[RAX] = (uint64_t)-38; return;          // -ENOSYS
+    }
+    c->r[RAX] = r < 0 ? (uint64_t)-(int64_t)rt64_linux_errno(errno) : (uint64_t)r;
 }
 static void s_getentropy(CPU64 *c) { arc4random_buf(PTR(c, 0), (size_t)ARG(c, 1)); RET(c, 0); }
 static void s_gethostname(CPU64 *c) { CHECK(c, gethostname(PTR(c, 0), (size_t)ARG(c, 1))); }

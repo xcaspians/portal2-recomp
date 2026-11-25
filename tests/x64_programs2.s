@@ -79,6 +79,48 @@ x64b_jumper:
     call longjmp@PLT
     ud2
 
+# Threads: four guest threads add to a counter with LOCK XADD, then join.
+.globl x64b_threads
+.type x64b_threads, @function
+x64b_threads:
+    push rbx
+    push r12
+    sub rsp, 40                           # 4 pthread_t, aligned
+    xor ebx, ebx
+3:  lea rdi, [rsp + 8*rbx]
+    xor esi, esi
+    lea rdx, [rip + x64b_worker]
+    mov rcx, rbx
+    call pthread_create@PLT
+    test eax, eax
+    jnz 5f
+    inc rbx
+    cmp rbx, 4
+    jb 3b
+    xor ebx, ebx
+4:  mov rdi, qword ptr [rsp + 8*rbx]
+    xor esi, esi
+    call pthread_join@PLT
+    inc rbx
+    cmp rbx, 4
+    jb 4b
+    mov rax, qword ptr [rip + x64b_total]
+5:  add rsp, 40
+    pop r12
+    pop rbx
+    ret
+
+.type x64b_worker, @function
+x64b_worker:                              # adds 1000 times (argument + 1), returns 0
+    lea rcx, [rdi + 1]
+    mov edx, 1000
+6:  mov rax, rcx
+    lock xadd qword ptr [rip + x64b_total], rax
+    dec edx
+    jnz 6b
+    xor eax, eax
+    ret
+
 .section .init_array, "aw"
 .p2align 3
 .quad x64b_ctor
@@ -93,3 +135,5 @@ x64b_tls_b: .long 77
 .data
 .p2align 2
 x64b_ctor_ran: .long 0
+.p2align 3
+x64b_total: .quad 0

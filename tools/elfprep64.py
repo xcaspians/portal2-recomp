@@ -332,6 +332,8 @@ def layout(elf, image_path=None):
     for tag in (DT_INIT, DT_FINI):
         if tag in elf.dyn:
             entries.add(elf.dyn[tag])
+    if elf.e_entry and in_code(elf.e_entry):
+        entries.add(elf.e_entry)          # _start of an executable (or a .so that runs)
 
     # Code pointers stored in data (vtables, callback tables): RELATIVE and
     # 64 relocations whose target is code and whose slot is not.
@@ -362,7 +364,7 @@ def layout(elf, image_path=None):
         plt=[[s['addr'], s['addr'] + s['size']] for s in plt],
         tls=dict(vaddr=elf.tls['vaddr'], filesz=elf.tls['filesz'], memsz=elf.tls['memsz'],
                  align=elf.tls['align']) if elf.tls else None,
-        init=elf.dyn.get(DT_INIT, 0), fini=elf.dyn.get(DT_FINI, 0),
+        init=elf.dyn.get(DT_INIT, 0), fini=elf.dyn.get(DT_FINI, 0), entry=elf.e_entry,
         init_array=init_array, fini_array=fini_array,
         entries=sorted(entries), data_ptrs=data_ptrs,
         names={hex(k): v for k, v in sorted(names.items())},

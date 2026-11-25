@@ -159,6 +159,8 @@ def lower(op, ops, here):
     # MMX
     mm = [int(t[2:]) if t.startswith('mm') and t[2:].isdigit() else None for t in texts]
     if any(m is not None for m in mm):
+        if op == 'movntq' and n == 2 and ops[0].addr is not None:
+            return f'W64({ops[0].addr}, c->mm[{mm[1]}]);'
         if op in ('movq', 'movd') and n == 2:
             bits = 64 if op == 'movq' else 32
             if mm[0] is not None:

@@ -5,6 +5,7 @@
 #include "rt64.h"
 
 #include <errno.h>
+#include <setjmp.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -473,4 +474,55 @@ void rt64_call(CPU64 *c, uint64_t target) {
                  "had as a function or resume point", m ? m->name : "?", (unsigned long long)(c->rip - (m ? base : 0)));
         rt64_trap(c, c->rip, why);
     }
+}
+
+// Programs -------------------------------------------------------------------
+
+static CPU64 main_cpu;
+static jmp_buf program_exit;
+static int program_running;
+CPU64 *rt64_main_cpu(void) { return &main_cpu; }
+
+// exit() from the guest's main thread ends rt64_run_program (cxa64.c).
+void rt64_program_exit(CPU64 *c, int status) {
+    if (program_running && c == &main_cpu) longjmp(program_exit, (status & 0xff) + 1);
+    fflush(NULL);
+    exit(status);
+}
+
+int rt64_run_program(const RT64Module *program, int argc, char **argv, char **envp) {
+    size_t stack_size = (size_t)64 << 20;
+    uint8_t *stack = mmap(NULL, stack_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (stack == MAP_FAILED) return 127;
+    rt64_cpu_init(&main_cpu, (uint64_t)(uintptr_t)(stack + stack_size));
+    rt64_thread_tls(&main_cpu);
+    rt64_set_main_arguments(argc, argv, envp);
+    rt64_register(program);
+    if (!rt64_open(&main_cpu, program->name)) { fprintf(stderr, "rt64: cannot open %s\n", program->name); return 127; }
+    uint64_t base = *program->base;
+    // The kernel's initial stack: argc, argv[], NULL, envp[], NULL, auxv.
+    CPU64 *c = &main_cpu;
+    int envc = 0;
+    while (envp && envp[envc]) envc++;
+    c->r[RSP] -= 64;
+    uint64_t random_bytes = c->r[RSP];
+    arc4random_buf((void *)(uintptr_t)random_bytes, 16);
+    uint64_t auxv[][2] = {{3, base + R64(base + 0x20)}, {4, 56}, {5, (uint16_t)R16(base + 0x38)}, {6, 4096},
+                          {9, base + program->entry}, {25, random_bytes}, {0, 0}};
+    size_t words = 1 + (size_t)argc + 1 + (size_t)envc + 1 + 2 * (sizeof auxv / sizeof *auxv);
+    c->r[RSP] = (c->r[RSP] - 8 * words) & ~UINT64_C(15);
+    uint64_t at = c->r[RSP];
+    W64(at, (uint64_t)argc); at += 8;
+    for (int i = 0; i < argc; ++i, at += 8) W64(at, (uintptr_t)argv[i]);
+    W64(at, 0); at += 8;
+    for (int i = 0; i < envc; ++i, at += 8) W64(at, (uintptr_t)envp[i]);
+    W64(at, 0); at += 8;
+    for (size_t i = 0; i < sizeof auxv / sizeof *auxv; ++i, at += 16) { W64(at, auxv[i][0]); W64(at + 8, auxv[i][1]); }
+    c->r[RDX] = 0;                           // no rtld_fini
+    int status = setjmp(program_exit);
+    if (status) { program_running = 0; return status - 1; }
+    program_running = 1;
+    rt64_dispatch(c, base + program->entry);  // _start does not return: __libc_start_main exits
+    program_running = 0;
+    rt64_trap(c, base + program->entry, "_start returned");
 }
