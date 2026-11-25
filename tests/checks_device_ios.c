@@ -30,3 +30,10 @@ RT_CHECK(ios_device_report_has_model_memory_and_free_space) {
     assert(model[0] != 0);                   // the Mac's own hw.machine here
     assert(rt_ios_device_ram_mb() > 1000);
 }
+
+RT_CHECK(ios_memory_footprint_is_readable) {
+    long long now, peak, available;
+    assert(rt_ios_memory_footprint(&now, &peak, &available));
+    assert(now > 0 && (peak < 0 || peak >= now / 2));
+    rt_ios_memory_log("check");
+}

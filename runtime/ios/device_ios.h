@@ -15,3 +15,9 @@ unsigned rt_ios_device_ram_mb(void);
 long long rt_ios_free_bytes(const char *path);
 // Writes "model=…\nram_mb=…\nfree_bytes=…\n" to file; 1 when complete.
 int rt_ios_device_report_write(const char *file, const char *documents);
+// This process's memory: footprint now and at its peak, and what is left
+// before iOS ends the app (-1 if unknown); 0 if unreadable.
+int rt_ios_memory_footprint(long long *now, long long *peak, long long *available);
+// One log line with them ("[ios] mémoire (<why>) : ..."): at each level load,
+// so a crash on a 4 GB phone can be diagnosed from game.log.
+void rt_ios_memory_log(const char *why);

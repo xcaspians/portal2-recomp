@@ -6,6 +6,7 @@
 #include <sys/mount.h>
 #include <sys/sysctl.h>
 #include <sys/types.h>
+#include <mach/mach.h>
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
@@ -35,6 +36,7 @@ unsigned rt_ios_device_ram_mb(void) {
 
 #if TARGET_OS_IPHONE
 #include <CoreFoundation/CoreFoundation.h>
+#include <os/proc.h>
 #endif
 
 long long rt_ios_free_bytes(const char *path) {
@@ -68,4 +70,27 @@ int rt_ios_device_report_write(const char *file, const char *documents) {
     if (free_bytes >= 0) ok &= fprintf(f, "free_bytes=%lld\n", free_bytes) > 0;
     ok &= fclose(f) == 0;
     return ok && free_bytes >= 0;
+}
+
+int rt_ios_memory_footprint(long long *now, long long *peak, long long *available) {
+    task_vm_info_data_t info;
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    *now = *peak = *available = -1;
+    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&info, &count) != KERN_SUCCESS) return 0;
+    *now = (long long)info.phys_footprint;
+    if (count >= TASK_VM_INFO_REV2_COUNT) *peak = (long long)info.ledger_phys_footprint_peak;
+#if TARGET_OS_IPHONE
+    *available = (long long)os_proc_available_memory();   // before iOS ends the app
+#endif
+    return 1;
+}
+
+void rt_ios_memory_log(const char *why) {
+    long long now, peak, available;
+    if (!rt_ios_memory_footprint(&now, &peak, &available)) return;
+    char model[64];
+    rt_ios_device_model(model, sizeof(model));
+    fprintf(stderr, "[ios] mémoire (%s) : empreinte %lld Mo, pic %lld Mo, encore %lld Mo avant la limite d'iOS "
+            "(%s, %u Mo)\n", why, now >> 20, peak >= 0 ? peak >> 20 : -1, available >= 0 ? available >> 20 : -1,
+            model, rt_ios_device_ram_mb());
 }
