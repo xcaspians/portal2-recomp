@@ -283,7 +283,7 @@ def build_app(app, binary, prep, config, paths, game_args, *, map_compiler=True)
     launcher = macos / 'launcher'
     launcher.write_text(LAUNCHER.format(
         name=game['app_name'], log_name=game['log_name'], appid=int(game['steam_appid']), executable=game['executable'],
-        game_args=shlex.join(game_args or default_args(game)),
+        game_args=shlex.join(games.forced_args(game, game_args or default_args(game))),   # L4D2: offline, always
         **{key: shlex.quote(str(value)) for key, value in paths.items()}))
     launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     bundle_libraries(app, binary, localconfig.host_prefix(config), executable=game['executable'])
