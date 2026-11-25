@@ -31,6 +31,15 @@ rt_sync_action rt_sync_decide(rt_sync_file local, rt_sync_file remote, const rt_
     return RT_SYNC_CONFLICT;
 }
 
+rt_sync_record rt_sync_after(rt_sync_action action, int copied, rt_sync_record before, rt_sync_file local,
+                             rt_sync_file remote) {
+    if (action != RT_SYNC_NOTHING && !copied) return before;
+    rt_sync_record r = {1, local, remote};
+    if (before.known && !local.present && before.local.present) r.local = before.local;
+    if (before.known && !remote.present && before.remote.present) r.remote = before.remote;
+    return r;
+}
+
 void rt_sync_conflict_name(const char *name, const char *device, const struct tm *when, char *out, size_t size) {
     char tag[25];
     size_t n = 0;

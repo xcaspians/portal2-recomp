@@ -28,6 +28,15 @@ typedef enum {
 // Same file: same size, dates within 2 s (copies keep the date to the second).
 int rt_sync_same(rt_sync_file a, rt_sync_file b);
 rt_sync_action rt_sync_decide(rt_sync_file local, rt_sync_file remote, const rt_sync_record *record);
+// The record kept for a file after this sync acted on it (copied: the copies
+// it needed succeeded; local and remote: the files as they are now). A failed
+// copy keeps the record as it was (unknown stays unknown), so the next sync
+// sees the change again instead of taking it as synced. A side missing now
+// but present at the last sync stays as recorded: a deletion is never synced,
+// and the next sync must not bring the file back. Files still downloading
+// from iCloud are not decided at all (icloud_saves_ios.m skips them).
+rt_sync_record rt_sync_after(rt_sync_action action, int copied, rt_sync_record before, rt_sync_file local,
+                             rt_sync_file remote);
 
 // Name of the other device's copy in a conflict: "quick.sav" from
 // "Caspian's iPad mini" at 14:05 on 24 Nov 2026 ->

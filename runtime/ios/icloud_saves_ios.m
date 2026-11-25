@@ -35,6 +35,7 @@ static dispatch_queue_t queue;
 static dispatch_source_t timer;
 static int running;              // setting on and started (queue)
 static long long seen_print;     // local saves as of the last sync (queue)
+static int retry_pending;        // a retry for files still in iCloud is scheduled (queue)
 static long long last_print;     // as of the last check, and when it changed
 static CFTimeInterval changed_at;
 static NSString *status = @"Off";
@@ -83,19 +84,22 @@ static NSMutableDictionary<NSString *, NSValue *> *list_local(NSURL *dir) {
     }
     return found;
 }
-// Remote files ready to read; those still in iCloud are asked for and counted
-// in *waiting (the next sync gets them).
-static NSMutableDictionary<NSString *, NSValue *> *list_remote(NSURL *dir, int *waiting) {
+// Remote files ready to read; those still in iCloud are asked for and put in
+// waiting (the next sync gets them). A waiting name is not decided at all: its
+// remote side is unknown, not absent, so uploading over it or recording its
+// placeholder's date would lose the other device's save (audit, round 4).
+static NSMutableDictionary<NSString *, NSValue *> *list_remote(NSURL *dir, NSMutableSet<NSString *> *waiting) {
     NSFileManager *files = NSFileManager.defaultManager;
     NSMutableDictionary *found = [NSMutableDictionary dictionary];
     NSArray *keys = @[NSURLUbiquitousItemDownloadingStatusKey];
     for (NSURL *url in [files contentsOfDirectoryAtURL:dir includingPropertiesForKeys:keys options:0 error:nil]) {
         NSString *name = url.lastPathComponent;
         if ([name hasPrefix:@"."] && [name hasSuffix:@".icloud"]) {   // placeholder of a file not downloaded
+            if (name.length <= 8) continue;   // ".icloud" alone
             NSString *real = [name substringWithRange:NSMakeRange(1, name.length - 8)];
             if (!rt_sync_wanted(real.UTF8String)) continue;
             [files startDownloadingUbiquitousItemAtURL:[dir URLByAppendingPathComponent:real] error:nil];
-            ++*waiting;
+            [waiting addObject:real];
             continue;
         }
         if (!rt_sync_wanted(name.UTF8String)) continue;
@@ -103,7 +107,7 @@ static NSMutableDictionary<NSString *, NSValue *> *list_remote(NSURL *dir, int *
         [url getResourceValue:&state forKey:NSURLUbiquitousItemDownloadingStatusKey error:nil];
         if (state && ![state isEqualToString:NSURLUbiquitousItemDownloadingStatusCurrent]) {
             [files startDownloadingUbiquitousItemAtURL:url error:nil];
-            ++*waiting;
+            [waiting addObject:name];
             continue;
         }
         rt_sync_file f = stat_url(url);
@@ -141,17 +145,40 @@ static BOOL copy_file(NSURL *from, NSURL *to) {
                      to.path.UTF8String, error ? " : " : "", error ? error.localizedDescription.UTF8String : "");
     return ok;
 }
-static void backup_local(NSURL *file, NSString *save_id) {
-    NSFileManager *files = NSFileManager.defaultManager;
-    if (![files fileExistsAtPath:file.path]) return;
+// Folder names of the backups: the same on any calendar or region setting,
+// or pruning could read them wrong.
+static NSDateFormatter *day_format(void) {
     NSDateFormatter *f = [NSDateFormatter new];
+    f.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    f.calendar = [NSCalendar calendarWithIdentifier:NSCalendarIdentifierGregorian];
     f.dateFormat = @"yyyy-MM-dd";
+    return f;
+}
+// A name not used in any of these folders: name, then name-2, name-3...
+static NSString *unused_name(NSString *name, NSArray<NSURL *> *dirs) {
+    NSString *base = name.stringByDeletingPathExtension, *ext = name.pathExtension;
+    for (int n = 1; n < 1000; ++n) {
+        NSString *candidate = n == 1 ? name : [[NSString stringWithFormat:@"%@-%d", base, n] stringByAppendingPathExtension:ext];
+        BOOL used = NO;
+        for (NSURL *d in dirs) used |= [NSFileManager.defaultManager fileExistsAtPath:[d URLByAppendingPathComponent:candidate].path];
+        if (!used) return candidate;
+    }
+    return nil;
+}
+// 1 when the local file is backed up (or there is none to back up).
+static BOOL backup_local(NSURL *file, NSString *save_id) {
+    NSFileManager *files = NSFileManager.defaultManager;
+    if (![files fileExistsAtPath:file.path]) return YES;
+    NSDateFormatter *f = day_format();
     NSString *root = [userdata() stringByAppendingPathComponent:@"icloud-backups"];
     NSString *dir = [NSString pathWithComponents:@[root, [f stringFromDate:NSDate.date], save_id]];
     [files createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
-    NSString *copy = [dir stringByAppendingPathComponent:file.lastPathComponent];
-    [files removeItemAtPath:copy error:nil];
-    [files copyItemAtPath:file.path toPath:copy error:nil];
+    // A second backup of the same save on the same day gets its own name.
+    NSString *name = unused_name(file.lastPathComponent, @[[NSURL fileURLWithPath:dir isDirectory:YES]]);
+    if (!name || ![files copyItemAtPath:file.path toPath:[dir stringByAppendingPathComponent:name] error:nil]) {
+        fprintf(stderr, "[ios] iCloud : sauvegarde de %s impossible, téléchargement remis\n", file.lastPathComponent.UTF8String);
+        return NO;
+    }
     // Days older than two weeks go.
     NSDate *limit = [NSDate dateWithTimeIntervalSinceNow:-14 * 86400];
     for (NSString *day in [files contentsOfDirectoryAtPath:root error:nil]) {
@@ -159,6 +186,7 @@ static void backup_local(NSURL *file, NSString *save_id) {
         if (when && [when compare:limit] == NSOrderedAscending)
             [files removeItemAtPath:[root stringByAppendingPathComponent:day] error:nil];
     }
+    return YES;
 }
 static NSString *conflict_name(NSString *name, NSString *device, NSDate *when) {
     time_t t = (time_t)(when ?: NSDate.date).timeIntervalSince1970;
@@ -169,20 +197,31 @@ static NSString *conflict_name(NSString *name, NSString *device, NSDate *when) {
     return @(out);
 }
 // iCloud's own conflicts: each other version kept under its device's name.
-static int keep_icloud_conflicts(NSURL *remote_dir) {
+// A version is resolved only once its copy exists, so a failed copy leaves it
+// for the next sync instead of throwing it away.
+static int keep_icloud_conflicts(NSURL *remote_dir, NSURL *local_dir, int *failed) {
     int kept = 0;
     for (NSURL *url in [NSFileManager.defaultManager contentsOfDirectoryAtURL:remote_dir includingPropertiesForKeys:nil
                                                                        options:0 error:nil]) {
         if (!rt_sync_wanted(url.lastPathComponent.UTF8String)) continue;
         NSArray<NSFileVersion *> *versions = [NSFileVersion unresolvedConflictVersionsOfItemAtURL:url];
+        BOOL all = YES;
         for (NSFileVersion *v in versions) {
-            NSString *name = conflict_name(url.lastPathComponent, v.localizedNameOfSavingComputer, v.modificationDate);
-            if (copy_file(v.URL, [remote_dir URLByAppendingPathComponent:name])) ++kept;
-            v.resolved = YES;
+            NSString *name = unused_name(conflict_name(url.lastPathComponent, v.localizedNameOfSavingComputer,
+                                                       v.modificationDate), @[remote_dir, local_dir]);
+            if (name && copy_file(v.URL, [remote_dir URLByAppendingPathComponent:name])) { ++kept; v.resolved = YES; }
+            else { all = NO; ++*failed; }
         }
-        if (versions.count) [NSFileVersion removeOtherVersionsOfItemAtURL:url error:nil];
+        if (versions.count && all) [NSFileVersion removeOtherVersionsOfItemAtURL:url error:nil];
     }
     return kept;
+}
+// Temporary files of copy_file left by a kill mid-copy (the game would list a
+// ".p2sync-quick.sav"): never a save of anyone's.
+static void sweep_temporaries(NSURL *dir) {
+    for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir.path error:nil])
+        if ([name hasPrefix:@".p2sync-"])
+            [NSFileManager.defaultManager removeItemAtURL:[dir URLByAppendingPathComponent:name] error:nil];
 }
 
 // ---- record of the last sync ----
@@ -215,8 +254,14 @@ static long long fingerprint(void) {
     return sum;
 }
 static void sync_now(const char *why);
+// One retry at a time, however many syncs found files still in iCloud.
 static void retry_later(void) {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), queue, ^{ sync_now("téléchargements iCloud"); });
+    if (retry_pending) return;
+    retry_pending = 1;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 15 * NSEC_PER_SEC), queue, ^{
+        retry_pending = 0;
+        sync_now("téléchargements iCloud");
+    });
 }
 static void sync_now(const char *why) {
     if (!running) return;
@@ -240,33 +285,42 @@ static void sync_now(const char *why) {
                                                       isDirectory:&dir] && dir) [ids addObject:name];
         }
     NSMutableDictionary *record = load_record();
-    int up = 0, down = 0, kept = 0, waiting = 0;
+    int up = 0, down = 0, kept = 0, waiting = 0, failed = 0;
     for (NSString *save_id in ids) {
         NSURL *l = [local URLByAppendingPathComponent:save_id isDirectory:YES];
         NSURL *r = [remote_root URLByAppendingPathComponent:save_id isDirectory:YES];
         [files createDirectoryAtURL:l withIntermediateDirectories:YES attributes:nil error:nil];
         [files createDirectoryAtURL:r withIntermediateDirectories:YES attributes:nil error:nil];
-        kept += keep_icloud_conflicts(r);
-        NSDictionary *lf = list_local(l), *rf = list_remote(r, &waiting);
+        sweep_temporaries(l);
+        kept += keep_icloud_conflicts(r, l, &failed);
+        NSMutableSet<NSString *> *pending = [NSMutableSet set];
+        NSDictionary *lf = list_local(l), *rf = list_remote(r, pending);
+        waiting += (int)pending.count;
         NSMutableSet<NSString *> *names = [NSMutableSet setWithArray:lf.allKeys];
         [names addObjectsFromArray:rf.allKeys];
         for (NSString *name in [names.allObjects sortedArrayUsingSelector:@selector(compare:)]) {
+            if ([pending containsObject:name]) continue;   // decided once it has arrived
             NSString *key = [save_id stringByAppendingPathComponent:name];
             NSURL *lu = [l URLByAppendingPathComponent:name], *ru = [r URLByAppendingPathComponent:name];
             rt_sync_record before = record_of(record, key);
-            switch (rt_sync_decide(entry(lf, name), entry(rf, name), &before)) {
+            rt_sync_action action = rt_sync_decide(entry(lf, name), entry(rf, name), &before);
+            BOOL copied = YES;
+            switch (action) {
             case RT_SYNC_NOTHING: break;
-            case RT_SYNC_UPLOAD: up += copy_file(lu, ru); break;
+            case RT_SYNC_UPLOAD: up += copied = copy_file(lu, ru); break;
             case RT_SYNC_DOWNLOAD:
-                backup_local(lu, save_id);
-                down += copy_file(ru, lu);
+                copied = backup_local(lu, save_id) && copy_file(ru, lu);
+                down += copied;
                 break;
             case RT_SYNC_CONFLICT: {
                 // The other device's copy under its own name, on both sides; ours keeps the name.
                 NSFileVersion *theirs = [NSFileVersion currentVersionOfItemAtURL:ru];
-                NSString *other = conflict_name(name, theirs.localizedNameOfSavingComputer, theirs.modificationDate);
-                NSURL *ol = [l URLByAppendingPathComponent:other], *orr = [r URLByAppendingPathComponent:other];
-                if (copy_file(ru, ol) && copy_file(ol, orr) && copy_file(lu, ru)) {
+                NSString *other = unused_name(conflict_name(name, theirs.localizedNameOfSavingComputer, theirs.modificationDate),
+                                              @[l, r]);
+                NSURL *ol = other ? [l URLByAppendingPathComponent:other] : nil;
+                NSURL *orr = other ? [r URLByAppendingPathComponent:other] : nil;
+                copied = other && copy_file(ru, ol) && copy_file(ol, orr) && copy_file(lu, ru);
+                if (copied) {
                     ++kept;
                     remember(record, [save_id stringByAppendingPathComponent:other], stat_url(ol), stat_url(orr));
                     fprintf(stderr, "[ios] iCloud : conflit sur %s, l'autre copie gardée sous %s\n", name.UTF8String,
@@ -275,21 +329,22 @@ static void sync_now(const char *why) {
                 break;
             }
             }
-            rt_sync_file now_local = stat_url(lu), now_remote = rf[name] || [files fileExistsAtPath:ru.path]
-                ? stat_url(ru) : (rt_sync_file){0, 0, 0};
-            // A file still in iCloud stays as recorded until it arrives.
-            if (!rf[name] && !now_remote.present && before.known) now_remote = before.remote;
-            remember(record, key, now_local, now_remote);
+            failed += !copied;
+            // A failed copy keeps the record as it was, a deletion stays recorded (rt_sync_after).
+            rt_sync_record after = rt_sync_after(action, copied, before, stat_url(lu), stat_url(ru));
+            if (after.known) remember(record, key, after.local, after.remote);
+            else [record removeObjectForKey:key];
         }
     }
     NSData *json = [NSJSONSerialization dataWithJSONObject:record options:NSJSONWritingPrettyPrinted error:nil];
     [json writeToFile:record_path() atomically:YES];
     seen_print = fingerprint();
-    [NSUserDefaults.standardUserDefaults setObject:NSDate.date forKey:kLastSync];
-    set_status(waiting ? @"Waiting for files from iCloud…" : @"Synced");
-    fprintf(stderr, "[ios] iCloud (%s) : %d envoyées, %d reçues, %d conflits gardés en double, %d en attente\n", why, up,
-            down, kept, waiting);
-    if (waiting) retry_later();
+    if (!failed) [NSUserDefaults.standardUserDefaults setObject:NSDate.date forKey:kLastSync];
+    set_status(failed ? @"Some saves couldn't be copied (is iCloud or this device full?). Trying again later."
+               : waiting ? @"Waiting for files from iCloud…" : @"Synced");
+    fprintf(stderr, "[ios] iCloud (%s) : %d envoyées, %d reçues, %d conflits gardés en double, %d en attente, %d échecs\n",
+            why, up, down, kept, waiting, failed);
+    if (waiting || failed) retry_later();
 }
 
 // ---- start, stop, triggers ----

@@ -286,6 +286,16 @@ it) and on the Settings app page (`P2_ICLOUD_SAVES`).
   `Documents/portal2-userdata/icloud-backups/<date>/` (two weeks kept). The
   state of both sides at the last sync is in
   `Documents/portal2-userdata/icloud-sync.json`.
+- **Safety rules** (from the round 4 audit, `rt_sync_after` in
+  `save_sync_rules.c`, checked over two syncs in a row):
+  - a save iCloud hasn't finished downloading is left alone until it has
+    arrived (never uploaded over, never recorded);
+  - a copy that fails (iCloud or the device full, the app killed) leaves the
+    record as it was, so the next sync sees the change again; the menu then
+    says some saves couldn't be copied, and it retries every 15 s;
+  - a save deleted on this device stays deleted on the next syncs too;
+  - conflict copies never overwrite each other (`-2`, `-3`… when the name is
+    taken), and iCloud's own conflict versions are only dropped once copied.
 - **Mac:** left out. The Mac app isn't provisioned for iCloud and goes
   through real Steam, which may sync its own saves with Steam Cloud; the
   cable sync (`tools/ios_device.sh saves`) stays the Mac ↔ iPhone route.
