@@ -73,8 +73,32 @@ static void refresh(void) {
     }
 }
 
+// Round 11 made settings shared by every game (game_ios.c, rt_ios_pref_key):
+// Portal 2's became the shared set. A hosted game's old settings ("mel.*")
+// stay in the app's preferences, untouched, and are copied once to
+// Documents/<userdata>/settings-before-shared.plist as a backup.
+static void backup_hosted_settings(void) {
+    const rt_ios_game *game = rt_ios_current_game();
+    if (game == rt_ios_app_game()) return;
+    NSString *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *dir = [docs stringByAppendingPathComponent:@(game->userdata)];
+    NSString *path = [dir stringByAppendingPathComponent:@"settings-before-shared.plist"];
+    if ([NSFileManager.defaultManager fileExistsAtPath:path]) return;
+    NSString *prefix = [@(game->name) stringByAppendingString:@"."];
+    NSMutableDictionary *old = [NSMutableDictionary dictionary];
+    [NSUserDefaults.standardUserDefaults.dictionaryRepresentation enumerateKeysAndObjectsUsingBlock:^(NSString *k, id v, BOOL *stop) {
+        (void)stop;
+        if ([k hasPrefix:prefix]) old[k] = v;
+    }];
+    [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    BOOL ok = [old writeToFile:path atomically:YES];
+    fprintf(stderr, "[ios] réglages partagés entre les jeux : %lu ancien(s) réglage(s) de %s gardé(s) dans %s%s\n",
+            (unsigned long)old.count, game->name, path.UTF8String, ok ? "" : " (écriture impossible)");
+}
+
 void rt_ios_settings_watch(void) {
     if (applied) return;
+    backup_hosted_settings();
     applied = [NSMutableDictionary dictionary];
     refresh();
     [NSNotificationCenter.defaultCenter addObserverForName:NSUserDefaultsDidChangeNotification object:nil

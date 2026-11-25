@@ -32,6 +32,12 @@ const rt_ios_game *rt_ios_set_game(const char *name);
 // The app's own game: the Info.plist's P2Game (its keys and folders are the
 // historical ones). Another game's preference keys get "<name>." in front.
 const rt_ios_game *rt_ios_app_game(void);
-// Preference key of the running game: `key` itself for the app's own game,
-// "<game>.<key>" for a hosted one (each game keeps its own settings).
+// Preference key of the running game. Settings are shared by every game in
+// the app (touch layout, button size and opacity, back taps, gyro and look,
+// frame rate, the gear menu's general settings): `key` itself, the app's own
+// game's (Portal 2's) key. A per-game key (rt_ios_key_per_game) of a hosted
+// game is "<game>.<key>". Saves, launch options and the version line are per
+// game by their folders, not by keys.
 const char *rt_ios_pref_key(const char *key, char *out, unsigned long size);
+// 1 for a setting that only means something to one game (iCloud saves).
+int rt_ios_key_per_game(const char *key);

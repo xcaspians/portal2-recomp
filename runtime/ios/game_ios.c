@@ -65,9 +65,19 @@ const rt_ios_game *rt_ios_app_game(void) {
     return app;
 }
 
+// Settings every game in the app shares (round 11): all but these, which only
+// mean something to one game (each game's iCloud saves are in its own folder).
+static const char *const per_game_keys[] = {"P2ICloudSaves", "P2ICloudLastSync", NULL};
+int rt_ios_key_per_game(const char *key) {
+    for (int i = 0; key && per_game_keys[i]; ++i)
+        if (!strcmp(key, per_game_keys[i])) return 1;
+    return 0;
+}
+
 const char *rt_ios_pref_key(const char *key, char *out, unsigned long size) {
     const rt_ios_game *game = rt_ios_current_game();
-    if (game == rt_ios_app_game()) snprintf(out, size, "%s", key);
+    // Shared keys are the app's own game's (Portal 2's): its settings became the shared set.
+    if (game == rt_ios_app_game() || !rt_ios_key_per_game(key)) snprintf(out, size, "%s", key);
     else snprintf(out, size, "%s.%s", game->name, key);
     return out;
 }
