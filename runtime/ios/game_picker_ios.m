@@ -37,6 +37,18 @@ static BOOL installed(const rt_ios_game *g) {
             return NO;
     return YES;
 }
+// Slim pack without Portal 2's files: it can't start (a sentence says why).
+static BOOL slim(const rt_ios_game *g) {
+    rt_picker_game p = picker_game(g);
+    char rel[256];
+    return rt_picker_slim_marker(&p, rel, sizeof(rel)) &&
+           [NSFileManager.defaultManager fileExistsAtPath:[documents() stringByAppendingPathComponent:@(rel)]];
+}
+static BOOL needs_portal2(const rt_ios_game *g) {
+    return installed(g) && slim(g) &&
+           ![NSFileManager.defaultManager fileExistsAtPath:[documents() stringByAppendingPathComponent:@RT_PICKER_BASE_FILE]];
+}
+static BOOL playable(const rt_ios_game *g) { return installed(g) && !needs_portal2(g); }
 // Bytes under a folder (allocated size, what deleting frees); 0 if absent.
 static long long folder_size(NSString *path) {
     long long total = 0;
@@ -154,15 +166,16 @@ static UILabel *text(NSString *s, CGFloat size, UIFontWeight w, CGFloat alpha) {
     [image.heightAnchor constraintEqualToConstant:150].active = YES;
     [card addArrangedSubview:image];
     [card addArrangedSubview:text(@(g->title), 17, UIFontWeightSemibold, 1)];
-    UILabel *size = text(installed(g) ? @"…" : @"Not installed", 13, UIFontWeightRegular, .6);
+    UILabel *size = text(needs_portal2(g) ? @"Needs Portal 2" : installed(g) ? @"…" : @"Not installed", 13,
+                         UIFontWeightRegular, .6);
     sizeLabels[@(g->name)] = size;
     [card addArrangedSubview:size];
     NSString *name = @(g->name);
     __weak P2GamePicker *weakSelf = self;
     UIButtonConfiguration *conf = [UIButtonConfiguration filledButtonConfiguration];
-    conf.title = installed(g) ? @"Play" : @"Not installed";
+    conf.title = playable(g) ? @"Play" : needs_portal2(g) ? @"Needs Portal 2" : @"Not installed";
     conf.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
-    if (!installed(g)) conf.baseBackgroundColor = [UIColor colorWithWhite:.3 alpha:1];
+    if (!playable(g)) conf.baseBackgroundColor = [UIColor colorWithWhite:.3 alpha:1];
     [card addArrangedSubview:[UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
         (void)a; [weakSelf pick:name];
     }]]];
@@ -180,7 +193,7 @@ static UILabel *text(NSString *s, CGFloat size, UIFontWeight w, CGFloat alpha) {
 - (void)measure {
     for (size_t i = 0; i < rt_game_code_count; ++i) {
         const rt_ios_game *g = [self game:i];
-        if (!installed(g)) continue;
+        if (!installed(g) || needs_portal2(g)) continue;
         NSString *name = @(g->name);
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
             NSString *s = size_text(data_size(g));
@@ -198,6 +211,10 @@ static NSString *const kFromMac = @"The game's files come from your Mac: open th
                                    "(or keep it on the same Wi-Fi once paired), and press Download next to the game.";
 - (void)pick:(NSString *)name {
     const rt_ios_game *g = rt_ios_game_named(name.UTF8String);
+    if (needs_portal2(g)) {
+        [self say:[NSString stringWithFormat:@"%s needs Portal 2", g->title] message:@RT_PICKER_NEEDS_BASE];
+        return;
+    }
     if (!installed(g)) {
         [self say:[NSString stringWithFormat:@"%s isn't installed", g->title] message:kFromMac];
         return;
@@ -301,7 +318,7 @@ const char *rt_ios_choose_game(void) {
     int here[8], n = 0;
     for (size_t i = 0; i < rt_game_code_count && n < 8; ++i, ++n) {
         names[n] = rt_game_codes[i].name;
-        here[n] = installed(rt_ios_game_named(names[n]));
+        here[n] = playable(rt_ios_game_named(names[n]));   // remembered but needing Portal 2: the picker says why
     }
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     NSString *last = [d stringForKey:kLast];

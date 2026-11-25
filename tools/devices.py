@@ -134,7 +134,10 @@ def plan(game, status, built, need_bytes):
     if game == 'portal2':
         steps.append(('Copy Portal 2 (about 11.5 GB)', ['data']))
     elif game == 'mel':
-        steps.append(('Copy Portal Stories: Mel (about 9.3 GB)', ['mel', 'data', 'push']))
+        # The slim pack (tools/mel_slim.py) reads Portal 2's archives: Portal 2 first.
+        if not status.get('data', {}).get('portal2'):
+            return [], 'Download Portal 2 first: Mel uses its files.'
+        steps.append(('Copy Portal Stories: Mel (about 6.8 GB)', ['mel', 'data', 'push']))
     else:
         if not status.get('data', {}).get('portal2'):
             return [], 'Download Portal 2 first: the Workshop maps play in it.'
@@ -177,9 +180,13 @@ def need_bytes(game, config=None):
     profile = games.profile(cfg)
     import ios_data_plan
     root = Path(cfg.get('game_root', ''))
+    shared = ()
+    if game == 'mel':   # the slim pack: Mel's own VPKs in portal2 stay on the Mac (tools/mel_slim.py)
+        import mel_slim
+        shared = mel_slim.SHARED
     rows = ios_data_plan.plan(root, Path(cfg.get('linux_root', '')), Path(profile['build_dir']) / 'prep',
-                              profile['ios_data'])
-    return sum(n for _, _, n in rows)
+                              profile['ios_data'], shared=shared)
+    return sum(n for _, _, n in rows) + (30_000_000 if shared else 0)   # + the slim directory
 
 
 def main(argv):

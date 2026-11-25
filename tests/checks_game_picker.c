@@ -46,3 +46,13 @@ RT_CHECK(game_picker_autostart) {
     rt_picker_size(820000000LL, s, sizeof(s)); assert(!strcmp(s, "820 MB"));
     rt_picker_size(-1, s, sizeof(s)); assert(!strcmp(s, "Not installed"));
 }
+
+RT_CHECK(game_picker_slim_needs_portal2) {
+    char out[64];
+    assert(!strcmp(rt_picker_slim_marker(&mel, out, sizeof(out)), "mel/.p2-slim"));
+    assert(!rt_picker_slim_marker(&p2, out, sizeof(out)));     // Portal 2 is the base itself
+    assert(rt_picker_playable(1, 0, 0));                        // full copy: on its own
+    assert(rt_picker_playable(1, 1, 1));
+    assert(!rt_picker_playable(1, 1, 0));                       // slim without Portal 2: a sentence, not a crash
+    assert(!rt_picker_playable(0, 0, 1));
+}

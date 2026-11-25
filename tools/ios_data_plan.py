@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""What `tools/ios_device.sh mel data push` copies to the device, and how much:
+"""What `tools/ios_device.sh mel data push` copies to the device, and how much
+(the slim pack by default: --shared and --overlay, tools/mel_slim.py):
 one "copy<TAB>source<TAB>destination<TAB>bytes" line per folder or file, then
 "total<TAB>bytes" (destinations relative to the app's data container).
 
@@ -37,22 +38,40 @@ def size_of(path):
     return total
 
 
-def plan(game_root, linux_root, prep, folders, dest_root='Documents'):
+def is_archive(path):
+    """A shared folder's VPK archive (pak01_dir.vpk, pak01_000.vpk...): the slim pack reads Portal 2's."""
+    n = path.name.lower()
+    return path.is_file() and n.startswith('pak01_') and n.endswith('.vpk')
+
+
+def plan(game_root, linux_root, prep, folders, dest_root='Documents', shared=(), overlay=None):
     """[(source, destination, bytes)]; a folder missing on the Mac is skipped (as `data` does).
-    dest_root: Documents, or Documents/mel for Mel hosted in the Portal app."""
+    dest_root: Documents, or Documents/mel for Mel hosted in the Portal app.
+    shared: the slim pack's folders read from Portal 2 (tools/mel_slim.py): copied
+    without their VPK archives. overlay: the slim pack's own extra files
+    (mel_slim.py build), copied over the game folders after them."""
     out = [(str(prep), f'{dest_root}/prep', size_of(prep)), (str(linux_root), f'{dest_root}/linux', size_of(linux_root))]
     for name in folders:
         src = Path(game_root) / name
         if not src.exists():
             continue
         entries = list(src.iterdir()) if src.is_dir() else []
-        if any(e.name.lower() in LEFTOVERS for e in entries):
+        if name in shared:
+            for e in sorted(entries):
+                if is_archive(e) or e.name.lower() in LEFTOVERS or e.name.startswith('.'):
+                    continue
+                out.append((str(e), f'{dest_root}/game/{name}/{e.name}', size_of(e)))
+        elif any(e.name.lower() in LEFTOVERS for e in entries):
             for e in sorted(entries):
                 if e.name.lower() in LEFTOVERS or e.name.startswith('.'):
                     continue
                 out.append((str(e), f'{dest_root}/game/{name}/{e.name}', size_of(e)))
         else:
             out.append((str(src), f'{dest_root}/game/{name}', size_of(src)))
+    if overlay:
+        for folder in sorted(p for p in Path(overlay).iterdir() if p.is_dir()):
+            for e in sorted(folder.iterdir()):
+                out.append((str(e), f'{dest_root}/game/{folder.name}/{e.name}', size_of(e)))
     return out
 
 
@@ -107,12 +126,14 @@ def main(argv):
     ap.add_argument('--prep', required=True)
     ap.add_argument('--folders', required=True, help='space-separated (ios_data of the game profile)')
     ap.add_argument('--dest-root', default='Documents', help='Documents/mel for Mel hosted in the Portal app')
+    ap.add_argument('--shared', default='', help='slim pack: folders read from Portal 2 (copied without their VPKs)')
+    ap.add_argument('--overlay', help='slim pack: its extra files (tools/mel_slim.py build --out)')
     a = ap.parse_args(argv)
     for p in (a.game_root, a.linux_root, a.prep):
         if not Path(p).is_dir():
             print(f'{p}: no such folder (config/local.json, gameprep)', file=sys.stderr)
             return 2
-    rows = plan(a.game_root, a.linux_root, a.prep, a.folders.split(), a.dest_root)
+    rows = plan(a.game_root, a.linux_root, a.prep, a.folders.split(), a.dest_root, tuple(a.shared.split()), a.overlay)
     for src, dest, n in rows:
         print(f'copy\t{src}\t{dest}\t{n}')
     print(f'total\t{sum(n for _, _, n in rows)}')

@@ -18,6 +18,15 @@ const char *rt_picker_data_folder(const rt_picker_game *g, int which, char *out,
 // on its files. 1 for any other game.
 int rt_picker_can_remove(const rt_picker_game *g);
 #define RT_PICKER_BASE_NOTE "It's the base the other games run on, so it stays."
+// A hosted game's slim pack (tools/mel_slim.py) reads Portal 2's archives:
+// the marker that says so, relative to Documents ("mel/.p2-slim"; NULL for a
+// game at the root of Documents), and Portal 2's file it needs.
+const char *rt_picker_slim_marker(const rt_picker_game *g, char *out, size_t size);
+#define RT_PICKER_BASE_FILE "game/portal2/pak01_dir.vpk"
+#define RT_PICKER_NEEDS_BASE "This game uses Portal 2's files, and Portal 2 isn't on this device. Copy Portal 2 " \
+    "from your Mac first (Natif Installer > Devices > Download), then open this game again."
+// Can it start? Installed, and if slim, with Portal 2's files there.
+int rt_picker_playable(int installed, int slim, int base_present);
 // What "Remove game data" deletes, relative to Documents: game, prep, linux of
 // that game's data folder (never its userdata, never another game's folders).
 // `which` 0..2; NULL past the end, and always NULL for the base game.

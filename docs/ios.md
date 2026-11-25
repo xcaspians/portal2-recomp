@@ -647,8 +647,30 @@ Half-Life 2 and Portal stay separate apps.
   iCloud saves sync Mel in its own folder (`Documents/mel/SAVE` in the
   container). Community Maps and Maps & Mods stay Portal 2 only. The menu's
   version line names the game.
+- **Mel's slim pack** (round 11, `tools/mel_slim.py`): Mel ships its own
+  copy of Portal 2's `portal2` folder (2.4 GB, almost all of it VPK). Of its
+  14,977 VPK entries, 14,656 are byte for byte in Portal 2's own VPK. The slim
+  pack keeps Mel's VPK *directory* as `portal2/pak01_slim.vpk` (version 1, as
+  the engine reads): Mel's entries exactly, each pointing into Portal 2's
+  archives, or carrying its bytes when Portal 2's differ (321 entries,
+  27 MB). With the marker `Documents/mel/.p2-slim`, `ios/main_ios.c` sets
+  `P2_BASE_GAME_ROOT=Documents/game` and the runtime (`runtime/paths.c`)
+  gives the engine that directory for `portal2/pak01_dir.vpk` and Portal 2's
+  archives for `portal2/pak01_NNN.vpk`; every loose file stays Mel's. Mel
+  then sees the same entries with the same bytes as with its full copy, and
+  none of Portal 2's (Source searches every VPK before any loose file).
+  9.18 GB becomes 6.83 GB (2.36 GB freed). Without Portal 2's files the
+  picker says "Needs Portal 2" with a sentence, and the runtime refuses to
+  start with the same sentence (no crash). Checked by `tests/test_mel_slim.py`
+  (`P2_REAL_MEL_SLIM=1` on the real games: every entry, same bytes) and on
+  the Mac with the device's layout (`mel_slim.py layout`): a save made and
+  loaded, the console identical to the full copy's.
 - **Tools:** `tools/ios_device.sh mel data push` copies Mel into the Portal
-  app (`Documents/mel`); `tools/ios_device.sh mel saves migrate [--dry-run]`
+  app (`Documents/mel`), as the slim pack (`--full` for the whole copy;
+  Portal 2 must be on the device first); `tools/ios_device.sh mel slim switch`
+  turns a full copy slim without ever losing it: the slim directory, a boot
+  test with it (a save or the first map, checked in the console), and only
+  then the app removes Mel's own copies of Portal 2's archives; `tools/ios_device.sh mel saves migrate [--dry-run]`
   copies Mel's saves from the old standalone Mel app through the Mac and checks
   every file arrived (the old app is not touched). `run`, `install` and the
   simulator script start the game asked for (`P2_GAME_CHOICE`); an empty
