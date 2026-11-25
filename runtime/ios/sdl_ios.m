@@ -108,7 +108,7 @@ void rt_ios_warp_mouse_in_window(SDL_Window *window, int x, int y) { SDL_WarpMou
 // Menu des réglages ouvert (settings_menu_ios.m) : la manette le pilote, le
 // jeu ne voit ni appui ni mouvement de stick ; les relâchements passent, pour
 // qu'aucun bouton ne reste enfoncé côté jeu.
-int rt_ios_game_paused(void);   // game_state.c
+int rt_ios_game_menu_shown(void);   // game_state.c
 static int pad_event_dropped(const SDL_Event *e) {
     rt_pad_event kind = RT_PAD_NOT_PAD;
     int options = 0, value = 0;
@@ -121,7 +121,7 @@ static int pad_event_dropped(const SDL_Event *e) {
     case SDL_JOYHATMOTION: case SDL_JOYBALLMOTION: kind = RT_PAD_OTHER_MOTION; break;
     default: return 0;
     }
-    return rt_menu_pad_dropped(kind, options, value, rt_ios_game_paused(), rt_ios_settings_menu_captures_pad());
+    return rt_menu_pad_dropped(kind, options, value, rt_ios_game_menu_shown(), rt_ios_settings_menu_captures_pad());
 }
 
 int rt_ios_poll_event(SDL_Event *event) {
