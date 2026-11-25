@@ -651,6 +651,29 @@ iCloud folder. The settings menu's last line reads "Sauce <version> · <game>".
   dipped to 75–95 fps on the iPad Pro); from the second launch they hold their
   usual rate (120 fps).
 
+## On a TV (fork, round 20)
+
+Plug the iPad into a TV (an HDMI adapter on USB-C), or AirPlay to an Apple TV
+from Control Center > Screen Mirroring: the game draws its own picture on the
+TV, at the TV's shape (16:9, no black bars) and resolution, and the iPad
+becomes the pad (the touch controls over black; with a controller in use, a
+dim "Playing on TV"). Unplug, or stop AirPlay, and the picture comes back to
+the iPad, mid-game. Every game in Sauce does this (`runtime/ios/tv_output*.{c,m}`).
+
+- **Gear menu > TV** (and the Settings app, shared by every game): Picture on
+  the TV (on), TV resolution (Auto: the TV's own, at most 4K; 1080p; 1440p;
+  4K) and TV frame rate (the TV's rate, usually 60; 30; 60; 120).
+- **How:** the game's Metal view moves into a window on the external screen,
+  its drawable takes the TV's size, and the engine switches its picture to that
+  size (`mat_setvideomode W H 1`). 4K needs a cable and a 4K TV; AirPlay usually
+  gives 1080p.
+- **Tests without a TV:** `P2_TV_SIMULATE=1920x1080` makes a 16:9 band across
+  the iPad's top stand in for the TV; `P2_TV_SIMULATE_CYCLE=30` unplugs and
+  plugs it back every 30 seconds.
+- **Measured on the M5 iPad Pro, simulated 4K:** Left 4 Dead 2 `c1m1_hotel` at
+  120 fps, 2.4 GB; Half-Life 2 at its 60 fps cap. A real TV at 60 Hz caps the
+  game at 60.
+
 ## One Portal app: Portal 2 and Mel
 
 Portal 2 and Portal Stories: Mel (and later any game on Portal 2's engine,
