@@ -51,6 +51,29 @@ const char *rt_picker_autostart(const char *const *names, const int *installed, 
     return NULL;
 }
 
+// One line per series; a game joins by adding its name (round 23).
+static const rt_picker_series series[] = {
+    {"portal", "Portal", {"portal1", "portal2", "mel", "p2ce", "revolution", NULL}},
+    {"halflife", "Half-Life", {"hl2", "ep1", "ep2", "lostcoast", NULL}},
+    {"l4d", "Left 4 Dead", {"l4d1", "l4d2", NULL}},
+};
+int rt_picker_series_count(void) { return (int)(sizeof(series) / sizeof(*series)); }
+const rt_picker_series *rt_picker_series_at(int i) {
+    return i >= 0 && i < rt_picker_series_count() ? &series[i] : NULL;
+}
+const rt_picker_series *rt_picker_series_of(const char *game) {
+    for (int i = 0; game && i < rt_picker_series_count(); ++i)
+        for (int j = 0; series[i].games[j]; ++j)
+            if (!strcmp(series[i].games[j], game)) return &series[i];
+    return NULL;
+}
+const char *rt_picker_badge(const char *game) {
+    static const char *const badges[][2] = {{"ep1", "EP1"}, {"ep2", "EP2"}, {"lostcoast", "LC"}};
+    for (size_t i = 0; game && i < sizeof(badges) / sizeof(*badges); ++i)
+        if (!strcmp(badges[i][0], game)) return badges[i][1];
+    return NULL;
+}
+
 void rt_picker_size(long long bytes, char *out, size_t size) {
     if (bytes < 0) snprintf(out, size, "Not installed");
     else if (bytes >= 1000LL * 1000 * 1000) snprintf(out, size, "%.1f GB", (double)bytes / 1e9);

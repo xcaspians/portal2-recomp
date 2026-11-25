@@ -44,3 +44,20 @@ const char *rt_picker_autostart(const char *const *names, const int *installed, 
                                 const char *remembered, int remember);
 // "11.5 GB", "820 MB", "Not installed" style sizes.
 void rt_picker_size(long long bytes, char *out, size_t size);
+
+// ---- The launcher's series (round 23) ----
+// The main screen shows series; a series shows its games in this order. Adding
+// a game to a series is one line of the table in game_picker.c (a name the app
+// doesn't hold is skipped, so P2CE, Revolution or Left 4 Dead can be listed
+// before they exist).
+typedef struct {
+    const char *id;        // "portal"
+    const char *title;     // "Portal"
+    const char *games[8];  // game names (game_ios.c), NULL-terminated
+} rt_picker_series;
+int rt_picker_series_count(void);
+const rt_picker_series *rt_picker_series_at(int i);
+// The series a game belongs to, or NULL.
+const rt_picker_series *rt_picker_series_of(const char *game);
+// A short label over a cover that other games share ("EP1", "EP2", "LC"), or NULL.
+const char *rt_picker_badge(const char *game);

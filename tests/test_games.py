@@ -220,6 +220,21 @@ class GameinfoSearchPaths(unittest.TestCase):
             self.assertEqual(games.missing_ios_data(l4d2, ''), [])   # no game files: nothing to check
 
 
+class LauncherSeries(unittest.TestCase):
+    def test_every_game_of_the_app_is_in_one_series(self):
+        # Round 23: the launcher shows series (runtime/ios/game_picker.c); a game
+        # missing from the table would never appear.
+        import re
+        text = (games.ROOT / 'runtime/ios/game_picker.c').read_text()
+        table = re.search(r'rt_picker_series series\[\] = \{(.*?)\n\};', text, re.S).group(1)
+        rows = re.findall(r'\{"(\w+)", "([^"]+)", \{([^}]*)\}\}', table)
+        in_series = [g for _id, _t, names in rows for g in re.findall(r'"(\w+)"', names)]
+        app = ['portal2', *games.GAMES['portal2']['ios_guests']]
+        app += [v for g in app for v, _m, _t in games.GAMES[g].get('ios_variants', ())]
+        for g in app:
+            self.assertEqual(in_series.count(g), 1, g)
+
+
 class IosSteamStub(unittest.TestCase):
     def test_stub_answers_every_flat_function_the_bridge_looks_up(self):
         # runtime/steam.c looks each of these up in Valve's dylib on the Mac and in

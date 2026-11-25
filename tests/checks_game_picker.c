@@ -64,3 +64,24 @@ RT_CHECK(game_picker_slim_needs_portal2) {
     assert(!rt_picker_playable(1, 1, 0));                       // slim without Portal 2: a sentence, not a crash
     assert(!rt_picker_playable(0, 0, 1));
 }
+
+// Round 23: the launcher groups the games by series; each game the app holds
+// is in exactly one; the episodes and Lost Coast carry a label over the shared cover.
+RT_CHECK(game_picker_series) {
+    assert(rt_picker_series_count() == 3);
+    assert(!strcmp(rt_picker_series_at(0)->title, "Portal") && !strcmp(rt_picker_series_at(1)->title, "Half-Life"));
+    assert(!strcmp(rt_picker_series_at(2)->title, "Left 4 Dead") && !rt_picker_series_at(3) && !rt_picker_series_at(-1));
+    static const char *const in_app[] = {"portal2", "mel", "portal1", "hl2", "ep1", "ep2", "lostcoast", "l4d2"};
+    for (size_t i = 0; i < sizeof(in_app) / sizeof(*in_app); ++i) {
+        const rt_picker_series *s = rt_picker_series_of(in_app[i]);
+        assert(s);
+        int seen = 0;
+        for (int k = 0; k < rt_picker_series_count(); ++k)
+            for (int j = 0; rt_picker_series_at(k)->games[j]; ++j) seen += !strcmp(rt_picker_series_at(k)->games[j], in_app[i]);
+        assert(seen == 1);
+    }
+    assert(!strcmp(rt_picker_series_of("ep2")->id, "halflife") && !strcmp(rt_picker_series_of("mel")->id, "portal"));
+    assert(!rt_picker_series_of("nonsense") && !rt_picker_series_of(NULL));
+    assert(!strcmp(rt_picker_badge("ep1"), "EP1") && !strcmp(rt_picker_badge("ep2"), "EP2"));
+    assert(!strcmp(rt_picker_badge("lostcoast"), "LC") && !rt_picker_badge("hl2") && !rt_picker_badge(NULL));
+}
