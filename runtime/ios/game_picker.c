@@ -19,7 +19,9 @@ const char *rt_picker_data_folder(const rt_picker_game *g, int which, char *out,
     }
 }
 
-int rt_picker_can_remove(const rt_picker_game *g) { return g && strcmp(g->name, "portal2") != 0; }
+// Never Portal 2 (the others' base), never a game on another's data: removing an
+// episode's files would remove Half-Life 2's (round 21).
+int rt_picker_can_remove(const rt_picker_game *g) { return g && strcmp(g->name, "portal2") != 0 && !g->base; }
 
 const char *rt_picker_owned(const rt_picker_game *g, int which, char *out, size_t size) {
     static const char *const folders[] = {"game", "prep", "linux"};

@@ -31,8 +31,10 @@ RESPONSES = {
     'SteamAPI_ISteamUser_GetSteamID': f'return {STEAM_ID}ull;',
     'SteamAPI_ISteamUser_GetHSteamUser': 'return 1;',
     'SteamAPI_ISteamApps_BIsSubscribed': 'return true;',
-    'SteamAPI_ISteamApps_BIsSubscribedApp': f'return a1 == {APP_ID};',
-    'SteamAPI_ISteamApps_BIsAppInstalled': f'return a1 == {APP_ID};',
+    # The game's own app, and the apps Steam installed with it for this account
+    # (round 21: Half-Life 2's episodes and Lost Coast; steam_stub.c).
+    'SteamAPI_ISteamApps_BIsSubscribedApp': 'return steam_stub_owns(a1);',
+    'SteamAPI_ISteamApps_BIsAppInstalled': 'return steam_stub_owns(a1);',
     'SteamAPI_ISteamApps_BIsDlcInstalled': 'return false;',
     'SteamAPI_ISteamApps_GetCurrentGameLanguage': 'return "english";',
     'SteamAPI_ISteamApps_GetAvailableGameLanguages': 'return "english";',
@@ -129,7 +131,7 @@ def generate():
              '#define EXPORT __attribute__((visibility("default"), used))',
              'void *steam_stub_interface(const char *version);',
              'int32_t steam_stub_ticket(void *buffer, int32_t capacity);',
-             'uint32_t steam_stub_app_id(void);']
+             'uint32_t steam_stub_app_id(void);', 'bool steam_stub_owns(uint32_t app);']
     count = 0
     for name, (ret, args) in sorted(signatures().items()):
         if name in skip:

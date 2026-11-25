@@ -218,6 +218,19 @@ int main(int argc, char **argv) {
     // Stub Steam du build iOS (runtime/ios/steam_stub.c) : lié dans l'exécutable.
     setenv("P2_STEAM_API_DYLIB", exe, 0);
     setenv("SteamAppId", game->app_id, 0);
+    {   // Apps Steam installed with these games for this account (tools/build_ios.py shared_apps):
+        // Half-Life 2's episodes and Lost Coast. The iOS Steam stub answers for them too.
+        char path[PATH_MAX], owned[256] = "", line[32];
+        snprintf(path, sizeof(path), "%s/steam-owned.txt", bundle);
+        FILE *f = fopen(path, "r");
+        while (f && fgets(line, sizeof(line), f)) {
+            line[strcspn(line, "\r\n")] = 0;
+            if (line[0] && strlen(owned) + strlen(line) + 2 < sizeof(owned))
+                snprintf(owned + strlen(owned), sizeof(owned) - strlen(owned), "%s%s", owned[0] ? "," : "", line);
+        }
+        if (f) fclose(f);
+        if (owned[0]) setenv("P2_STEAM_OWNED", owned, 0);
+    }
     setenv("SteamGameId", game->app_id, 0);
     push(argc > 0 ? argv[0] : game->name);
     if (argc > 1) for (int i = 1; i < argc; ++i) push(argv[i]);

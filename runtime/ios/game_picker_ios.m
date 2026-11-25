@@ -26,7 +26,7 @@ static NSString *documents(void) {
     return NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
 }
 static rt_picker_game picker_game(const rt_ios_game *g) {
-    return (rt_picker_game){g->name, g->mod, g->data_dir, g->userdata};
+    return (rt_picker_game){g->name, g->mod, g->data_dir, g->userdata, g->base};
 }
 static BOOL installed(const rt_ios_game *g) {
     rt_picker_game p = picker_game(g);

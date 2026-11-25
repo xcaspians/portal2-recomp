@@ -5,8 +5,8 @@
 #include <string.h>
 #include "../runtime/ios/game_picker.c"
 
-static const rt_picker_game p2 = {"portal2", "portal2", "", "portal2-userdata"};
-static const rt_picker_game mel = {"mel", "portal_stories", "mel", "mel-userdata"};
+static const rt_picker_game p2 = {"portal2", "portal2", "", "portal2-userdata", NULL};
+static const rt_picker_game mel = {"mel", "portal_stories", "mel", "mel-userdata", NULL};
 
 RT_CHECK(game_picker_folders_per_game) {
     char out[128];
@@ -31,6 +31,10 @@ RT_CHECK(game_picker_remove_keeps_saves_and_other_games) {
     assert(!strcmp(rt_picker_owned(&p2, 0, out, sizeof(out)), "game") &&
            !strcmp(rt_picker_owned(&p2, 2, out, sizeof(out)), "linux") && !rt_picker_owned(&p2, 3, out, sizeof(out)));
     assert(!strcmp(rt_picker_owned(&mel, 1, out, sizeof(out)), "mel/prep"));
+    // Round 21: an episode plays from Half-Life 2's data: nothing of it is removable.
+    const rt_picker_game ep1 = {"ep1", "hl2_complete", "hl2", "ep1-userdata", "hl2"};
+    assert(!rt_picker_can_remove(&ep1) && !rt_picker_removable(&ep1, 0, out, sizeof(out)));
+    assert(!strcmp(rt_picker_owned(&ep1, 0, out, sizeof(out)), "hl2/game"));
     assert(!strcmp(rt_picker_removable(&mel, 0, out, sizeof(out)), "mel/game"));
 }
 

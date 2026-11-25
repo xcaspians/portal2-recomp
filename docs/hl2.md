@@ -167,3 +167,30 @@ fullscreen, so the runtime forwards the ramp to the game window
 (`SDL_SetWindowGammaRamp`, as Portal 2's OpenGL path does). macOS applies it
 to the whole display while the game has focus, and SDL removes it when the
 game loses focus or quits. Mac only: on iPhone the slider is not checked.
+
+## Episode One, Episode Two and Lost Coast (fork, round 21)
+
+The 20th anniversary install already holds them: `episodic` (Episode One),
+`ep2` (Episode Two) and `lostcoast`, which Steam shares with Half-Life 2's
+install for an owner (the appmanifest's `SharedDepots`: apps 380, 420, 340).
+Nothing to download. Its engine plays them as **expansions** of `hl2_complete`:
+its own menu switches with `launchmod <mod>`, which remounts that folder as the
+game (`+map ep1_citadel_00` alone answers "No such map").
+
+**In Sauce** they are three more games in the picker, each Half-Life 2's code
+on Half-Life 2's data (`Documents/hl2`), started with `+launchmod episodic`,
+`ep2` or `lostcoast` (`launch-<name>.args`), each with its own saves folder
+(`ep1-userdata`, `ep2-userdata`, `lostcoast-userdata`) and the fork's
+features (shared settings, Half-Life 2's touch layout, gear menu, version
+line). "Remove game data" never offers them: their files are Half-Life 2's.
+That's cleaner than chapters: the engine wants the expansion chosen before
+the map, and the picker is where a game is chosen. The engine asks Steam
+whether the player owns each expansion; the iOS stub answers yes only for the
+apps Steam installed with the game on the Mac (`steam-owned.txt`).
+
+**Smoke test (25 November 2026):**
+- Mac (`+launchmod <mod> +map <first map>`): `ep1_citadel_00`,
+  `ep2_outland_01` and `d2_lostcoast` load, no trap, no new import or root.
+- iPad Pro (M5), second launch: Episode One 80–90 fps in the Citadel opening,
+  1.6 GB; Episode Two 120 fps, 1.7 GB; Lost Coast a steady 60 fps (its HDR
+  harbour), 1.6 GB. First launches are slower while shaders compile.

@@ -62,7 +62,7 @@ void rt_ios_icloud_status(char *out, size_t size) {
 // Documents/SAVE; the others Documents/<game>/SAVE). Portal keeps its saves
 // on the device for now.
 int rt_ios_icloud_supported(void) {
-    const char *name = rt_ios_current_game()->name;
+    const char *name = rt_ios_game_kind(rt_ios_current_game());   // the episodes as Half-Life 2
     return !strcmp(name, "portal2") || !strcmp(name, "mel") || !strcmp(name, "hl2");
 }
 static int wanted_here(void) {

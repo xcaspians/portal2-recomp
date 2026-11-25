@@ -14,7 +14,7 @@ static const rt_ios_game games[] = {
     // Le dossier « portal2-userdata » reste celui des installations existantes.
     // ICvar : IAppSystem à 8 entrées, puis AllocateDLLIdentifier, Register/
     // UnregisterConCommand, UnregisterConCommands, GetCommandLineValue.
-    {"portal2", "portal2", "portal2-userdata", "620", 1, RT_IOS_LAYOUT_PORTAL2, "VEngineCvar007", 13, "", "Portal 2", NULL},
+    {"portal2", "portal2", "portal2-userdata", "620", 1, RT_IOS_LAYOUT_PORTAL2, "VEngineCvar007", 13, "", "Portal 2", NULL, NULL},
     // Tapes au dos coupées : elles ne donnent qu'un clic bref, alors que les
     // armes automatiques de HL2 se tirent en tenant le bouton, et un tir
     // involontaire coûte des munitions ou réveille les ennemis. P2_BACKTAP=1
@@ -24,12 +24,21 @@ static const rt_ios_game games[] = {
     // dans libvstdlib.so du dépôt 224 (table dont l'entrée 2 compare le nom à
     // « VEngineCvar004 », 5 incrémente un compteur, 10 et 11 parcourent la
     // liste des commandes par GetCommands, 16 et 17).
-    {"hl2", "hl2_complete", "hl2-userdata", "220", 0, RT_IOS_LAYOUT_HL2, "VEngineCvar004", 10, "hl2", "Half-Life 2", NULL},
+    {"hl2", "hl2_complete", "hl2-userdata", "220", 0, RT_IOS_LAYOUT_HL2, "VEngineCvar004", 10, "hl2", "Half-Life 2", NULL, NULL},
+    // Half-Life 2's episodes and Lost Coast (round 21): Half-Life 2's code and
+    // data (Documents/hl2), each started on its expansion ("+launchmod <mod>",
+    // launch-<name>.args), each with its own saves folder.
+    {"ep1", "hl2_complete", "ep1-userdata", "220", 0, RT_IOS_LAYOUT_HL2, "VEngineCvar004", 10, "hl2",
+     "Half-Life 2: Episode One", NULL, "hl2"},
+    {"ep2", "hl2_complete", "ep2-userdata", "220", 0, RT_IOS_LAYOUT_HL2, "VEngineCvar004", 10, "hl2",
+     "Half-Life 2: Episode Two", NULL, "hl2"},
+    {"lostcoast", "hl2_complete", "lostcoast-userdata", "220", 0, RT_IOS_LAYOUT_HL2, "VEngineCvar004", 10, "hl2",
+     "Half-Life 2: Lost Coast", NULL, "hl2"},
     // Portal 1 : même Source 2013 que Half-Life 2 (ICvar VEngineCvar004, base 10).
     // La disposition tactile de Portal 2 convient : elle a les deux boutons de
     // portail, que le pistolet double de Portal 1 utilise aussi. Tapes au dos :
     // le tir du portail, comme Portal 2.
-    {"portal1", "portal", "portal-userdata", "400", 1, RT_IOS_LAYOUT_PORTAL2, "VEngineCvar004", 10, "portal1", "Portal", NULL},
+    {"portal1", "portal", "portal-userdata", "400", 1, RT_IOS_LAYOUT_PORTAL2, "VEngineCvar004", 10, "portal1", "Portal", NULL, NULL},
     // Portal Stories: Mel : son propre moteur Portal 2 (version Linux de 2021),
     // mêmes interfaces que Portal 2 (VEngineCvar007, VEngineClient015 et
     // VEngineVGui001 dans ses engine.so et libvstdlib.so) ; joue comme Portal 2
@@ -37,7 +46,7 @@ static const rt_ios_game games[] = {
     // Hébergé dans l'app Portal : données dans Documents/mel (celles de Portal 2
     // restent à la racine de Documents).
     {"mel", "portal_stories", "mel-userdata", "317400", 1, RT_IOS_LAYOUT_PORTAL2, "VEngineCvar007", 13, "mel",
-     "Portal Stories: Mel", NULL},
+     "Portal Stories: Mel", NULL, NULL},
     // Left 4 Dead 2: its own app (round 15), offline only (the forced launch
     // arguments come from tools/games.py through launch.args). ICvar
     // VEngineCvar007 with FindCommandBase in 10, read from the Mac edition's
@@ -46,8 +55,10 @@ static const rt_ios_game games[] = {
     // GPU 0x051f: the ID the M5 iPad Pro got, outside every dxsupport.cfg range
     // (full shaders, gpu_level 3) on every chip (game_ios.h).
     {"l4d2", "left4dead2", "l4d2-userdata", "550", 0, RT_IOS_LAYOUT_L4D2, "VEngineCvar007", 10, "l4d2", "Left 4 Dead 2",
-     "0x051f"},
+     "0x051f", NULL},
 };
+
+const char *rt_ios_game_kind(const rt_ios_game *g) { return g->base ? g->base : g->name; }
 
 const rt_ios_game *rt_ios_game_named(const char *name) {
     for (size_t i = 0; name && i < sizeof(games) / sizeof(*games); ++i)

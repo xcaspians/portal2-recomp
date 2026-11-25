@@ -117,13 +117,16 @@ class IosProfiles(unittest.TestCase):
     def c_table(self):
         import re
         text = (self.ROOT / 'runtime/ios/game_ios.c').read_text()
-        rows = re.findall(r'\{"(\w+)", "(\w+)", "([\w-]+)", "(\d+)", (\d), (\w+), "(\w+)", (\d+), "(\w*)",\s*"([^"]+)",\s*(NULL|"\w+")\}', text)
+        rows = re.findall(r'\{"(\w+)", "(\w+)", "([\w-]+)", "(\d+)", (\d), (\w+), "(\w+)", (\d+), "(\w*)",\s*"([^"]+)",\s*(NULL|"\w+"),\s*(NULL|"\w+")\}', text)
         return {r[0]: r for r in rows}
 
     def test_every_game_has_an_ios_profile(self):
         table = self.c_table()
         ios_games = {k: g for k, g in games.GAMES.items() if g.get('ios', True)}
-        self.assertEqual(set(table), set(ios_games))
+        variants = {v: base for base, g in games.GAMES.items() for v, _mod, _t in g.get('ios_variants', ())}
+        self.assertEqual(set(table), set(ios_games) | set(variants))
+        for v, base in variants.items():   # round 21: on its base's data, under its own saves
+            self.assertEqual((table[v][1], table[v][8], table[v][11]), (games.GAMES[base]['mod'], base, f'"{base}"'))
         for name, game in ios_games.items():
             row = table[name]
             self.assertEqual(row[1], game['mod'])

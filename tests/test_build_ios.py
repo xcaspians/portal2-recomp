@@ -152,6 +152,36 @@ class AppName(unittest.TestCase):
         self.assertTrue((games.ROOT / build_ios.APP_ICON).is_file())
 
 
+class EpisodeVariants(unittest.TestCase):
+    def test_episodes_run_half_life_2s_code(self):
+        # Round 21: Episode One, Episode Two and Lost Coast are Half-Life 2 on an expansion.
+        hl2 = dict(games.GAMES['hl2'], name='hl2')
+        self.assertEqual(build_ios.variants([(hl2, {})]),
+                         [('ep1', 'episodic', 'hl2'), ('ep2', 'ep2', 'hl2'), ('lostcoast', 'lostcoast', 'hl2')])
+        with tempfile.TemporaryDirectory() as tmp:
+            table = Path(tmp) / 'game_codes.c'
+            build_ios.write_game_codes(table, 'portal2', ['hl2'], build_ios.variants([(hl2, {})]))
+            text = table.read_text()
+        self.assertIn('{"ep1", hl2_rt_load_images, hl2_rt_export', text)
+        self.assertIn('{"lostcoast", hl2_rt_load_images', text)
+        self.assertNotIn('ep1_rt_', text)   # no code of their own
+
+
+class SharedApps(unittest.TestCase):
+    def test_apps_steam_installed_with_the_game(self):
+        # Round 21: what Steam shares with Half-Life 2's install for its owner.
+        with tempfile.TemporaryDirectory() as tmp:
+            steamapps = Path(tmp) / 'steamapps'
+            (steamapps / 'common/Half-Life 2').mkdir(parents=True)
+            (steamapps / 'appmanifest_220.acf').write_text(
+                '"AppState"\n{\n\t"appid"\t\t"220"\n\t"SharedDepots"\n\t{\n\t\t"389"\t\t"380"\n'
+                '\t\t"380"\t\t"380"\n\t\t"420"\t\t"420"\n\t\t"340"\t\t"340"\n\t}\n}\n')
+            config = {'game_root': str(steamapps / 'common/Half-Life 2')}
+            self.assertEqual(build_ios.shared_apps(config, 220), [340, 380, 420])
+            self.assertEqual(build_ios.shared_apps(config, 620), [])   # no manifest for it
+            self.assertEqual(build_ios.shared_apps({}, 220), [])
+
+
 class ForkVersionTests(unittest.TestCase):
     """Version shown at the bottom of the in-game settings menu."""
     def test_version_names_the_commit(self):
