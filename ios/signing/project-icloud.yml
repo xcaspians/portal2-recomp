@@ -7,6 +7,12 @@
 include: [project.yml]
 targets:
   Portal2:
+    # Automatic signing registers a capability on the App ID only when the
+    # project marks it here (what Xcode's Signing & Capabilities tab writes).
+    attributes:
+      SystemCapabilities:
+        com.apple.iCloud:
+          enabled: 1
     entitlements:
       path: Portal2-icloud.entitlements
       properties:
