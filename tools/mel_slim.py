@@ -27,7 +27,7 @@ so an extra entry could hide one of Mel's loose files).
     mel_slim.py layout --overlay DIR --out DIR   the device's file layout on the Mac, for a boot test:
                                                  DIR/mel/game (the slim pack, as clones and links); give it
                                                  P2_BASE_GAME_ROOT=<Portal 2's folder>
-    mel_slim.py boot-ok --log FILE               a boot test's log: Mel's menu, then a save or map loaded
+    mel_slim.py boot-ok --log FILE [--since N]   a boot test's log (from byte N: this launch only): a save or map loaded
 
 Directories default to config/local.json (games.mel.game_root, game_root).
 """
@@ -293,9 +293,11 @@ def check(mel_root, p2_root, overlay_dir):
 
 def boot_ok(log_text):
     """A boot test's verdict from the game's log (ios/main_ios.c P2_LOG_FILE or the
-    console): Mel loaded a save or a map. Returns (ok, reason)."""
+    console, only what this launch wrote): Mel loaded a save or a map. Returns (ok, reason)."""
     if 'This game needs Portal 2' in log_text:
         return False, "Portal 2's files are missing"
+    if "Can't load '" in log_text and 'Loading game from' not in log_text:
+        return False, "the save didn't load (\"Can't load ..., file missing!\": the device locked or asleep?)"
     if 'Loading game from' in log_text or 'Host_NewGame on map' in log_text:
         return True, 'a save or map loaded'
     return False, 'no save or map loaded in the log'
@@ -343,6 +345,7 @@ def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('command', choices=('plan', 'build', 'check', 'layout', 'boot-ok'))
     ap.add_argument('--log')
+    ap.add_argument('--since', type=int, default=0, help='boot-ok: judge the log from this byte (this launch only)')
     ap.add_argument('--mel')
     ap.add_argument('--portal2')
     ap.add_argument('--out')
@@ -350,7 +353,7 @@ def main(argv):
     ap.add_argument('--json', action='store_true')
     a = ap.parse_args(argv)
     if a.command == 'boot-ok':
-        ok, why = boot_ok(Path(a.log).read_text(errors='replace'))
+        ok, why = boot_ok(Path(a.log).read_bytes()[a.since:].decode('utf-8', 'replace'))
         print(('boot test passed: ' if ok else 'boot test failed: ') + why)
         return 0 if ok else 1
     if not a.mel or not a.portal2:
