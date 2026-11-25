@@ -138,10 +138,33 @@ int rt_load_segment(const char *directory, const char *name, uint32_t offset,
     return 0;
 }
 
+// P2_TRAP_PEEK=<address>[:<depth>][,...] (diagnostics): at a trap, follow a
+// chain of guest pointers from each address and print it (an object, its
+// vtable, a slot...), e.g. to see whose vtable holds a null entry.
+static void trap_peek(void) {
+    const char *spec = getenv("P2_TRAP_PEEK");
+    if (!spec || !*spec) return;
+    char copy[256];
+    snprintf(copy, sizeof(copy), "%s", spec);
+    for (char *save = NULL, *w = strtok_r(copy, ",", &save); w; w = strtok_r(NULL, ",", &save)) {
+        char *colon = strchr(w, ':');
+        int depth = colon ? atoi(colon + 1) : 1;
+        uint32_t a = (uint32_t)strtoul(w, NULL, 0);
+        fprintf(stderr, "peek %#x", a);
+        for (int i = 0; i < depth && a >= 0x10000u && a < 0xe0000000u; ++i) {
+            a = *(uint32_t *)GPTR(a);
+            const char *name = a >= 0xf8000000u ? rt_dynamic_import_name(a) : NULL;
+            fprintf(stderr, " -> %#x%s%s", a, name ? " " : "", name ? name : "");
+        }
+        fprintf(stderr, "\n");
+    }
+}
+
 __attribute__((noreturn)) void rt_trap(CPU *c, uint32_t pc, const char *why) {
     fflush(NULL);
     fprintf(stderr, "guest trap at %#x (esp=%#x): %s\n", pc, c->esp, why);
     guest_backtrace();
+    trap_peek();
     abort();
 }
 
