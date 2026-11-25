@@ -100,6 +100,9 @@ class WorkshopPushTest(unittest.TestCase):
         self.assertEqual((stage / '1' / 'a.bsp').read_bytes(), b'V' * 10)
         self.assertTrue((folder / 'a.bsp').exists())
 
+    def test_sizes_read_plainly(self):
+        self.assertEqual((wp.megabytes(0), wp.megabytes(10), wp.megabytes(832082923)), ('0 MB', '1 KB', '794 MB'))
+
     def test_listing_errors_are_not_empty_folders(self):
         self.assertEqual(wp.parse_listing(None), {})
         with self.assertRaises(wp.PushError):
