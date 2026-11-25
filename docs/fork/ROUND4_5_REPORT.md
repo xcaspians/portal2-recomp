@@ -4,7 +4,7 @@ Fork: [xcaspians/portal2-recomp](https://github.com/xcaspians/portal2-recomp).
 Nothing was pushed upstream (`origin` still refuses pushes). Your iPhone was
 offline the whole time. **The iPad mini was plugged in partway through**, so it
 got real-device tests (marked "iPad" below); everything else was checked on
-the Mac and in the iOS Simulator, and the rest is under "Needs Jacksen".
+the Mac and in the iOS Simulator, and the rest is under "Needs Caspian".
 
 **In one paragraph:** an independent review of rounds 1–3 found real ways
 iCloud sync could overwrite a save. Those are fixed, along with the other
@@ -179,7 +179,7 @@ to tune and rebuild.
     the next time you ran setup.
   - The catch: the wildcard can't carry the increased-memory entitlement.
     Fine on your 12 GB devices; a 4 GB phone will need the real App ID
-    later (Needs Jacksen 4).
+    later (Needs Caspian 4).
 - **Data over the cable:** `tools/ios_device.sh mel data push [--dry-run]`,
   about **9.3 GB**, free space checked first.
   - **Nothing worth trimming:** 1.2 GB of Bink videos are the menu
@@ -240,7 +240,7 @@ to tune and rebuild.
 
 ### Update, same evening: Mel on the iPad mini
 
-After Jacksen freed space, `mel data push` copied Mel's 9.3 GB (39 copies,
+After Caspian freed space, `mel data push` copied Mel's 9.3 GB (39 copies,
 no errors; data marked complete). Then, on the device (Metal, A20 Pro):
 
 - **Main menu: yes.** The engine was up 6 seconds after launch and the menu
@@ -254,7 +254,7 @@ no errors; data marked complete). Then, on the device (Metal, A20 Pro):
   peak of 3.8 GB during the change. iOS's limit for Mel is about 5.1 GB
   (footprint plus headroom), against about 12.3 GB for Portal 2, whose
   profile has the increased-memory entitlement. That leaves room on the iPad,
-  but it's another reason for Mel's own App ID (Needs Jacksen 3).
+  but it's another reason for Mel's own App ID (Needs Caspian 3).
 - The "No such sound" console lines come from Mel's own data: the Mac shows
   them too.
 - Not seen by eye: picture, sound, touch controls in play. That needs a look
@@ -283,7 +283,7 @@ no errors; data marked complete). Then, on the device (Metal, A20 Pro):
     iPad, Portal 2 uses 2.9 GB with 9.4 GB of headroom, so Mel should fit
     on your devices.
   - A 4 GB phone is the real question, and the wildcard profile has no
-    increased-memory entitlement (Needs Jacksen 4).
+    increased-memory entitlement (Needs Caspian 4).
 - **Not checked yet:**
   - whether Mel's touch controls draw during gameplay;
   - whether the Bink menu video animates (the menu background showed; the
@@ -367,7 +367,7 @@ Found this round outside the audit:
     the "×" as the wrong character set (seen in a simulator screenshot; fixed
     and re-checked: "×1.5").
 
-## Needs Jacksen (everything, batched with rounds 1–3)
+## Needs Caspian (everything, batched with rounds 1–3)
 
 Always set `P2_DEVICE=<UDID>` for the commands below: an **iPad Pro is also
 reachable from this Mac**, and without `P2_DEVICE` the tools would pick it.

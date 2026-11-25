@@ -129,7 +129,7 @@ pending, so ideally you do that first.
   used.
 - No new bugs this round.
 
-## Needs Jacksen
+## Needs Caspian
 
 1. **OK on A1:** build the separate in-game menu (A2)?
 2. **OK on C1:** build iCloud save sync as proposed?

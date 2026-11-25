@@ -1,6 +1,6 @@
 # P2CE round 13: learning notes
 
-Written 24 November 2026. Plain-English notes for Jacksen on the first round
+Written 24 November 2026. Plain-English notes for Caspian on the first round
 of Portal 2: Community Edition (P2CE): what is different about 64-bit code,
 why the recompiler had to change, what this round built and what comes next.
 The roadmap is [P2CE_PLAN.md](P2CE_PLAN.md).

@@ -98,13 +98,13 @@ and 256 at the start of the night).
   the morning checklist. Earlier tonight, on the same iPad, standalone Mel
   ran its menu and first chamber at 60 fps.
 - **iCloud:** "conteneur indisponible", as expected until the setup's last
-  step (Needs Jacksen 1).
+  step (Needs Caspian 1).
 
 ### Mel's saves moved over?
 
 The old Mel app on your iPad holds **no Mel saves**, only settings from my
 test runs, so the migration correctly said "nothing to move". Keep the old
-app until you've played Mel from the new one; then remove it (Needs Jacksen).
+app until you've played Mel from the new one; then remove it (Needs Caspian).
 
 ---
 
@@ -188,7 +188,7 @@ open an empty Steam dialog.
 - **Not built or run:** HL2's Linux binaries aren't on this Mac. Your
   depot-221 download failed twice ("No connection"), and 221 is game
   content anyway, which the Mac install already has. The binaries are
-  **depot 224** (Needs Jacksen).
+  **depot 224** (Needs Caspian).
 - **What I did without them:** the fork's features are now in HL2's iOS code
   (built and checked on the Mac, compiled for iOS):
   - **the settings gear and menu**, in HL2's main and pause menus. Its engine
@@ -219,7 +219,7 @@ open an empty Steam dialog.
 
 - **Its Linux binaries are depot 554.** I didn't guess: Steam's own app-info
   cache on your Mac lists 554 as `linux` (539 MB) and 553 as `macos`. It's
-  not downloaded (Needs Jacksen).
+  not downloaded (Needs Caspian).
 - **Sized up from your Mac copy** (details in `docs/fork/L4D2_RESEARCH.md`):
   - It's **i386, like Portal 2**, and its engine is the branch Portal 2 grew
     from, so most interfaces are the same versions. The differences are the
@@ -279,7 +279,7 @@ open an empty Steam dialog.
    size is a `float` (1.1f), compared against a `double` 1.1. The code was
    right; the check now allows 1e-3.
 
-## Needs Jacksen
+## Needs Caspian
 
 1. **iCloud saves, the last step** (you approved the container):
    - open `ios/signing/P2Signing.xcodeproj` in Xcode;

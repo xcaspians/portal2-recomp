@@ -1,6 +1,6 @@
 # P2CE rounds 16 to 18 (plan pieces B, C, D): learning notes
 
-Written 25 November 2026. Plain-English notes for Jacksen on the three
+Written 25 November 2026. Plain-English notes for Caspian on the three
 pieces of [P2CE_PLAN.md](P2CE_PLAN.md) done in fork rounds 16, 17 and 18.
 Round 13's notes ([P2CE_ROUND13_NOTES.md](P2CE_ROUND13_NOTES.md)) explain
 the basics (lifter, runtime, shims, registers); these build on them.

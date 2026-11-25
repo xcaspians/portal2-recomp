@@ -2,7 +2,7 @@
 
 Written 24 November 2026 (fork round 13). Builds on
 [P2CE_RESEARCH.md](P2CE_RESEARCH.md). Future rounds are specced from this
-page; each round below has a milestone Jacksen can check himself and a size.
+page; each round below has a milestone Caspian can check himself and a size.
 
 **Size:** "S" fits in part of a round, "M" is about one round, "L" is one to
 two rounds, "XL" is two or more. The total is about 13 to 17 rounds to the
@@ -17,7 +17,7 @@ is gated behind `P2_P2CE_TESTS=1`.
 
 ## The pieces, in order
 
-| Round | What | Size | Milestone Jacksen can check |
+| Round | What | Size | Milestone Caspian can check |
 |---|---|---|---|
 | A (13, done) | **64-bit foundation.** ELF64 reader (`tools/elfprep64.py`), a first 64-bit lifter (`tools/lift64.py`), a small 64-bit runtime (`runtime/x64/`), a test harness in `make check`. | L | `make check` passes; `P2_P2CE_TESTS=1 make p2ce-tier0-check` lifts P2CE's `libtier0.so` and calls a few of its functions. |
 | B (16, done) | **Lifter coverage and speed.** The rest of the integer set, the SSE/SSE2 set the engine uses (copied from the i386 lifter's `float_lift.py` ideas, widened to 16 registers), x87 leftovers, jump tables in every form clang emits, unused-flag removal (the i386 lifter's `dead_flags`), splitting the output in files and compiling in parallel like `tools/build_game.py`. | L | `make p2ce-coverage` reports 99 %+ of the instructions of every P2CE `.so` handled; the whole of `libtier0.so` and `libvstdlib.so` compiles. |
@@ -30,9 +30,9 @@ is gated behind `P2_P2CE_TESTS=1`.
 | F | **Direct3D 11 through DXVK and MoltenVK.** Lift DXVK (`libdxvk_d3d11.so.0`, `libdxvk_dxgi.so.0`) like any other module and bridge its Vulkan calls to MoltenVK (Vulkan on Metal). Shaders: DXVK turns D3D11 bytecode into SPIR-V, MoltenVK turns SPIR-V into Metal. Fallback if DXVK fights back: a direct D3D11-to-Metal bridge (much bigger). | XL | The window clears to a colour, then draws the loading screen. |
 | G | **V8 without its compiler (jitless).** V8 normally writes new x86-64 machine code while it runs, which an ahead-of-time recompiler can't follow. Start it with `--jitless` (interpreter only) and lift its built-in functions, which are machine code stored inside `libv8.so`. Riskiest step. | XL (uncertain) | A test runs `1 + 1` and a small JavaScript function through the lifted V8 and gets the right answers. |
 | H | **Panorama to the main menu.** `panorama.so`, its text stack (Pango, Cairo, HarfBuzz), Jolt physics, Steam Audio, DXC, ffmpeg for videos; one indirect-call or import gap at a time, like Mel and L4D2. | L | **P2CE reaches its main menu on the Mac**, with mouse and keyboard. |
-| I | **Into a map.** Map loading, physics, portals, sound, saves; play the first chambers. | L | Jacksen plays the first test chambers on the Mac. |
+| I | **Into a map.** Map loading, physics, portals, sound, saves; play the first chambers. | L | Caspian plays the first test chambers on the Mac. |
 | J | **iOS: memory and build.** The 64-bit runtime in the iOS app (arm64 iOS is also LP64, so the memory model carries over), MoltenVK on iOS, V8 jitless (iOS forbids writing code at run time anyway), app size and memory budget. | L | P2CE starts on the iPad mini and reaches its main menu. |
-| K | **iOS: touch and polish.** The touch overlay, menus and device tools that Portal 2's iOS app already has, mapped to Panorama's menus. | M | Jacksen plays a map on the iPad mini with touch controls. |
+| K | **iOS: touch and polish.** The touch overlay, menus and device tools that Portal 2's iOS app already has, mapped to Panorama's menus. | M | Caspian plays a map on the iPad mini with touch controls. |
 
 Portal: Revolution follows P2CE once its binaries (depot 601363) are on the
 Mac: if it is P2CE's Strata build, it is a new game profile; if it is a

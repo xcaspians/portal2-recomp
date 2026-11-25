@@ -17,7 +17,7 @@ got, what's in the way, and a size for the job.
 Depot facts come from Steam's own app info cache on this Mac
 (`appcache/appinfo.vdf`): Revolution has **no Linux-tagged depot**; its only
 other depot, 601363, carries no OS tag, so it should hold the binaries for
-every platform. Command for Jacksen: `download_depot 601360 601363` (and
+every platform. Command for Caspian: `download_depot 601360 601363` (and
 `download_depot 440000 440003` before trying to run P2CE).
 
 ## P2CE's Linux build, sized up

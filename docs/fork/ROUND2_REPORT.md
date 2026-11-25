@@ -73,7 +73,7 @@ Built as approved:
 Checks cover the rules: new files, one-way changes, conflicts, deletions,
 file names, and which files move.
 
-**It needs one setup step from you** (see "Needs Jacksen"). Turning iCloud on
+**It needs one setup step from you** (see "Needs Caspian"). Turning iCloud on
 creates an iCloud container on your developer account, and Apple never
 deletes those, so I didn't do it unattended. Until then the app runs exactly
 as before and says iCloud isn't available. That was checked in the simulator.
@@ -124,7 +124,7 @@ as before and says iCloud isn't available. That was checked in the simulator.
 - **The tap sensitivity default is still 1.** Calibrating it needs your
   recording of light taps.
 
-## Needs Jacksen
+## Needs Caspian
 
 1. **Plug in and unlock** your iPhone and iPad mini. I then install this
    round's build on both:

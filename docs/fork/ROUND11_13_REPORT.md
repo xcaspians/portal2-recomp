@@ -2,7 +2,7 @@
 
 Fork: [xcaspians/portal2-recomp](https://github.com/xcaspians/portal2-recomp).
 Everything below is merged into `main` on this Mac. It is **not pushed to the
-fork yet**: the push was blocked by this session's permissions (Needs Jacksen
+fork yet**: the push was blocked by this session's permissions (Needs Caspian
 6). Nothing went upstream, and `Prompts/` was never committed.
 
 `make check` on `main`: **320 C checks, 288 Python tests and 62 new x86-64
@@ -129,7 +129,7 @@ sentence instead of crashing.
 - `--full` still sends the whole copy.
 
 **Your iPad mini keeps its full Mel copy** until you run the switch-over
-(Needs Jacksen 1).
+(Needs Caspian 1).
 
 ### 4. One set of controls and settings for every game
 
@@ -213,7 +213,7 @@ shared by every game. It shows:
 - **Not seen yet:** survivor bots and a horde. Both need a player actually
   in the game, and an unattended test run stays at the intro.
   `director_force_panic_event` had nothing to act on. That's the first thing
-  to try with a keyboard (Needs Jacksen 3).
+  to try with a keyboard (Needs Caspian 3).
 - **iOS (step 4): not started.** It's gated on step 3 working fully. Left
   for it: L4D2's own app, a touch layout (move, look, shoot, shove, use,
   reload, crouch, item slots, flashlight), its engine-interface numbers for
@@ -385,7 +385,7 @@ generated code, and whole libraries compiled.
    the full copy until you run the switch-over.
 8. **iPhone:** opens and plays as before.
 
-## Needs Jacksen
+## Needs Caspian
 
 1. **Mel slim switch-over on the iPad mini** (frees about **2.4 GB**), one
    command:

@@ -14,7 +14,7 @@ because the Linux binaries aren't on this Mac (below).
 
 The depot numbers come from **Steam's own app info cache on this Mac**
 (`appcache/appinfo.vdf`, app 550, each depot's `oslist`), not a guess: 553 is
-`macos`, 554 is `linux`. Command for Jacksen (Steam console):
+`macos`, 554 is `linux`. Command for Caspian (Steam console):
 
     download_depot 550 554
 

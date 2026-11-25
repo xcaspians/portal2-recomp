@@ -7,7 +7,7 @@ for this round is [ROUND4_5_REPORT.md](ROUND4_5_REPORT.md).
 ## 1. A separate app
 
 **Recommendation: a separate "Portal Stories Mel" app**, like Half-Life 2 and
-Portal already are. That was Jacksen's leaning, and nothing argues against it:
+Portal already are. That was Caspian's leaning, and nothing argues against it:
 
 - **One game per app is how the iOS build works today.** The game is fixed at
   build time (`P2Game` in the Info.plist, `runtime/ios/game_ios.c`). The
@@ -19,7 +19,7 @@ Portal already are. That was Jacksen's leaning, and nothing argues against it:
 - **Portal 2's app is not changed** by any of this: the Portal 2 profile, its
   identifier and its signing stay as they are.
 - **Identifier:** `local.melrecomp.<team>` (`games.mel.ios_bundle_id` in
-  `config/local.json`). On Jacksen's team it is signed with the team's existing
+  `config/local.json`). On Caspian's team it is signed with the team's existing
   wildcard development profile ("iOS Team Provisioning Profile: *", valid to
   November 2027, both devices already in it). `ios/signing/sign.py` now falls
   back to a wildcard profile of the same team when no exact profile exists.
@@ -28,10 +28,10 @@ Portal already are. That was Jacksen's leaning, and nothing argues against it:
   give. A free account would still need one of its 3 app slots.
 - **Later, for 4 GB phones:** a wildcard profile can't carry
   `com.apple.developer.kernel.increased-memory-limit`, which Portal 2's own
-  profile has. Jacksen's devices have plenty of memory, but an iPhone 13 will
+  profile has. Caspian's devices have plenty of memory, but an iPhone 13 will
   need Mel registered as its own App ID with that capability (the
   `xcodebuild` step in docs/ios.md, with the Mel identifier). That creates a
-  permanent App ID on the account, so it is listed under "Needs Jacksen" and
+  permanent App ID on the account, so it is listed under "Needs Caspian" and
   not done here.
 
 ## 2. Getting the data onto the device

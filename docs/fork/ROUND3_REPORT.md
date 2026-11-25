@@ -114,7 +114,7 @@ of the sample, but it's a free extra.
     reads, so they show up there and start with `map workshop/<id>/<name>`.
   - The update badge compares the Workshop's "updated" date with the saved
     copy's.
-- **Browsing: with Jacksen's own free Web API key** (official, documented,
+- **Browsing: with Caspian's own free Web API key** (official, documented,
   stable):
   - Popular, Newest, Trending and Search, plus single-player / co-op.
   - The key goes in the menu, stored in the Keychain, with a "how to get a
@@ -201,7 +201,7 @@ The device and simulator apps compile with no warnings.
   subscribers, size, date and the Download button.
 - Browsing with a key couldn't be tried: there's no key yet.
 
-## Needs Jacksen (for Part A)
+## Needs Caspian (for Part A)
 
 1. **OK on the route above** (or pick: key-based browsing, page-reading
    without a key, or both).
@@ -214,7 +214,7 @@ The device and simulator apps compile with no warnings.
    to free the space. The game downloads them again whenever it starts with
    Steam, as on PC.
 
-## Needs Jacksen (everything, batched)
+## Needs Caspian (everything, batched)
 
 1. **Plug in and unlock your iPhone and iPad mini.** I install this build on
    both; your game data stays.
