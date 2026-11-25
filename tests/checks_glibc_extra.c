@@ -3,6 +3,8 @@
 // come from glibc's documented behaviour, not from the shims under test.
 #include "checks.h"
 #include <fcntl.h>
+#include <math.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <unistd.h>
 
@@ -166,4 +168,33 @@ RT_CHECK(glibc_extra_time_terminal_threads) {
     assert(call("pthread_setname_np", 2, 0x12345678u, str("a-name-longer-than-15")) == 34);   // ERANGE
     assert(call("signal", 2, 13, 1) == 0 && call("raise", 1, 13) == 0);   // SIGPIPE ignoré : raise sans effet
     assert(call("signal", 2, 13, 0) == 1);
+}
+
+// Imports first needed by Left 4 Dead 2 (depot 554): glibc's -ffast-math entry
+// points, unsetenv, wcsdup, execlp.
+RT_CHECK(glibc_extra_l4d2_imports) {
+    next_data = DATA;
+    CPU c;
+    WD(STACK, 100.0); rt_cpu_reset(&c); c.esp = STACK; rt_call(&c, rt_dynamic_import("__log10_finite"), RT_RETURN_SENTINEL);
+    assert(st0(&c) == 2.0);
+    WF(STACK, 1.0f); rt_cpu_reset(&c); c.esp = STACK; rt_call(&c, rt_dynamic_import("__expf_finite"), RT_RETURN_SENTINEL);
+    assert(fabs(st0(&c) - 2.718281828) < 1e-6);
+    WF(STACK, 2.0f); WF(STACK + 4, 10.0f);
+    rt_cpu_reset(&c); c.esp = STACK; rt_call(&c, rt_dynamic_import("__powf_finite"), RT_RETURN_SENTINEL);
+    assert(st0(&c) == 1024.0);
+    WD(STACK, 1.0); WD(STACK + 8, 1.0);
+    rt_cpu_reset(&c); c.esp = STACK; rt_call(&c, rt_dynamic_import("__atan2_finite"), RT_RETURN_SENTINEL);
+    assert(fabs(st0(&c) - M_PI / 4) < 1e-12);
+    WD(STACK, 2.0); rt_cpu_reset(&c); c.esp = STACK; rt_call(&c, rt_dynamic_import("__acos_finite"), RT_RETURN_SENTINEL);
+    assert(isnan(st0(&c)));                                    // out of domain: NaN, no errno wrapper
+
+    setenv("P2_CHECK_UNSET", "1", 1);
+    assert(call("unsetenv", 1, str("P2_CHECK_UNSET")) == 0 && !getenv("P2_CHECK_UNSET"));
+    assert(call("unsetenv", 1, str("A=B")) == UINT32_MAX);    // EINVAL
+
+    uint32_t wide = put("h\0\0\0i\0\0\0\0\0\0\0", 12);
+    uint32_t copy = call("wcsdup", 1, wide);
+    assert(copy && copy != wide && R32(copy) == 'h' && R32(copy + 4) == 'i' && R32(copy + 8) == 0);
+
+    assert(call("execlp", 3, str("xdg-open"), str("xdg-open"), 0) == UINT32_MAX);   // nothing is started
 }

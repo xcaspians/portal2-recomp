@@ -111,6 +111,11 @@ game_info() {  # game id -> TITLE APPID LINUX_DEPOT STEAMWORKS_* APP_NAME LOG_NA
         TITLE="Portal Stories Mel"; APPID=317400; LINUX_DEPOT=317404
         STEAMWORKS_VERSION=20.1.0
         STEAMWORKS_SHA256="3be79e6bdf53c86210267bf39f46362bb839130896006aec26364c5efc37e314" ;;
+    # Left 4 Dead 2: experimental, not offered by --game yet (docs/l4d2.md: built by hand, offline only).
+    l4d2)
+        TITLE="Left 4 Dead 2"; APPID=550; LINUX_DEPOT=554
+        STEAMWORKS_VERSION=20.1.0   # SDK of Portal 2's generation: SteamClient020, SteamUser021
+        STEAMWORKS_SHA256="3be79e6bdf53c86210267bf39f46362bb839130896006aec26364c5efc37e314" ;;
     esac
     APP_NAME="$TITLE Natif"
     LOG_NAME="$(printf '%s' "$TITLE" | tr -d ' -')Natif.log"

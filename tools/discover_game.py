@@ -25,6 +25,10 @@ def main(argv=None):
     parser.add_argument('--steps', type=int, default=10)
     parser.add_argument('--timeout', type=int, default=30)
     parser.add_argument('--opt', default='0', choices=['0', '1', '2', '3'])
+    parser.add_argument('--release', action='store_true',
+                        help='build as build_game.py --release (reuses a release build\'s objects: only the files '
+                             'whose roots changed are compiled again)')
+    parser.add_argument('--jobs', type=int, help='parallel compiles (build_game.py --jobs; fewer: less memory)')
     parser.add_argument('game_args', nargs=argparse.REMAINDER, help='after --: game arguments (e.g. +load save)')
     args = parser.parse_args(argv)
     config = localconfig.for_game(args.game)
@@ -37,8 +41,10 @@ def main(argv=None):
     layout = lift.load_layout(build_dir / 'prep/layout.json')
     roots_path = games.ROOT / game['roots']
     for attempt in range(args.steps):
-        built = subprocess.run([sys.executable, '-u', str(games.ROOT / 'tools/build_game.py'), '--game', game['name'],
-                                '--opt', args.opt])
+        build = [sys.executable, '-u', str(games.ROOT / 'tools/build_game.py'), '--game', game['name']]
+        build += ['--release'] if args.release else ['--opt', args.opt]
+        if args.jobs: build += ['--jobs', str(args.jobs)]
+        built = subprocess.run(build)
         if built.returncode: return built.returncode
         status, log = run_game.run(config, game, args.game_args, timeout=args.timeout)
         if not status:

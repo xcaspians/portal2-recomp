@@ -28,6 +28,7 @@ def run(config, game, game_args=(), binary=None, timeout=60, show=False, env=Non
     game_args = list(game_args)
     if game_args[:1] == ['--']: game_args = game_args[1:]
     if not game_args: game_args = ['-game', game['mod'], '-novid', '-windowed', '-w', '1280', '-h', '720']
+    game_args = games.forced_args(game, game_args)   # L4D2: offline, always
     # Langue du jeu (P2_LANGUAGE, config/local.json, Steam, système) : voir tools/language.py.
     game_args = [*game_args, *language.language_args(config, game_args)]   # the game's config: its folder and appmanifest
     user_dir = localconfig.user_dir(config)
