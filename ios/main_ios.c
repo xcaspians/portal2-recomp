@@ -204,6 +204,8 @@ int main(int argc, char **argv) {
     }
     // Tapes au dos coupées par défaut dans HL2 (game_ios.c) ; P2_BACKTAP=1 les rend.
     if (!game->back_taps) setenv("P2_BACKTAP", "0", 0);
+    // GPU ID reported to the engine (game_ios.h): the same tier on every chip.
+    if (game->gpu_device_id) setenv("P2_D3D9_DEVICE_ID", game->gpu_device_id, 0);
     // Rendu Metal (P2_RENDERER=d3d9, Réglages > Rendu) : vérifié avant que
     // src/main.c initialise libd3d9metal ; OpenGL sinon.
     rt_ios_metal_prepare();

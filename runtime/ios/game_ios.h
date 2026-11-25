@@ -20,6 +20,13 @@ typedef struct {
     // Portal app (Documents/mel/game, ...). Saves stay in Documents/<userdata>.
     const char *data_dir;
     const char *title;      // shown in the game picker and the menu's version line
+    // GPU device ID the Direct3D 9 bridge reports (P2_D3D9_DEVICE_ID), NULL for
+    // libd3d9metal's own pick. That pick depends on the Apple chip, and the
+    // engine's dxsupport.cfg reads it: the iPad mini's A20 Pro came out as
+    // 0x034b, a GeForce FX (DirectX 9.0, gpu_level 0), so Left 4 Dead 2 lost its
+    // shader combos (black hands). Only set where needed: a new ID makes the
+    // engine reset a player's saved video settings once.
+    const char *gpu_device_id;
 } rt_ios_game;
 
 // Profil de ce nom ; Portal 2 pour NULL, "" ou un nom inconnu (builds sans P2Game).
