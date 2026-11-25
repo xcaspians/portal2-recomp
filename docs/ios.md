@@ -223,7 +223,7 @@ dark, translucent panel drawn by the runtime over the game
 | Back taps | Tap sensitivity (0.5 to 3), Swap left and right, Vibrate when firing |
 | Camera | Camera speed, Gyro aiming, Gyro speed |
 | Display | Frames per second (including Auto) |
-| Maps & Mods | custom maps found in `game/portal2/maps/custom`, `maps/workshop` and `portal2_dlcN/maps` (N ≥ 3); a tap starts one ([mods.md](mods.md)) |
+| Maps & Mods | **Community Maps** (Steam Workshop browser and downloader, [mods.md](mods.md#community-maps-steam-workshop-in-the-game)), then the custom maps found in `portal2/maps/custom` and `maps/workshop` (game and user folders) and `portal2_dlcN/maps` (N ≥ 3); a tap starts one ([mods.md](mods.md)) |
 | | Reset to defaults (press twice), the fork's version at the bottom |
 
 - **Live:** every change applies at once and is saved in the app's

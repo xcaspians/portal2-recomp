@@ -35,6 +35,47 @@ tools/ios_device.sh mods push ~/Downloads/sp_laser_maze.bsp      # one map
 tools/ios_device.sh mods push ~/Downloads/my_map_pack            # a folder that holds only .bsp maps
 ```
 
+## Community Maps (Steam Workshop, in the game)
+
+Pause menu > **Touch Controls** (gear) > Maps & Mods > **Community Maps**
+browses Portal 2's Steam Workshop chambers and downloads them, without Steam
+on the device (`runtime/ios/workshop_ios.m`, `runtime/ios/workshop.c`).
+
+- **Browse** (Popular: most subscribed, Newest, Trending: this week, Search),
+  single player by default or co-op: this needs **your own free Steam Web API
+  key**. Get it at steamcommunity.com/dev/apikey while signed in to Steam (any
+  domain name works, for example `localhost`), copy it, and paste it in the
+  key field. It is stored in this device's Keychain and only sent to Steam;
+  "API key saved · Change" removes it. Never share it or put it in a file
+  you send to someone: Valve's terms make a key personal.
+- **Without a key:** paste a Workshop link
+  (`https://steamcommunity.com/sharedfiles/filedetails/?id=...`) or the ID
+  alone in "Paste a Workshop link or ID". A collection opens as the list of
+  its maps.
+- **Details** (tap a map): larger preview, description, size, update date,
+  and **Download** (with progress and Cancel), then **Play**, **Update** when
+  the Workshop has a newer version, and **Delete** (press twice).
+- **Co-op maps** are labelled and can't be started alone: host them on a Mac
+  (LAN co-op) and join from the device.
+- **Downloaded** lists the maps on the device, with an update badge.
+
+Where they go: `Documents/portal2-userdata/portal2/maps/workshop/<id>/<name>.bsp`
+(the user folder, which the engine reads before the game's), with
+`p2workshop.txt` next to the map (the Workshop's update date for the
+badge). They also show up in Maps & Mods. A download is written as
+`<name>.bsp.part` and only becomes a map once complete and checked; leftovers
+of a canceled or failed download are removed. The folder is kept out of
+iCloud backups.
+
+Keyless details and downloads use `ISteamRemoteStorage/GetPublishedFileDetails`
+and `GetCollectionDetails`; browsing uses `IPublishedFileService/QueryFiles`;
+authors' names come from `ISteamUser/GetPlayerSummaries` (with the key).
+Findings and rules: [fork/ROUND3_REPORT.md](fork/ROUND3_REPORT.md).
+
+`P2_COMMUNITY_TEST=<id>` (simulator checks) opens Community Maps on that
+chamber at the first pause, downloads it and starts it; `show:<id>` only
+opens its details.
+
 ## Addon folders
 
 Portal 2 mounts numbered folders next to its own: `portal2_dlc1` and
@@ -84,5 +125,7 @@ game's code, not all tried on iOS yet:
   loses.
 - **Portal Stories: Mel** on iOS: it has its own engine build (Mac only so
   far, upstream PR #52).
+- **Browsing the Workshop without a key**: only reading Valve's web page,
+  which can break without warning, so it isn't offered.
 - **Co-op robot skins and gestures**: they come from Steam's item inventory,
   which iOS doesn't have.
