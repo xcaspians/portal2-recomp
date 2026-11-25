@@ -279,6 +279,28 @@ RT_CHECK(touch_editor_clamp_keeps_buttons_on_screen_and_off_the_sticks) {
     assert(cx == 400 && cy == 104);
 }
 
+// Round 19: Half-Life 2's or Left 4 Dead 2's layout from its former app joins
+// the shared one: only this game's buttons that aren't placed yet are taken.
+RT_CHECK(touch_custom_import_from_a_former_app) {
+    rt_touch_custom_layout stored, old;
+    memset(&stored, 0, sizeof(stored));
+    memset(&old, 0, sizeof(old));
+    stored.b[RT_TOUCH_JUMP] = (rt_touch_custom){1, .90f, .55f, 1.0f};   // placed in the one app already
+    old.b[RT_TOUCH_JUMP] = (rt_touch_custom){1, .10f, .10f, 1.5f};
+    old.b[RT_TOUCH_SLOT1] = (rt_touch_custom){1, .40f, .08f, .9f};     // L4D2's own button
+    old.b[RT_TOUCH_SLOT2] = (rt_touch_custom){1, .80f, .45f, 1.2f};
+    int taken = rt_touch_custom_import(&stored, &old, RT_IOS_LAYOUT_L4D2);
+    assert(taken == 2);
+    assert(stored.b[RT_TOUCH_JUMP].fx == .90f && stored.b[RT_TOUCH_JUMP].scale == 1.0f);   // kept
+    assert(stored.b[RT_TOUCH_SLOT1].set && stored.b[RT_TOUCH_SLOT1].fx == .40f);
+    assert(stored.b[RT_TOUCH_SLOT2].set && stored.b[RT_TOUCH_SLOT2].scale == 1.2f);
+    // Another game's layout takes nothing L4D2-only (Portal 2 has no item slots).
+    rt_touch_custom_layout p2;
+    memset(&p2, 0, sizeof(p2));
+    assert(rt_touch_custom_import(&p2, &old, RT_IOS_LAYOUT_PORTAL2) == 1 && !p2.b[RT_TOUCH_SLOT1].set);
+    assert(rt_touch_custom_import(&stored, &old, RT_IOS_LAYOUT_L4D2) == 0);   // once is enough
+}
+
 RT_CHECK(touch_editor_layouts_save_and_load) {
     rt_touch_custom_layout l, back;
     memset(&l, 0, sizeof(l));

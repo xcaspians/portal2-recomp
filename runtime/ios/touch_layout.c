@@ -179,6 +179,18 @@ void rt_touch_custom_merge(rt_touch_custom_layout *stored, const rt_touch_custom
     for (int i = 0; i < count; ++i) stored->b[b[i].action] = edited->b[b[i].action];
 }
 
+int rt_touch_custom_import(rt_touch_custom_layout *stored, const rt_touch_custom_layout *old, rt_ios_layout layout) {
+    int count = 0, taken = 0;
+    const rt_touch_button *b = rt_touch_layout(layout, &count);
+    for (int i = 0; i < count; ++i) {
+        rt_touch_custom *to = &stored->b[b[i].action];
+        if (to->set || !old->b[b[i].action].set) continue;
+        *to = old->b[b[i].action];
+        ++taken;
+    }
+    return taken;
+}
+
 void rt_touch_stick_rests(rt_ios_layout layout, double out[2][2]) {
     out[0][0] = .16; out[0][1] = .72;                         // move stick (touch_controls.m restingStick:)
     out[1][0] = rt_touch_look_rest(layout); out[1][1] = .72;  // camera stick

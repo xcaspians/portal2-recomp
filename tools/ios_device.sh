@@ -25,6 +25,9 @@
 #                                                map), and only then Mel's own copies of Portal 2's archives removed
 #   tools/ios_device.sh mel saves migrate [--dry-run]  Mel's saves from the old standalone Mel app into the Portal
 #                                                app, through the Mac, checked file by file; nothing deleted
+#   tools/ios_device.sh --game hl2|l4d2 migrate [--dry-run] [--force]   a game's saves and settings from its former
+#                                                standalone app into the one app (round 19), through the Mac, checked
+#                                                file by file; nothing deleted in the old app
 #   tools/ios_device.sh space [bytes]            the device's free space (the app reports it: P2_DEVICE_REPORT=1)
 #   tools/ios_device.sh saves status|pull|push [--force] [--dry-run]   saves between the Mac and the iPhone
 #                                                (tools/save_sync.py; docs/usage.md#saves-between-mac-and-iphone-portal-2; Portal 2 only)
@@ -308,6 +311,40 @@ mel-saves-migrate)
     --json-output "$listing" >/dev/null 2>&1 || { echo "couldn't list the saves in the Portal app afterwards"; exit 1; }
   python3 tools/ios_data_plan.py verify --local "$work/SAVE" --listing "$listing" || exit 1
   echo "Mel's saves are in the Portal app. Check them in the game, then remove the old Mel app (Needs Caspian)."
+  ;;
+migrate)
+  # Round 19: Half-Life 2 and Left 4 Dead 2 moved from their own apps into the
+  # one app. Their whole saves folder (Documents/<userdata>: SAVE, cfg, video
+  # settings) and the old app's preferences go over through the Mac; the app
+  # takes the old button layout at the game's next launch
+  # (live_settings_ios.m). Nothing is deleted in the old app.
+  OLD_ID=$(python3 tools/ios_game.py ${GAME_OPT[@]+"${GAME_OPT[@]}"} --target device --standalone | sed -n "s/^APP_ID=//p" | tr -d "'")
+  [ -n "$HOST" ] && [ "$OLD_ID" != "$APP_ID" ] || { echo "$GAME has no former app of its own here (not hosted in the one app)"; exit 2; }
+  [ -n "$USERDATA" ] || { echo "$GAME: no saves folder known (runtime/ios/game_ios.c)"; exit 2; }
+  dry=0; force=0
+  for a in "${@:2}"; do case "$a" in --dry-run) dry=1 ;; --force) force=1 ;; *) echo "usage: $0 --game $GAME migrate [--dry-run] [--force]"; exit 2 ;; esac; done
+  work="$IOS_DIR/$GAME-migration"; rm -rf "$work"; mkdir -p "$work"
+  dc device copy from --domain-type appDataContainer --domain-identifier "$OLD_ID" --source "Documents/$USERDATA" \
+    --destination "$work/$USERDATA" >/dev/null 2>&1 || { echo "nothing to move: no Documents/$USERDATA in the old app ($OLD_ID)"; exit 0; }
+  dc device copy from --domain-type appDataContainer --domain-identifier "$OLD_ID" \
+    --source "Library/Preferences/$OLD_ID.plist" --destination "$work/$USERDATA/settings-from-old-app.plist" >/dev/null 2>&1 ||
+    echo "(no preferences in the old app: its saves only)"
+  n=$(find "$work/$USERDATA" -type f | wc -l | tr -d ' ')
+  echo "$n files from the old $TITLE app ($OLD_ID), kept there:"; (cd "$work/$USERDATA" && find . -type f | sed 's/^/  /')
+  [ $dry = 1 ] && { echo "dry run: nothing copied"; exit 0; }
+  # Never over saves the one app already has (a game played there first): --force to merge anyway.
+  listing="$work/before.json"
+  if [ $force = 0 ] && dc device info files --domain-type appDataContainer --domain-identifier "$APP_ID" \
+       --subdirectory "Documents/$USERDATA" --json-output "$listing" >/dev/null 2>&1 &&
+     python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if any(f.get("relativePath","").lower().endswith(".sav") for f in (d.get("result") or {}).get("files") or []) else 1)' "$listing"; then
+    echo "the one app already has $TITLE saves in Documents/$USERDATA: nothing copied (--force merges, the old app's files win)"; exit 1
+  fi
+  copy_to "$APP_ID" "$work/$USERDATA" "Documents/$USERDATA" >/dev/null
+  listing="$work/after.json"
+  dc device info files --domain-type appDataContainer --domain-identifier "$APP_ID" --subdirectory "Documents/$USERDATA" \
+    --json-output "$listing" >/dev/null 2>&1 || { echo "couldn't list Documents/$USERDATA in the one app afterwards"; exit 1; }
+  python3 tools/ios_data_plan.py verify --local "$work/$USERDATA" --listing "$listing" || exit 1
+  echo "$TITLE's saves and settings are in the one app. Check them in the game, then remove the old app (Needs Caspian)."
   ;;
 workshop)
   # Documents/portal2-userdata/portal2/maps/workshop/<id>/ : la disposition de

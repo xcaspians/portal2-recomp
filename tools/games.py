@@ -292,6 +292,15 @@ def profile(config):
     return dict(GAMES[check(name, 'config/local.json')], name=name)
 
 
+def ios_userdata(name):
+    """The game's saves folder in the app's Documents (runtime/ios/game_ios.c, its
+    third column: portal2-userdata, hl2-userdata...), or '' when it has none."""
+    import re
+    text = (ROOT / 'runtime/ios/game_ios.c').read_text()
+    found = re.search(r'\{"' + re.escape(name) + r'", "[\w]+", "([\w-]+)"', text)
+    return found.group(1) if found else ''
+
+
 def gameinfo_dirs(text, mod):
     """Top-level folders a gameinfo.txt's SearchPaths name (Game, GameBin, ...),
     in order: `|gameinfo_path|.` is the mod itself, `|all_source_engine_paths|x`
