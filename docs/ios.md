@@ -635,7 +635,9 @@ Half-Life 2 and Portal stay separate apps.
   for each game; **Remove game data** deletes that game's `game`, `prep` and
   `linux` folders only (never its saves or settings, never the other game's),
   after a confirmation that says how much it frees; **Get it from your Mac**
-  says how.
+  says how. **Portal 2 has no Remove**: in its place, one line says it's the
+  base the other games run on (Mel borrows its files), and the Mac
+  installer's Devices section never offers to remove it either.
 - **Each game keeps its own things.** Portal 2's data, saves, settings and
   `launch.args` stay exactly where they were (`Documents/game`, `prep`,
   `linux`, `portal2-userdata`, the Settings app page). Mel's data is in
