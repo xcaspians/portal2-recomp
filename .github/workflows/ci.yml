@@ -28,6 +28,9 @@ jobs:
         run: make -j4 PYTHON=python build/abi-smoke-ubsan && ./build/abi-smoke-ubsan
   # The tools support Python 3.9 (setup.sh's minimum): Python tests only, no host libraries.
   python-3-9:
+    # After test, not beside it: two macOS arm64 jobs at once left this one
+    # queued until GitHub cancelled it ("not acquired by Runner", 25 Nov 2026).
+    needs: test
     runs-on: macos-15
     timeout-minutes: 15
     steps:
