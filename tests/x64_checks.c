@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-extern const RT64Module x64_fixture;
+extern const RT64Module x64_fixture, x64_second;
 static CPU64 cpu;
 static uint64_t stack_[16384];
 static int failures, checks;
@@ -17,6 +17,7 @@ static int failures, checks;
 
 static uint64_t sym(const char *name) {
     uint64_t at = rt64_export(&x64_fixture, name);
+    if (!at) at = rt64_export(&x64_second, name);
     if (!at) { fprintf(stderr, "x64-check: no export %s\n", name); exit(1); }
     return at;
 }
@@ -24,7 +25,9 @@ static uint64_t sym(const char *name) {
 // Calls a guest function with up to 8 integer arguments (System V AMD64).
 static uint64_t call(const char *name, int count, const uint64_t *args) {
     static const int regs[] = {RDI, RSI, RDX, RCX, R8, R9};
+    uint64_t thread_pointer = cpu.fs_base;
     rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+    cpu.fs_base = thread_pointer;
     for (int i = 0; i < count && i < 6; ++i) cpu.r[regs[i]] = args[i];
     if (count > 6 && (count - 6) % 2) PUSH64(&cpu, 0);    // keep rsp 16-aligned at the call
     for (int i = count - 1; i >= 6; --i) PUSH64(&cpu, args[i]);
@@ -130,8 +133,20 @@ int main(void) {
     EXPECT(out(0) == 0xf && out(8) == 0x0f && out(16) == 0xe0 && out(24) == 0xf000);
     EXPECT(out(32) == 4 && out(40) == 15 && out(48) == 0 && out(56) == 28);
 
+    // Round C: a second module opened by name (DT_NEEDED, constructors, TLS, setjmp/longjmp).
+    rt64_thread_tls(&cpu);
+    rt64_register(&x64_fixture);
+    rt64_register(&x64_second);
+    EXPECT(rt64_open(&cpu, "libx64second.so") != NULL);
+    EXPECT(rt64_loaded_count() == 2);
+    EXPECT(CALL0("x64b_add_via_first") == 36);           // import resolved to the first module's export
+    EXPECT(CALL0("x64b_ctor_value") == 1234);            // its .init_array ran
+    EXPECT(CALL0("x64b_tls_gd") == 11 && CALL0("x64b_tls_gd") == 12);   // __tls_get_addr, .tdata copied
+    EXPECT(CALL0("x64b_tls_ie") == 77);                  // TPOFF64 from fs
+    EXPECT(CALL0("x64b_setjmp") == 42);                  // longjmp across a lifted frame, rbx restored
+
     if (failures) { fprintf(stderr, "x64-check: %d of %d checks failed\n", failures, checks); return 1; }
     printf("x64-check: PASS, %d checks (System V calls, 16 registers, RIP-relative data, "
-           "flags, jump tables, imports, atomics, SSE2 to SSE4.1, x87, MMX, BMI)\n", checks);
+           "flags, jump tables, imports, atomics, SSE2 to SSE4.1, x87, MMX, BMI, two modules, TLS, setjmp)\n", checks);
     return 0;
 }
