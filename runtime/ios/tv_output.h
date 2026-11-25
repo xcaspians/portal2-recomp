@@ -16,6 +16,12 @@ int rt_tv_enabled(const char *value);
 // even sizes. 0 when the TV's size is unknown.
 int rt_tv_render_size(int tv_w, int tv_h, const char *resolution, int *w, int *h);
 
+// The same for a screen whose pixel grid may not have the shape it shows (an
+// anamorphic AirPlay or HDMI mode, round 23): mode_w x mode_h pixels (lines from
+// mode_h) showing an area of shape `aspect` (width / height of the screen's
+// bounds), so circles stay circles. aspect <= 0: the mode's own shape.
+int rt_tv_render_size_shown(int mode_w, int mode_h, double aspect, const char *resolution, int *w, int *h);
+
 // The frame cap on the TV: P2_TV_MAX_FPS (a number, or "auto"/empty for the TV's
 // own refresh rate), never above the TV's rate when it is known (> 0).
 int rt_tv_frame_cap(const char *value, int tv_hz);

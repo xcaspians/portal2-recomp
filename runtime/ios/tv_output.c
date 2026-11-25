@@ -28,6 +28,15 @@ int rt_tv_render_size(int tv_w, int tv_h, const char *resolution, int *w, int *h
     return *w > 0 && *h > 0;
 }
 
+int rt_tv_render_size_shown(int mode_w, int mode_h, double aspect, const char *resolution, int *w, int *h) {
+    if (mode_w <= 0 || mode_h <= 0) return 0;
+    if (!(aspect > 0)) return rt_tv_render_size(mode_w, mode_h, resolution, w, h);
+    // The shown shape at the mode's lines: a 1440x1080 anamorphic mode showing
+    // 16:9 becomes 1920x1080, a square-pixel mode stays as it is.
+    int shown_w = even(mode_h * aspect);
+    return rt_tv_render_size(shown_w, mode_h, resolution, w, h);
+}
+
 int rt_tv_frame_cap(const char *value, int tv_hz) {
     int cap = tv_hz > 0 ? tv_hz : 60;
     if (value && *value && strcmp(value, "auto")) {

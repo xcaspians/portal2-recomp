@@ -120,7 +120,13 @@ static void move_to_tv(UIScreen *screen, int sim_w, int sim_h) {
         tv_hz = (int)UIScreen.mainScreen.maximumFramesPerSecond;
     }
     int w = 0, h = 0;
-    if (!rt_tv_render_size(pw, ph, getenv("P2_TV_RESOLUTION"), &w, &h)) return;
+    // The shape shown (the window's frame, from the screen's bounds), not the mode's
+    // pixel grid: circles stay circles on an anamorphic AirPlay or HDMI mode.
+    double shown = frame.size.height > 0 ? frame.size.width / frame.size.height : 0;
+    if (!rt_tv_render_size_shown(pw, ph, shown, getenv("P2_TV_RESOLUTION"), &w, &h)) return;
+    if (screen)
+        fprintf(stderr, "[ios] TV : mode %dx%d (rapport des pixels %.3f), écran %.0fx%.0f points, échelle %.2f\n", pw, ph,
+                screen.currentMode ? screen.currentMode.pixelAspectRatio : 1.0, frame.size.width, frame.size.height, screen.scale);
     tv_window = [[UIWindow alloc] initWithFrame:frame];
     if (screen) tv_window.screen = screen;
     else tv_window.windowLevel = UIWindowLevelNormal + 1;
@@ -155,7 +161,9 @@ void rt_ios_tv_refresh(void) {
         int pw = screen ? (int)(screen.currentMode ? screen.currentMode.size.width : screen.nativeBounds.size.width) : sw;
         int ph = screen ? (int)(screen.currentMode ? screen.currentMode.size.height : screen.nativeBounds.size.height) : sh;
         int w = 0, h = 0;
-        if (rt_tv_render_size(pw, ph, getenv("P2_TV_RESOLUTION"), &w, &h) && (w != tv_w || h != tv_h)) move_home();
+        CGRect b = screen ? screen.bounds : tv_window.frame;
+        double shown = b.size.height > 0 ? b.size.width / b.size.height : 0;
+        if (rt_tv_render_size_shown(pw, ph, shown, getenv("P2_TV_RESOLUTION"), &w, &h) && (w != tv_w || h != tv_h)) move_home();
     }
     if (wanted && !tv_window) move_to_tv(screen, sw, sh);
 }
