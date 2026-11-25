@@ -174,3 +174,16 @@ p2ce-tier0-check: $(X64_RUNTIME) runtime/x64/rt64.h tests/x64_tier0_live.c tools
 		--out build/p2ce-tier0/tier0.c $(P2CE_TIER0_ROOTS); \
 	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) build/p2ce-tier0/tier0.c tests/x64_tier0_live.c -o build/p2ce-tier0-check; \
 	./build/p2ce-tier0-check
+
+# P2CE plan, round B: `make p2ce-coverage` sweeps every x86-64 module of the
+# depot (tools/coverage64.py, about 15 minutes, build/p2ce-coverage/summary.json);
+# `make p2ce-build` lifts and compiles whole modules into static libraries
+# (tools/build64.py, two compiles at a time, waits while swap is above 6 GB).
+P2CE_BUILD_MODULES ?= libtier0.so libvstdlib.so
+.PHONY: p2ce-coverage p2ce-build
+p2ce-coverage:
+	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-coverage: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
+	$(PYTHON) tools/coverage64.py --out build/p2ce-coverage "$(P2CE_ROOT)"
+p2ce-build:
+	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-build: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
+	$(PYTHON) tools/build64.py --out build/p2ce/lib $(foreach m,$(P2CE_BUILD_MODULES),"$(P2CE_ROOT)/bin/linux64/$(m)")
