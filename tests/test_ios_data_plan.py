@@ -56,6 +56,26 @@ class HostedAndMigration(DataPlanTest):
         self.assertIn('Documents/mel/game/portal_stories/maps', dests)
         self.assertFalse(any(d.startswith('Documents/game') or d == 'Documents/prep' for d in dests))
 
+    def test_slim_pack_leaves_the_shared_vpks_on_the_mac(self):
+        shared = self.game / 'portal2'
+        (shared / 'scripts').mkdir(parents=True)
+        (shared / 'scripts' / 'hudlayout.res').write_bytes(b'x' * 9)
+        for name in ('pak01_dir.vpk', 'pak01_000.vpk', 'pak01_011.vpk'):
+            (shared / name).write_bytes(b'x' * 1000)
+        overlay = Path(self.tmp.name) / 'slim'
+        (overlay / 'portal2').mkdir(parents=True)
+        (overlay / 'portal2' / 'pak01_slim.vpk').write_bytes(b'x' * 20)
+        (overlay / 'mel-slim.json').write_text('{}')
+        rows = dp.plan(self.game, self.linux, self.prep, ['portal2', 'portal_stories'], 'Documents/mel',
+                       shared=('portal2',), overlay=overlay)
+        dests = {d: n for _, d, n in rows}
+        self.assertEqual(dests['Documents/mel/game/portal2/scripts'], 9)          # Mel's loose files go
+        self.assertFalse(any(d.endswith(('pak01_dir.vpk', 'pak01_000.vpk', 'pak01_011.vpk')) and '/portal2/' in d
+                             for d in dests))                                   # its copies of Portal 2's VPK don't
+        self.assertEqual(dests['Documents/mel/game/portal2/pak01_slim.vpk'], 20)  # the slim directory does
+        self.assertEqual(dests['Documents/mel/game/portal_stories/pak01_dir.vpk'], 50)   # Mel's own VPK goes
+        self.assertFalse(any('mel-slim.json' in d for d in dests))
+
     def test_migration_check_needs_every_save_with_its_size(self):
         saves = Path(self.tmp.name) / 'SAVE'
         (saves / '7656').mkdir(parents=True)

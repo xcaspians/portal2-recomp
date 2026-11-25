@@ -826,3 +826,47 @@ RT_CHECK(pthread_inherits_creator_signal_mask) {
     assert(rt_signal_blocked_mask() == previous);
     rt_guest_leave();
 }
+
+// A hosted game borrowing Portal 2's archives (P2_BASE_GAME_ROOT, tools/mel_slim.py):
+// with its slim directory there, <shared>/pak01_dir.vpk is that file and
+// pak01_NNN.vpk come from the base game; everything else stays the game's.
+RT_CHECK(posix_base_game_archives) {
+    setup();
+    char base[PATH_MAX], path[PATH_MAX], want[PATH_MAX];
+    snprintf(base, sizeof(base), "%s/base", root); assert(!mkdir(base, 0755));
+    snprintf(path, sizeof(path), "%s/portal2", base); assert(!mkdir(path, 0755));
+    put(base, "portal2/pak01_dir.vpk", "base-dir"); put(base, "portal2/pak01_000.vpk", "base-000");
+    put(base, "portal2/gameinfo.txt", "base-info");
+    snprintf(path, sizeof(path), "%s/portal2", game); assert(!mkdir(path, 0755));
+    put(game, "portal2/pak01_dir.vpk", "own-dir"); put(game, "portal2/pak01_000.vpk", "own-000");
+    put(game, "portal2/loose.txt", "own-loose");
+    rt_paths_set_base(base, NULL);
+    assert(realpath(base, want)); strcpy(base, want);
+    // No slim directory yet (a full copy): nothing is borrowed, offsets never mix.
+    snprintf(path, sizeof(path), "%s/portal2/pak01_000.vpk", game);
+    assert(strstr(rt_read_path(path), "/game/portal2/pak01_000.vpk"));
+    put(game, "portal2/pak01_slim.vpk", "slim-dir");
+    rt_paths_set_base(base, NULL);   // new generation: cached answers dropped
+    snprintf(path, sizeof(path), "%s/portal2/pak01_dir.vpk", game);
+    assert(strstr(rt_read_path(path), "/game/portal2/pak01_slim.vpk"));
+    snprintf(path, sizeof(path), "%s/portal2/PAK01_000.vpk", game);   // the engine's spelling may vary
+    snprintf(want, sizeof(want), "%s/portal2/pak01_000.vpk", base);
+    assert(!strcmp(rt_read_path(path), want));
+    snprintf(path, sizeof(path), "%s/portal2/loose.txt", game);       // the game's own loose files
+    assert(strstr(rt_read_path(path), "/game/portal2/loose.txt"));
+    snprintf(path, sizeof(path), "%s/portal2/gameinfo.txt", game);    // never another base file
+    assert(!strstr(rt_read_path(path), "/base/"));
+    FILE *errors = tmpfile(); assert(errors);
+    assert(rt_validate_game_data("portal2_linux", game, errors) == -1);   // no portal2_dlc2 archives in the base
+    rewind(errors); char line[512] = {0}; assert(fgets(line, sizeof(line), errors));
+    assert(strstr(line, "This game needs Portal 2"));
+    fclose(errors);
+    rt_paths_set_base(base, "portal2");
+    errors = tmpfile();
+    assert(rt_validate_game_data("hl2_linux", game, errors) == 0);         // all there: no message
+    fclose(errors);
+    rt_paths_set_base(NULL, NULL);
+    snprintf(path, sizeof(path), "%s/portal2/pak01_dir.vpk", game);
+    assert(strstr(rt_read_path(path), "/game/portal2/pak01_dir.vpk"));    // unset: the game's own
+    cleanup();
+}
