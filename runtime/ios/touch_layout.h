@@ -54,6 +54,15 @@ void rt_touch_place(const rt_touch_button *b, double x, double y, double w, doub
 void rt_touch_place_scaled(const rt_touch_button *b, double scale, double x, double y, double w, double h,
                            double *cx, double *cy);
 
+// FPS counter (gear menu > FPS counter): its box in points from the safe
+// area's corner (width area_w), for `lines` lines of at most `chars`
+// characters of the 5x7 pixel font at `pixel` points per font pixel
+// (touch_controls.m draws it). Clear of every button: top centre in Portal's
+// layout (the portal buttons sit under the top left corner), top left in
+// Half-Life 2's (its weapon buttons are at the top centre).
+void rt_touch_fps_box(rt_ios_layout layout, double area_w, int chars, int lines, double pixel, double *x, double *y,
+                      double *w, double *h);
+
 // ---- Button layout editor (settings menu, touch_editor_ios.m) ----
 // A player's own place and size for some buttons, per device kind (phone or
 // iPad) and per game; the others keep the built-in layout.

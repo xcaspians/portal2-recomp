@@ -114,6 +114,24 @@ int rt_ios_settings_load(char *summary, size_t size) { return rt_ios_settings_ap
 int rt_ios_preference(const char *key, char *out, size_t size) { return preference(NULL, key, out, size); }
 #endif
 
+void rt_ios_display_range(int cap, int screen_max, float *lo, float *hi, float *pref) {
+    float screen = screen_max > 0 ? (float)screen_max : 60, wanted = cap > 0 && cap < screen ? (float)cap : screen;
+    if (wanted < 60 && (60 % (int)wanted) != 0 && screen >= 120) wanted = 120;
+    *lo = *hi = *pref = wanted;
+}
+
+int rt_ios_metal_launch_cap(int screen_max) { return screen_max >= 60 ? screen_max : 60; }
+
+double rt_ios_pace(double now, double *last, int cap, int limit) {
+    if (cap <= 0 || cap >= limit) { *last = 0; return 0; }
+    double period = 1.0 / cap;
+    if (*last <= 0) { *last = now; return 0; }
+    double target = *last + period;
+    if (target < now - period) target = now;   // fell behind (a load, a hitch): start again
+    *last = target;
+    return target > now ? target : 0;
+}
+
 int rt_ios_fps_choice(const char *value, int screen_max) {
     if (value && !strcmp(value, "auto")) return screen_max >= 120 ? 120 : 60;
     int n = value && *value ? atoi(value) : 0;

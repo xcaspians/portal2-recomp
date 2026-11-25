@@ -32,13 +32,10 @@ static int update(int launch) {
     if (why && value > POWER_SAVE_FPS) value = POWER_SAVE_FPS;
     int old = atomic_exchange(&cap, value);
     if (old == value) return value;
+    if (!launch) rt_ios_frame_rate_changed();   // live, Metal too (round 11)
     if (launch && value == wanted) return value;
-    if (value < wanted)
-        fprintf(stderr, "[ios] économie d'énergie (%s) : %d i/s au lieu de %d%s\n", why, value, wanted,
-                launch || !metal_renderer ? "" : " au prochain lancement (Metal : plafond fixé au démarrage)");
-    else
-        fprintf(stderr, "[ios] économie d'énergie terminée : %d i/s%s\n", value,
-                metal_renderer ? " au prochain lancement (Metal)" : "");
+    if (value < wanted) fprintf(stderr, "[ios] économie d'énergie (%s) : %d i/s au lieu de %d\n", why, value, wanted);
+    else fprintf(stderr, "[ios] plafond : %d i/s%s\n", value, why ? "" : " (réglage ou fin de l'économie d'énergie)");
     return value;
 }
 

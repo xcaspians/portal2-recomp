@@ -295,3 +295,23 @@ RT_CHECK(touch_editor_layouts_save_and_load) {
     rt_touch_place_scaled(jump, 1.0, 10, 20, 800, 400, &ex, &ey);
     assert(cx == ex && cy == ey && size == jump->size);
 }
+
+// The FPS counter's corner box (three lines: renderer, frames per second,
+// "120 HZ CAP 120") stays clear of every built-in button, on a phone and an iPad.
+RT_CHECK(touch_fps_counter_clear_of_buttons) {
+    static const double areas[][2] = {{852, 393}, {932, 430}, {1133, 744}, {1366, 1024}, {744, 1133}};
+    double bx, by, bw, bh;
+    for (int layout = 0; layout <= RT_IOS_LAYOUT_HL2; ++layout) {
+        int count = 0;
+        const rt_touch_button *b = rt_touch_layout((rt_ios_layout)layout, &count);
+        for (size_t a = 0; a < sizeof(areas) / sizeof(*areas); ++a)
+            for (int i = 0; i < count; ++i) {
+                rt_touch_fps_box((rt_ios_layout)layout, areas[a][0], 17, 3, 2, &bx, &by, &bw, &bh);
+                double cx, cy, r = b[i].size * 1.5 / 2;   // the largest Button size
+                rt_touch_place_scaled(&b[i], 1.5, 0, 0, areas[a][0], areas[a][1], &cx, &cy);
+                double nx = fmax(bx, fmin(cx, bx + bw)), ny = fmax(by, fmin(cy, by + bh));
+                if (hypot(cx - nx, cy - ny) <= r) fprintf(stderr, "layout %d area %zu button %s at %.0f,%.0f r %.0f\n", layout, a, rt_touch_action_name(b[i].action), cx, cy, r);
+                assert(hypot(cx - nx, cy - ny) > r);
+            }
+    }
+}
