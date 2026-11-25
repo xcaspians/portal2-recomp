@@ -207,6 +207,8 @@ RT_CHECK(ios_touch_layout_scaled_stays_on_screen) {
 RT_CHECK(ios_hosted_game_data_and_preference_keys) {
     const rt_ios_game *p2 = rt_ios_game_named("portal2"), *mel = rt_ios_game_named("mel");
     assert(!strcmp(p2->data_dir, "") && !strcmp(mel->data_dir, "mel"));
+    // Round 19: every game in the one app has its own data folder.
+    assert(!strcmp(rt_ios_game_named("hl2")->data_dir, "hl2") && !strcmp(rt_ios_game_named("portal1")->data_dir, "portal1"));
     assert(!strcmp(p2->title, "Portal 2") && !strcmp(mel->title, "Portal Stories: Mel"));
     char key[64];
     assert(rt_ios_set_game("portal2") == p2 && !strcmp(rt_ios_pref_key("P2TouchSize", key, sizeof(key)), "P2TouchSize"));
@@ -362,5 +364,5 @@ RT_CHECK(ios_l4d2_profile) {
     const rt_ios_game *g = rt_ios_game_named("l4d2");
     assert(!strcmp(g->name, "l4d2") && !strcmp(g->mod, "left4dead2") && !strcmp(g->app_id, "550"));
     assert(!strcmp(g->userdata, "l4d2-userdata") && !g->back_taps && g->layout == RT_IOS_LAYOUT_L4D2);
-    assert(!strcmp(g->cvar_interface, "VEngineCvar007") && g->find_command_base == 10 && !strcmp(g->data_dir, ""));
+    assert(!strcmp(g->cvar_interface, "VEngineCvar007") && g->find_command_base == 10 && !strcmp(g->data_dir, "l4d2"));   // in the one app (round 19)
 }

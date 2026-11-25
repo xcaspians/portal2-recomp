@@ -480,11 +480,12 @@ struct DeviceStatus: Decodable, Equatable {
 struct PlanStep: Decodable { let label: String; let command: [String] }
 struct DownloadPlan: Decodable { let steps: [PlanStep]; let need_bytes: Int64; let problem: String? }
 
-// tools/devices.py DOWNLOADS: the Portal app's games, then the games with their own app.
+// tools/devices.py DOWNLOADS: every game, all in the one app (round 19).
 let downloads: [(id: String, title: String)] = [("portal2", "Portal 2"), ("mel", "Portal Stories: Mel"),
-                                                ("portal1", "Portal"), ("hl2", "Half-Life 2 (its own app)"),
-                                                ("l4d2", "Left 4 Dead 2 (its own app)"), ("workshop", "Workshop maps")]
-let ownAppNames = ["hl2": "Half-Life 2", "l4d2": "Left 4 Dead 2"]
+                                                ("portal1", "Portal"), ("hl2", "Half-Life 2"),
+                                                ("l4d2", "Left 4 Dead 2"), ("workshop", "Workshop maps")]
+// The one app every game lives in on the device (tools/games.py APP_NAME, round 19).
+let deviceAppName = "Sauce"
 
 // The installer's version (tools/build_installer.sh: git describe), shown in the window.
 let installerVersion = (Bundle.main.object(forInfoDictionaryKey: "P2SourceVersion") as? String)
@@ -547,7 +548,7 @@ final class Devices: ObservableObject {
                 return
             }
         }
-        message[key] = "Done. Open the \(ownAppNames[game] ?? "Portal") app on the device."
+        message[key] = "Done. Open the \(deviceAppName) app on the device."
         status[device.udid] = try? JSONDecoder().decode(DeviceStatus.self, from: await tool(["status", "--device", device.udid]))
     }
     private func runStep(_ words: [String], device: String) async -> Bool {

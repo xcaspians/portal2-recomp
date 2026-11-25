@@ -63,12 +63,13 @@ GAMES = {
         # Folders of the game copy that tools/ios_device.sh data copies to the
         # device (Documents/game), without the soundtrack or sdk_content.
         ios_data=('bin', 'platform', 'update', 'portal2', 'portal2_dlc1', 'portal2_dlc2'),
-        # The other Portal games live in this app too (game picker at launch,
-        # runtime/ios/game_picker_ios.m): Mel on its own Portal 2 engine, Portal
-        # on Source 2013 like Half-Life 2. Each has its data in
+        # Every other game lives in this app too, the one app (games.APP_NAME,
+        # round 19; game picker at launch, runtime/ios/game_picker_ios.m): Mel on
+        # its own Portal 2 engine, Portal and Half-Life 2 on Source 2013, Left 4
+        # Dead 2 on its own branch. Each has its data in
         # Documents/<name> and its own saves and settings: one app ID, one
         # profile, Portal 2's increased memory limit for all of them.
-        ios_guests=('mel', 'portal1'),
+        ios_guests=('mel', 'portal1', 'hl2', 'l4d2'),
     ),
     # Half-Life 2 since the 20th anniversary update (depot 224): episodes and
     # Lost Coast live in the hl2_complete mod; hl2/ and hl2mp/ hold other
@@ -101,7 +102,8 @@ GAMES = {
         binary='build/hl2/hl2-native',
         executable='hl2-native',
         ios_dir='build/hl2/ios',
-        ios=True,
+        ios=True,   # in the one app (portal2's ios_guests, round 19); a standalone build still works
+        ios_host='portal2',
         ios_name='Half-Life 2',
         ios_executable='hl2',
         ios_app='HalfLife2.app',
@@ -221,7 +223,8 @@ GAMES = {
         binary='build/l4d2/l4d2-native',
         executable='l4d2-native',
         ios_dir='build/l4d2/ios',
-        ios=True,    # its own app (round 15), like Half-Life 2
+        ios=True,    # in the one app since round 19 (its own app in round 15); standalone still builds
+        ios_host='portal2',
         ios_name='Left 4 Dead 2',
         ios_executable='l4d2',
         ios_app='Left4Dead2.app',
