@@ -3,6 +3,7 @@
 #include "rt64.h"
 
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -95,6 +96,7 @@ void rt64_cpu_init(CPU64 *c, uint64_t stack_top) {
     memset(c, 0, sizeof *c);
     c->r[RSP] = stack_top & ~UINT64_C(15);
     c->mxcsr = 0x1f80;
+    c->fcw = 0x37f;
 }
 
 static gfn64 lookup(const Loaded *l, uint64_t offset) {
@@ -139,14 +141,20 @@ void rt64_call(CPU64 *c, uint64_t target) {
 }
 
 void rt64_cpuid(CPU64 *c) {
-    // A plain x86-64 baseline CPU (SSE2, CMPXCHG16B), "GenuineIntel": code
-    // that picks SSE4/AVX paths from CPUID stays on the baseline ones.
-    uint32_t leaf = (uint32_t)c->r[RAX];
+    // What the lifter implements (tools/lift64.py, simd64.py, x87_64.py):
+    // x86-64 baseline (x87, MMX, SSE, SSE2, CMPXCHG16B), SSE3, SSSE3, SSE4.1,
+    // POPCNT, LZCNT, BMI1, BMI2. Not reported, so code that checks CPUID keeps
+    // to the paths above: SSE4.2, AVX and later, AES-NI, PCLMULQDQ, RDRAND...
+    uint32_t leaf = (uint32_t)c->r[RAX], sub = (uint32_t)c->r[RCX];
     uint32_t a = 0, b = 0, cx = 0, d = 0;
-    if (leaf == 0) { a = 1; b = 0x756e6547; d = 0x49656e69; cx = 0x6c65746e; }
-    else if (leaf == 1) { a = 0x000306a9; b = 0x00010800; cx = 1u << 13; d = (1u << 0) | (1u << 4) | (1u << 8) | (1u << 15) | (1u << 23) | (1u << 25) | (1u << 26); }
+    if (leaf == 0) { a = 7; b = 0x756e6547; d = 0x49656e69; cx = 0x6c65746e; }    // "GenuineIntel"
+    else if (leaf == 1) {
+        a = 0x000306a9; b = 0x00010800;
+        cx = (1u << 0) | (1u << 9) | (1u << 13) | (1u << 19) | (1u << 23);       // SSE3 SSSE3 CX16 SSE4.1 POPCNT
+        d = (1u << 0) | (1u << 4) | (1u << 8) | (1u << 15) | (1u << 23) | (1u << 24) | (1u << 25) | (1u << 26);
+    } else if (leaf == 7 && sub == 0) b = (1u << 3) | (1u << 8);                 // BMI1 BMI2
     else if (leaf == 0x80000000u) a = 0x80000001u;
-    else if (leaf == 0x80000001u) { cx = 1; d = (1u << 29) | (1u << 11); }   // LAHF, LM, SYSCALL
+    else if (leaf == 0x80000001u) { cx = (1u << 0) | (1u << 5); d = (1u << 29) | (1u << 11); }   // LAHF LZCNT, LM SYSCALL
     c->r[RAX] = a; c->r[RBX] = b; c->r[RCX] = cx; c->r[RDX] = d;
 }
 
@@ -190,4 +198,75 @@ void rt64_div(CPU64 *c, uint64_t divisor, int width, int is_signed, uint64_t pc)
     if (width == 32) { c->r[RAX] = q; c->r[RDX] = r; }
     else if (width == 64) { c->r[RAX] = q; c->r[RDX] = r; }
     else { c->r[RAX] = (c->r[RAX] & ~mask) | q; c->r[RDX] = (c->r[RDX] & ~mask) | r; }
+}
+
+// x87 80-bit extended format: 64-bit mantissa with an explicit integer bit,
+// 15-bit exponent (bias 16383), sign.
+double rt64_ld80(uint64_t address) {
+    uint64_t mantissa; uint16_t top;
+    memcpy(&mantissa, (const void *)(uintptr_t)address, 8);
+    memcpy(&top, (const void *)(uintptr_t)(address + 8), 2);
+    int sign = top >> 15, exponent = top & 0x7fff;
+    double value;
+    if (exponent == 0x7fff) value = (mantissa << 1) ? __builtin_nan("") : __builtin_inf();
+    else if (!exponent && !mantissa) value = 0.0;
+    else value = ldexp((double)mantissa, (exponent ? exponent : 1) - 16383 - 63);
+    return sign ? -value : value;
+}
+
+void rt64_st80(uint64_t address, double value) {
+    uint64_t mantissa = 0; uint16_t top = __builtin_signbit(value) ? 0x8000 : 0;
+    double magnitude = __builtin_fabs(value);
+    if (magnitude != magnitude) { top |= 0x7fff; mantissa = UINT64_C(0xc000000000000000); }
+    else if (__builtin_isinf(magnitude)) { top |= 0x7fff; mantissa = UINT64_C(1) << 63; }
+    else if (magnitude != 0) {
+        int exponent;
+        double fraction = frexp(magnitude, &exponent);          // [0.5, 1)
+        mantissa = (uint64_t)ldexp(fraction, 64);
+        top |= (uint16_t)(exponent - 1 + 16383);
+    }
+    memcpy((void *)(uintptr_t)address, &mantissa, 8);
+    memcpy((void *)(uintptr_t)(address + 8), &top, 2);
+}
+
+double rt64_x87_round(CPU64 *c, double value) {
+    switch ((c->fcw >> 10) & 3) {
+    case 1: return floor(value);
+    case 2: return ceil(value);
+    case 3: return trunc(value);
+    default: return nearbyint(value);
+    }
+}
+
+void rt64_fpu_state(CPU64 *c, uint64_t address, int kind) {
+    uint8_t *p = (uint8_t *)(uintptr_t)address;
+    uint16_t fsw = (uint16_t)((c->fsw & ~0x3800u) | ((c->ftop & 7u) << 11));
+    switch (kind) {
+    case 0: case 2:      // FNSTENV / FNSAVE: 28-byte environment (+ 8 x 10-byte registers)
+        memset(p, 0, 28);
+        memcpy(p, &c->fcw, 2); memcpy(p + 4, &fsw, 2);
+        if (kind == 2) {
+            for (int i = 0; i < 8; ++i) rt64_st80(address + 28 + 10 * i, c->st[(c->ftop + i) & 7]);
+            c->ftop = 0; c->fcw = 0x37f; c->fsw = 0;
+        }
+        break;
+    case 1: case 3:      // FLDENV / FRSTOR
+        memcpy(&c->fcw, p, 2); memcpy(&c->fsw, p + 4, 2);
+        c->ftop = (c->fsw >> 11) & 7;
+        if (kind == 3) for (int i = 0; i < 8; ++i) c->st[(c->ftop + i) & 7] = rt64_ld80(address + 28 + 10 * i);
+        break;
+    case 4:              // FXSAVE: 512 bytes
+        memset(p, 0, 512);
+        memcpy(p, &c->fcw, 2); memcpy(p + 2, &fsw, 2); memcpy(p + 24, &c->mxcsr, 4);
+        { uint32_t mask = 0xffff; memcpy(p + 28, &mask, 4); }
+        for (int i = 0; i < 8; ++i) rt64_st80(address + 32 + 16 * i, c->st[(c->ftop + i) & 7]);
+        memcpy(p + 160, c->xmm, 16 * 16);
+        break;
+    default:             // FXRSTOR
+        memcpy(&c->fcw, p, 2); memcpy(&c->fsw, p + 2, 2); memcpy(&c->mxcsr, p + 24, 4);
+        c->ftop = (c->fsw >> 11) & 7;
+        for (int i = 0; i < 8; ++i) c->st[(c->ftop + i) & 7] = rt64_ld80(address + 32 + 16 * i);
+        memcpy(c->xmm, p + 160, 16 * 16);
+        break;
+    }
 }

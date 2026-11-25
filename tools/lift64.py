@@ -25,10 +25,14 @@ coverage report says exactly what is missing.
 import argparse
 import collections
 import json
+import os
 import re
 import struct
 import subprocess
 import sys
+
+import simd64
+import x87_64
 
 R64 = 'rax rcx rdx rbx rsp rbp rsi rdi'.split() + [f'r{i}' for i in range(8, 16)]
 R32 = 'eax ecx edx ebx esp ebp esi edi'.split() + [f'r{i}d' for i in range(8, 16)]
@@ -38,7 +42,7 @@ GPR = {}
 for width, names in ((64, R64), (32, R32), (16, R16), (8, R8)):
     GPR.update({name: (i, width, 0) for i, name in enumerate(names)})
 GPR.update({'ah': (0, 8, 8), 'ch': (1, 8, 8), 'dh': (2, 8, 8), 'bh': (3, 8, 8)})
-XMM = {f'xmm{i}': i for i in range(16)}
+XMM = {f'xmm{i}': i for i in range(18)}   # 16, 17: MMX scratch (x87_64.py)
 CC = dict(o='O', no='NO', b='B', c='B', nae='B', ae='AE', nb='AE', nc='AE',
           e='E', z='E', ne='NE', nz='NE', be='BE', na='BE', a='A', nbe='A',
           s='S', ns='NS', p='P', pe='P', np='NP', po='NP', l='L', nge='L',
@@ -50,6 +54,13 @@ _LINE = re.compile(r'^\s*([0-9a-f]+):\s+((?:[0-9a-f]{2}\s)+)\s*([a-z][a-z0-9]*)\
 
 class Unsupported(ValueError):
     pass
+
+
+# Flag hand-over at calls and returns. System V AMD64 does not keep the
+# arithmetic flags across calls, so lift_function() drops these unless the
+# function reads flags it did not set (see flag_liveness).
+SAVE_F = '/*s*/c->flags = f;'
+LOAD_F = '/*l*/f = c->flags;'
 
 
 def disassemble(path, objdump='objdump'):
@@ -126,6 +137,11 @@ def address(expr, nxt):
     return f'(uint32_t)({body})' if narrow else f'(uint64_t)({body})'
 
 
+PRIVILEGED = frozenset('''in out insb insw insd outsb outsw outsd sti cli iret iretd iretq hlt lgdt lidt lldt
+    ltr sgdt sidt sldt str invd wbinvd invlpg rdmsr wrmsr rdpmc sysenter sysexit sysret clts lmsw smsw swapgs
+    into bound aaa aas aam aad daa das les lds arpl icebp int1 retf lret ljmp lcall'''.split())
+
+
 class Operand:
     def __init__(self, text, nxt):
         self.text = text = text.strip()
@@ -145,6 +161,8 @@ class Operand:
             self.addr = f'(c->{m[2]}_base + {effective})' if m[2] in ('fs', 'gs') else effective
             self.width = WIDTHS.get(m[1]) if m[1] else None
             return
+        if re.fullmatch(r'st(\(\d\))?|mm\d', text):
+            return          # x87 stack or MMX register: read by x87_64.py from .text
         try:
             self.imm = int(text, 0)
         except ValueError:
@@ -442,6 +460,19 @@ def translate(pc, insn, mod, entry, callees):
         return '__atomic_thread_fence(__ATOMIC_SEQ_CST); ' + end, [nxt]
     if op in ('int3', 'ud2', 'hlt'):
         return f'rt64_trap(c, {here}, "{op}");', []
+    if op in PRIVILEGED or re.fullmatch(r'[0-9a-f]{2}|\(bad\)', op) or (op.startswith('lock_') and op[5:] in
+                                                                         ('mov', 'lea', 'push', 'pop', 'test', 'cmp')):
+        # Privileged, I/O or invalid in user mode: Linux would kill the
+        # program with SIGSEGV/SIGILL. Mostly data decoded as code.
+        return f'rt64_trap(c, {here}, "{op}: privileged or invalid instruction");', []
+    extension = simd64.gated(op)
+    if extension:
+        # rt64_cpuid() does not report this extension: code that checks CPUID
+        # first never gets here; anything else stops with a clear message.
+        return f'rt64_trap(c, {here}, "{op}: {extension} not reported by CPUID");', []
+    if op in ('incsspq', 'incsspd', 'rdsspq', 'rdsspd', 'saveprevssp', 'setssbsy', 'clrssbsy', 'rstorssp',
+              'notrack'):
+        return end, [nxt]       # CET shadow stack: no-ops while it is off, as on Linux by default
     if op in ('rep', 'repe', 'repz', 'repne', 'repnz') and args in ('ret', ''):
         if args == 'ret':
             op, args = 'ret', ''
@@ -460,7 +491,7 @@ def translate(pc, insn, mod, entry, callees):
 
     if op == 'ret':
         adjust = int(args, 0) if args else 0
-        return f'c->flags = f; c->rip = POP64(c); c->r[RSP] += {adjust}u; return;', []
+        return f'{SAVE_F} c->rip = POP64(c); c->r[RSP] += {adjust}u; return;', []
     if op in ('call', 'jmp') or (op.startswith('j') and op[1:] in CC):
         target = Operand(args, nxt)
         if target.imm is not None:
@@ -469,11 +500,11 @@ def translate(pc, insn, mod, entry, callees):
                 if t == nxt:
                     return f'PUSH64(c, {after}); {end}', [nxt]
                 callees.add(t)
-                return (f'PUSH64(c, {after}); c->flags = f; fn_{t:x}(c); '
-                        f'if (c->rip != {after}) rt64_bad_return(c, {after}); f = c->flags; {end}'), [nxt]
+                return (f'PUSH64(c, {after}); {SAVE_F} fn_{t:x}(c); '
+                        f'if (c->rip != {after}) rt64_bad_return(c, {after}); {LOAD_F} {end}'), [nxt]
             if t in mod.entries and t != entry:
                 callees.add(t)
-                branch, successors = f'c->flags = f; fn_{t:x}(c); return;', []
+                branch, successors = f'{SAVE_F} fn_{t:x}(c); return;', []
             else:
                 branch, successors = f'goto L{t:x};', [t]
             if op == 'jmp':
@@ -487,17 +518,21 @@ def translate(pc, insn, mod, entry, callees):
             if known is not None and known in mod.insns:
                 callees.add(known)
         if op == 'call':
-            return (f'a = {target.read()}; PUSH64(c, {after}); c->flags = f; rt64_dispatch(c, a); '
-                    f'if (c->rip != {after}) rt64_bad_return(c, {after}); f = c->flags; {end}'), [nxt]
+            return (f'a = {target.read()}; PUSH64(c, {after}); {SAVE_F} rt64_dispatch(c, a); '
+                    f'if (c->rip != {after}) rt64_bad_return(c, {after}); {LOAD_F} {end}'), [nxt]
         cases = mod.jump_table(pc, args) if target.reg else None
         if cases:
             mod.table_jumps += 1
             local = sorted(set(cases))
             labels = ' '.join(f'case {t:#x}: goto L{t:x};' for t in local)
             return (f'a = {target.read()}; switch (a - B_) {{ {labels} '
-                    'default: c->flags = f; rt64_dispatch(c, a); return; }'), local
+                    f'default: {SAVE_F} rt64_dispatch(c, a); return; }}'), local
         mod.dispatch_jumps += 1
-        return f'a = {target.read()}; c->flags = f; rt64_dispatch(c, a); return;', []
+        return f'a = {target.read()}; {SAVE_F} rt64_dispatch(c, a); return;', []
+    if op in ('loop', 'loope', 'loopne', 'loopz', 'loopnz'):
+        t = int(args, 0)
+        test = {'loop': '', 'loope': ' && f.zf', 'loopz': ' && f.zf', 'loopne': ' && !f.zf', 'loopnz': ' && !f.zf'}[op]
+        return f'if (--c->r[RCX] != 0{test}) goto L{t:x}; {end}', [t, nxt]
     if op in ('jrcxz', 'jecxz'):
         t = int(args, 0)
         test = 'c->r[RCX] == 0' if op == 'jrcxz' else '(uint32_t)c->r[RCX] == 0'
@@ -511,10 +546,64 @@ def translate(pc, insn, mod, entry, callees):
         if taken in mod.insns and getattr(mod, 'is_code', lambda _: True)(taken):
             callees.add(taken)
     sse = translate_sse(op, ops, here)
+    if sse is None:
+        sse = simd64.lower(op, ops)
+    if sse is None:
+        sse = x87_mmx(op, ops, here)
     if sse is not None:
         return sse + ' ' + end, [nxt]
     body = integer(op, ops, here)
     return body + ' ' + end, [nxt]
+
+
+MMX_LANEWISE = frozenset("""paddb paddw paddd paddq psubb psubw psubd psubq paddsb paddsw paddusb paddusw psubsb
+    psubsw psubusb psubusw pand pandn por pxor pcmpeqb pcmpeqw pcmpeqd pcmpgtb pcmpgtw pcmpgtd pmullw pmulhw pmulhuw
+    pmaddwd pmuludq pavgb pavgw pminub pmaxub pminsw pmaxsw psadbw psllw pslld psllq psrlw psrld psrlq psraw psrad
+    punpcklbw punpcklwd punpckldq pshufb pabsb pabsw pabsd psignb psignw psignd pmaddubsw pmulhrsw""".split())
+
+
+MMX_SPECIAL = {
+    'packssdw': 'for (int i = 0; i < 2; ++i) { r_.sw[i] = (int16_t)rt64_sat(d_.i[i], -32768, 32767); '
+                'r_.sw[2 + i] = (int16_t)rt64_sat(s_.i[i], -32768, 32767); }',
+    'packsswb': 'for (int i = 0; i < 4; ++i) { r_.sb[i] = (int8_t)rt64_sat(d_.sw[i], -128, 127); '
+                'r_.sb[4 + i] = (int8_t)rt64_sat(s_.sw[i], -128, 127); }',
+    'packuswb': 'for (int i = 0; i < 4; ++i) { r_.b[i] = (uint8_t)rt64_sat(d_.sw[i], 0, 255); '
+                'r_.b[4 + i] = (uint8_t)rt64_sat(s_.sw[i], 0, 255); }',
+    'punpckhbw': 'for (int i = 0; i < 4; ++i) { r_.b[2 * i] = d_.b[4 + i]; r_.b[2 * i + 1] = s_.b[4 + i]; }',
+    'punpckhwd': 'for (int i = 0; i < 2; ++i) { r_.w[2 * i] = d_.w[2 + i]; r_.w[2 * i + 1] = s_.w[2 + i]; }',
+    'punpckhdq': 'r_.d[0] = d_.d[1]; r_.d[1] = s_.d[1];',
+    'pshufw': 'r_.w[0] = s_.w[{k0}]; r_.w[1] = s_.w[{k1}]; r_.w[2] = s_.w[{k2}]; r_.w[3] = s_.w[{k3}];',
+}
+
+
+def x87_mmx(op, ops, here):
+    """x87 and MMX (tools/x87_64.py). A packed MMX instruction that works
+    lane by lane runs as its SSE2 form on the scratch registers 16 and 17."""
+    result = x87_64.lower(op, ops, here)
+    if not isinstance(result, tuple):
+        return result
+    _, dst, source = result
+    special = MMX_SPECIAL.get(op)
+    if special is not None:
+        if source is None and ops[1].addr is None:
+            raise Unsupported(f'MMX {op} operand')
+        value = f'c->mm[{source}]' if source is not None else f'R64({ops[1].addr})'
+        k = ops[2].imm if len(ops) > 2 and ops[2].imm is not None else 0
+        body = special.replace("{k0}", str(k & 3)).replace("{k1}", str(k >> 2 & 3)).replace("{k2}", str(k >> 4 & 3)).replace("{k3}", str(k >> 6 & 3))
+        return (f'{{ XMM64 d_ = rt64_xq(c->mm[{dst}]), s_ = rt64_xq({value}), r_ = rt64_xq(0); (void)d_; {body} '
+                f'c->mm[{dst}] = r_.q[0]; }}')
+    if op not in MMX_LANEWISE:
+        raise Unsupported(f'MMX {op}')
+    load = f'c->xmm[17] = rt64_xq(c->mm[{source}]); ' if source is not None else ''
+    if source is None and ops[1].imm is None:
+        if ops[1].addr is None:
+            raise Unsupported(f'MMX {op} operand')
+        load = f'c->xmm[17] = rt64_xq(R64({ops[1].addr})); '
+    second = Operand('xmm17', 0) if ops[1].imm is None else ops[1]
+    inner = translate_sse(op, [Operand('xmm16', 0), second], here) or simd64.lower(op, [Operand('xmm16', 0), second])
+    if inner is None:
+        raise Unsupported(f'MMX {op}')
+    return f'c->xmm[16] = rt64_xq(c->mm[{dst}]); {load}{inner} c->mm[{dst}] = c->xmm[16].q[0];'
 
 
 def string_op(kind, n, repeat, end):
@@ -700,10 +789,60 @@ def integer(op, ops, here):
         return (f'{{ a = {dst.read()}; b = {src.read()}; unsigned k_ = (unsigned)({count.read(8)} & {63 if n == 64 else 31}); '
                 f'if (k_) {{ f.cf = (uint32_t)({carry}); r = ({value}) & MSK64({n}); f.of = (uint32_t)(((a ^ r) >> ({n} - 1)) & 1); '
                 f'szp64(&f, r, {n}); {dst.write("r")} }} }}')
+    if op == 'popcnt' and len(ops) == 2:
+        return (f'a = {ops[1].read()}; f.zf = a == 0; f.cf = f.of = f.sf = f.af = 0; f.pf = 1; '
+                + ops[0].write('(uint64_t)__builtin_popcountll(a)'))
+    if op in ('andn', 'bextr', 'bzhi', 'sarx', 'shlx', 'shrx', 'pdep', 'pext') and len(ops) == 3:
+        dst, x, y = ops
+        mask = f'MSK64({n})'
+        if op == 'andn':
+            return (f'r = ~{x.read()} & {y.read()} & {mask}; f64_logic(&f, r, {n}); ' + dst.write('r'))
+        if op == 'bextr':
+            return (f'{{ uint64_t s_ = {x.read()}, k_ = {y.read()}; unsigned start_ = k_ & 0xff, len_ = (k_ >> 8) & 0xff; '
+                    f'r = start_ >= {n} ? 0 : s_ >> start_; if (len_ < 64) r &= (UINT64_C(1) << len_) - 1; '
+                    f'f64_logic(&f, r, {n}); {dst.write("r")} }}')
+        if op == 'bzhi':
+            return (f'{{ uint64_t s_ = {x.read()}; unsigned k_ = (unsigned)({y.read()} & 0xff); '
+                    f'r = k_ >= {n} ? s_ : s_ & ((UINT64_C(1) << k_) - 1); f64_logic(&f, r, {n}); f.cf = k_ > {n - 1}; '
+                    f'{dst.write("r")} }}')
+        if op in ('sarx', 'shlx', 'shrx'):
+            k = f'({y.read()} & {n - 1})'
+            value = {'shlx': f'({x.read()} << {k})', 'shrx': f'({x.read()} >> {k})',
+                     'sarx': f'(uint64_t)((int64_t)sx64({x.read()}, {n}) >> {k})'}[op]
+            return dst.write(f'{value} & {mask}')
+        return dst.write(f'rt64_{op}({x.read()}, {y.read()}, {n})')
+    if op in ('blsi', 'blsmsk', 'blsr') and len(ops) == 2:
+        value = {'blsi': 'a & (0 - a)', 'blsmsk': 'a ^ (a - 1)', 'blsr': 'a & (a - 1)'}[op]
+        return (f'a = {ops[1].read()}; r = ({value}) & MSK64({n}); f64_logic(&f, r, {n}); '
+                f'f.cf = {"a == 0" if op == "blsr" or op == "blsmsk" else "a != 0"}; ' + ops[0].write('r'))
+    if op == 'rorx' and len(ops) == 3:
+        k = ops[2].imm & (n - 1)
+        value = f'(({ops[1].read()} >> {k}) | ({ops[1].read()} << ({n} - {k}))) & MSK64({n})' if k else ops[1].read()
+        return ops[0].write(value)
+    if op == 'mulx' and len(ops) == 3:
+        hi, lo, src = ops
+        if n == 64:
+            return (f'{{ unsigned __int128 p_ = (unsigned __int128)c->r[RDX] * {src.read()}; '
+                    f'{lo.write("(uint64_t)p_")} {hi.write("(uint64_t)(p_ >> 64)")} }}')
+        return (f'{{ uint64_t p_ = (uint64_t)(uint32_t)c->r[RDX] * {src.read()}; '
+                f'{lo.write("p_")} {hi.write("p_ >> 32")} }}')
+    if op == 'movbe' and len(ops) == 2:
+        width = ops[0].width or ops[1].width
+        swap = {16: '__builtin_bswap16', 32: '__builtin_bswap32', 64: '__builtin_bswap64'}[width]
+        return ops[0].write(f'{swap}({ops[1].read()})')
+    if op in ('cmpxchg', 'lock_cmpxchg') and len(ops) == 2 and ops[0].reg:
+        dst, src = ops
+        acc = Operand({8: 'al', 16: 'ax', 32: 'eax', 64: 'rax'}[n], 0)
+        return (f'a = {acc.read()}; b = {dst.read()}; f64_sub(&f, a, b, {n}); '
+                f'if (f.zf) {{ {dst.write(src.read())} }} else {{ {acc.write("b")} }}')
     if op == 'cpuid':
         return 'rt64_cpuid(c);'
     if op == 'rdtsc':
         return '{ uint64_t t_ = rt64_rdtsc(); c->r[RAX] = (uint32_t)t_; c->r[RDX] = t_ >> 32; }'
+    if op in ('clc', 'stc', 'cmc'):
+        return {'clc': 'f.cf = 0;', 'stc': 'f.cf = 1;', 'cmc': 'f.cf ^= 1;'}[op]
+    if op == 'enter' and len(ops) == 2 and ops[1].imm == 0:
+        return f'PUSH64(c, c->r[RBP]); c->r[RBP] = c->r[RSP]; c->r[RSP] -= {ops[0].imm & 0xffff}u;'
     if op in ('cld', 'std'):
         return f'c->df = {int(op == "std")};'
     if op == 'sahf':
@@ -737,9 +876,117 @@ def form(op, args):
     return f'{op} {",".join(kinds)}'.strip()
 
 
-def lift_function(entry, mod, stats=None):
+CF, PF, AF, ZF, SF, OF = 1, 2, 4, 8, 16, 32
+ALL_FLAGS = 63
+CC_READS = dict(O=OF, NO=OF, B=CF, AE=CF, E=ZF, NE=ZF, BE=CF | ZF, A=CF | ZF, S=SF, NS=SF, P=PF, NP=PF,
+                L=SF | OF, GE=SF | OF, LE=ZF | SF | OF, G=ZF | SF | OF)
+_FULL_WRITERS = frozenset('add sub cmp neg and or xor test adc sbb xadd cmpxchg ucomisd comisd ucomiss comiss '
+                          'scasb scasw scasd scasq cmpsb cmpsw cmpsd cmpsq popcnt ptest andn bextr bzhi blsi blsmsk '
+                          'blsr fcomi fucomi fcomip fucomip fcompi fucompi'.split())
+_FCMOV_READS = dict(fcmovb=1, fcmovnb=1, fcmove=8, fcmovne=8, fcmovbe=9, fcmovnbe=9, fcmovu=2, fcmovnu=2)
+_SHIFTS = frozenset('shl sal shr sar'.split())
+
+
+def _count(args):
+    """Constant shift count of `x, imm` (or the implicit 1), else None."""
+    parts = [p.strip() for p in args.split(',')] if args else []
+    if len(parts) == 1:
+        return 1
+    try:
+        return int(parts[-1], 0)
+    except ValueError:
+        return None
+
+
+def flag_effect(op, args):
+    """(flags read, flags always written) of one instruction, as CF..OF bits.
+    An instruction that may leave a flag unchanged does not count as writing
+    it; an instruction this table does not know is assumed to read them all
+    when its C mentions the flags (conservative)."""
+    if op.startswith('lock_'):
+        op = op[5:]
+    if op in ('rep', 'repe', 'repz', 'repne', 'repnz'):
+        return 0, 0              # may run zero times: transparent
+    if op.startswith('j') and op[1:] in CC:
+        return CC_READS[CC[op[1:]]], 0
+    if op.startswith('set') and op[3:] in CC:
+        return CC_READS[CC[op[3:]]], 0
+    if op.startswith('cmov') and op[4:] in CC:
+        return CC_READS[CC[op[4:]]], 0
+    if op in _FULL_WRITERS:
+        return (CF if op in ('adc', 'sbb') else 0), ALL_FLAGS
+    if op == 'imul':
+        parts = args.split(',') if args else []
+        return 0, ALL_FLAGS if len(parts) > 1 else CF | OF
+    if op == 'mul':
+        return 0, CF | OF
+    if op in ('inc', 'dec'):
+        return 0, ALL_FLAGS & ~CF
+    if op in _SHIFTS or op in ('shld', 'shrd'):
+        count = _count(args)
+        return (0, CF | PF | ZF | SF | OF) if count and count & 63 else (0, 0)
+    if op in ('rol', 'ror', 'rcl', 'rcr'):
+        count = _count(args)
+        reads = CF if op in ('rcl', 'rcr') else 0
+        return reads, (CF if count and count & 63 else 0)
+    if op in ('bt', 'bts', 'btr', 'btc'):
+        return 0, CF
+    if op in ('bsf', 'bsr'):
+        return 0, ZF
+    if op in ('tzcnt', 'lzcnt'):
+        return 0, CF | ZF
+    if op == 'cmpxchg16b':
+        return 0, ZF
+    if op == 'sahf':
+        return 0, CF | PF | AF | ZF | SF
+    if op in ('lahf', 'pushfq', 'pushf'):
+        return CF | PF | AF | ZF | SF | OF, 0
+    if op in ('clc', 'stc'):
+        return 0, CF
+    if op == 'cmc':
+        return CF, CF
+    if op in ('loope', 'loopz', 'loopne', 'loopnz'):
+        return ZF, 0
+    if op in _FCMOV_READS:
+        return _FCMOV_READS[op], 0
+    if op in ('call', 'ret', 'jmp', 'loop'):
+        return 0, 0              # handled by the caller of flag_liveness
+    return None                  # decided from the generated C
+
+
+def flag_liveness(order, flow, insns, bodies):
+    """Flags live on entry to each instruction (backward data flow). A call
+    clobbers every flag (System V: not preserved), so nothing live after a
+    call reaches back across it."""
+    effect = {}
+    for pc in order:
+        insn = insns.get(pc)
+        e = flag_effect(insn[1], insn[2]) if insn else (0, 0)
+        if e is None:
+            code = bodies[pc]
+            e = (ALL_FLAGS, 0) if ('&f' in code or 'f.' in code) else (0, 0)
+        if insn and insn[1] == 'call':
+            e = (0, ALL_FLAGS)
+        effect[pc] = e
+    live_in = dict.fromkeys(order, 0)
+    changed = True
+    while changed:
+        changed = False
+        for pc in reversed(order):
+            out = 0
+            for s in flow.get(pc, ()):
+                out |= live_in.get(s, 0)
+            reads, writes = effect[pc]
+            value = reads | (out & ~writes)
+            if value != live_in[pc]:
+                live_in[pc] = value
+                changed = True
+    return live_in
+
+
+def lift_function(entry, mod, stats=None, keep_flags=None):
     """C body of the function at `entry` and its callees."""
-    pending, done, callees = [entry], {}, set()
+    pending, done, flow, callees = [entry], {}, {}, set()
     while pending:
         pc = pending.pop()
         if pc in done:
@@ -764,11 +1011,29 @@ def lift_function(entry, mod, stats=None):
                 pending.append(insn[0])
                 stats['shadow'].add(insn[0])
         done[pc] = body
+        flow[pc] = successors
         pending.extend(successors)
     if stats is not None:
         stats['pcs'].update(p for p in done if p in mod.insns)
-    lines = [f'static void fn_{entry:x}(CPU64 *restrict c) {{',
-             '    FL64 f = c->flags; uint64_t a, b, r; (void)f; (void)a; (void)b; (void)r;',
+    if keep_flags is None:
+        keep_flags = bool(os.environ.get('P2_LIFT64_KEEP_FLAGS'))
+    entry_live = 0
+    if not keep_flags:
+        order = sorted(done)
+        live = flag_liveness(order, flow, mod.insns, done)
+        entry_live = live[entry]
+        for pc in order:
+            insn = mod.insns.get(pc)
+            if insn and insn[1] == 'call' and any(live.get(s, 0) for s in flow.get(pc, ())):
+                if stats is not None:
+                    stats['read_after_call'].append(pc)
+                continue        # flags read after the call: keep the hand-over
+            done[pc] = done[pc].replace(SAVE_F, '').replace(LOAD_F, '')
+        if entry_live and stats is not None:
+            stats['entry_live'].append(entry)
+    init = 'c->flags' if keep_flags or entry_live else '(FL64){0, 0, 0, 0, 0, 0}'
+    lines = [f'void fn_{entry:x}(CPU64 *restrict c) {{',
+             f'    FL64 f = {init}; uint64_t a, b, r; (void)f; (void)a; (void)b; (void)r;',
              f'    goto L{entry:x};']
     lines += [f'L{pc:x}: {body}' for pc, body in sorted(done.items())]
     lines.append('}')
@@ -776,7 +1041,8 @@ def lift_function(entry, mod, stats=None):
 
 
 def new_stats():
-    return dict(missing=collections.Counter(), unsupported_pcs=set(), pcs=set(), why={}, shadow=set())
+    return dict(missing=collections.Counter(), unsupported_pcs=set(), pcs=set(), why={}, shadow=set(),
+                read_after_call=[], entry_live=[])
 
 
 IGNORED_WEAK = ('_ITM_', '_ZGTt', '__gmon_start__')
@@ -803,9 +1069,9 @@ def relocation_rows(layout):
     return rows
 
 
-def generate(layout, roots, symbol, objdump='objdump', every=False):
-    """C source for `roots` (module offsets) and everything they call
-    directly; `every`: all known entry points. Returns (source, report)."""
+def lift_module(layout, roots, objdump='objdump', every=False, sweep=True):
+    """Lift `roots` (module offsets) and everything they call directly, or
+    every known entry point. Returns ({entry: body}, report)."""
     insns = disassemble(layout['source'], objdump)
     mod = Module(layout, insns)
     stats = new_stats()
@@ -818,37 +1084,16 @@ def generate(layout, roots, symbol, objdump='objdump', every=False):
         body, callees = lift_function(entry, mod, stats)
         bodies[entry] = body
         pending.extend(t for t in callees if t not in bodies)
-    out = ['// Generated by tools/lift64.py: do not edit.', '#include "x64/rt64.h"', '#include <math.h>',
-           '#pragma clang diagnostic ignored "-Wunused-label"',
-           'static uint64_t B_;']
-    out += [f'static void fn_{e:x}(CPU64 *);' for e in sorted(bodies)]
-    out += [bodies[e] for e in sorted(bodies)]
-    out.append('static const RT64Function functions_[] = {')
-    out += [f'    {{{e:#x}, fn_{e:x}}},' for e in sorted(bodies)]
-    out.append('};')
-    rows = relocation_rows(layout)
-    out.append('static const RT64Reloc relocs_[] = {')
-    out += [f'    {{{o:#x}, {k}, {i}, {a}ll}},' for o, k, i, a in rows] or ['    {0, 0, 0, 0},']
-    out.append('};')
-    out.append('static const char *const imports_[] = {')
-    out += [f'    {json.dumps(i["name"])},' for i in layout['imports']] or ['    "",']
-    out.append('};')
-    out.append('static const RT64Export exports_[] = {')
-    out += [f'    {{{json.dumps(n)}, {v:#x}}},' for n, v in layout['exports'].items()] or ['    {"", 0},']
-    out.append('};')
-    out.append(f'const RT64Module {symbol} = {{{json.dumps(layout["name"])}, {json.dumps(layout["image"] or "")}, '
-               f'{layout["size"]:#x}, &B_, functions_, {len(bodies)}, relocs_, {len(rows)}, '
-               f'imports_, {len(layout["imports"])}, exports_, {len(layout["exports"])}}};')
     handled = stats['pcs'] - stats['unsupported_pcs']
+    jumps = (mod.table_jumps, mod.unbounded_tables, mod.dispatch_jumps)
     # Linear sweep: every decoded instruction of the code sections, reached
     # or not (code only reached through exception tables, for example).
-    sweep, sweep_missing = 0, collections.Counter()
-    jumps = (mod.table_jumps, mod.unbounded_tables, mod.dispatch_jumps)
+    sweep_count, sweep_missing = 0, collections.Counter()
     plt = layout.get('plt') or []
-    for pc, insn in insns.items():
+    for pc, insn in (insns.items() if sweep else ()):
         if insn[1] in ('int3', 'nop') or any(lo <= pc < hi for lo, hi in plt) or not mod.is_code(pc):
             continue
-        sweep += 1
+        sweep_count += 1
         try:
             translate(pc, insn, mod, None, set())
         except (Unsupported, KeyError, IndexError, ValueError):
@@ -857,12 +1102,71 @@ def generate(layout, roots, symbol, objdump='objdump', every=False):
                   functions_complete=sum('not lifted:' not in b for b in bodies.values()),
                   instructions=len(stats['pcs']), handled=len(handled),
                   unsupported=len(stats['unsupported_pcs']),
-                  sweep_instructions=sweep, sweep_unsupported=sum(sweep_missing.values()),
+                  sweep_instructions=sweep_count, sweep_unsupported=sum(sweep_missing.values()),
                   sweep_top_missing=sweep_missing.most_common(40),
                   table_jumps=jumps[0], unbounded_tables=jumps[1], dispatch_jumps=jumps[2],
+                  flags_read_after_call=len(stats['read_after_call']),
+                  flags_live_at_entry=len(stats['entry_live']),
                   top_missing=stats['missing'].most_common(40),
                   why={k: stats['why'].get(k, '') for k, _ in stats['missing'].most_common(40)})
-    return '\n'.join(out) + '\n', report
+    return bodies, report
+
+
+_FN = re.compile(r'\bfn_([0-9a-f]+)\b')
+
+
+def emit(layout, bodies, symbol, shards=1):
+    """C files of a lifted module: {name: text}. One file when shards == 1;
+    otherwise <symbol>.h (prototypes, the base address), <symbol>_NNN.c (the
+    functions, grouped by address, about the same size each) and
+    <symbol>_tables.c (dispatch table, relocations, imports, exports)."""
+    def rename(text):
+        return _FN.sub(lambda m: f'{symbol}_f{m[1]}', text)
+    header = ['// Generated by tools/lift64.py: do not edit.', '#include "x64/rt64.h"', '#include <math.h>',
+              '#include <arm_acle.h>',
+              '#pragma clang diagnostic ignored "-Wunused-label"',
+              f'extern uint64_t {symbol}_base;', f'#define B_ {symbol}_base']
+    header += [f'void {symbol}_f{e:x}(CPU64 *);' for e in sorted(bodies)]
+    rows = relocation_rows(layout)
+    tables = [f'uint64_t {symbol}_base;', 'static const RT64Function functions_[] = {']
+    tables += [f'    {{{e:#x}, {symbol}_f{e:x}}},' for e in sorted(bodies)] or ['    {0, 0},']
+    tables.append('};')
+    tables.append('static const RT64Reloc relocs_[] = {')
+    tables += [f'    {{{o:#x}, {k}, {i}, {a}ll}},' for o, k, i, a in rows] or ['    {0, 0, 0, 0},']
+    tables.append('};')
+    tables.append('static const char *const imports_[] = {')
+    tables += [f'    {json.dumps(i["name"])},' for i in layout['imports']] or ['    "",']
+    tables.append('};')
+    tables.append('static const RT64Export exports_[] = {')
+    tables += [f'    {{{json.dumps(n)}, {v:#x}}},' for n, v in layout['exports'].items()] or ['    {"", 0},']
+    tables.append('};')
+    tables.append(f'const RT64Module {symbol} = {{{json.dumps(layout["name"])}, {json.dumps(layout["image"] or "")}, '
+                  f'{layout["size"]:#x}, &{symbol}_base, functions_, {len(bodies)}, relocs_, {len(rows)}, '
+                  f'imports_, {len(layout["imports"])}, exports_, {len(layout["exports"])}}};')
+    ordered = [rename(bodies[e]) for e in sorted(bodies)]
+    if shards <= 1:
+        return {f'{symbol}.c': '\n'.join(header + ordered + tables) + '\n'}
+    files = {f'{symbol}.h': '#pragma once\n' + '\n'.join(header) + '\n'}
+    include = f'#include "{symbol}.h"'
+    target = sum(len(b) for b in ordered) / shards + 1
+    group, size, index = [], 0, 0
+    for body in ordered:
+        group.append(body)
+        size += len(body)
+        if size >= target:
+            files[f'{symbol}_{index:03}.c'] = include + '\n' + '\n'.join(group) + '\n'
+            group, size, index = [], 0, index + 1
+    if group:
+        files[f'{symbol}_{index:03}.c'] = include + '\n' + '\n'.join(group) + '\n'
+    files[f'{symbol}_tables.c'] = include + '\n' + '\n'.join(tables) + '\n'
+    return files
+
+
+def generate(layout, roots, symbol, objdump='objdump', every=False):
+    """One C file for `roots` and their callees (or every entry point).
+    Returns (source, report)."""
+    bodies, report = lift_module(layout, roots, objdump, every)
+    return emit(layout, bodies, symbol)[f'{symbol}.c'], report
 
 
 def resolve_roots(layout, specs):
@@ -878,7 +1182,9 @@ def resolve_roots(layout, specs):
 def main():
     ap = argparse.ArgumentParser(description='x86-64 -> C translator (first slice)')
     ap.add_argument('--layout', required=True, help='<name>.layout.json from tools/elfprep64.py')
-    ap.add_argument('--out', help='generated C file')
+    ap.add_argument('--out', help='generated C file (one file)')
+    ap.add_argument('--out-dir', help='directory for a split module (with --shards)')
+    ap.add_argument('--shards', type=int, default=1, help='number of C files for the functions (--out-dir)')
     ap.add_argument('--symbol', default='rt64_module', help='name of the RT64Module in the generated C')
     ap.add_argument('--all', action='store_true', help='every known entry point, not only the roots')
     ap.add_argument('--report', help='coverage report (JSON)')
@@ -887,10 +1193,23 @@ def main():
     a = ap.parse_args()
     with open(a.layout) as f:
         layout = json.load(f)
-    source, report = generate(layout, resolve_roots(layout, a.roots), a.symbol, a.objdump, a.all)
+    bodies, report = lift_module(layout, resolve_roots(layout, a.roots), a.objdump, a.all, sweep=bool(a.report))
     if a.out:
         with open(a.out, 'w') as f:
-            f.write(source)
+            f.write(emit(layout, bodies, a.symbol)[f'{a.symbol}.c'])
+    if a.out_dir:
+        os.makedirs(a.out_dir, exist_ok=True)
+        for name, text in emit(layout, bodies, a.symbol, max(2, a.shards)).items():
+            path = os.path.join(a.out_dir, name)
+            # Unchanged files keep their date, so object caches stay valid.
+            try:
+                with open(path) as f:
+                    if f.read() == text:
+                        continue
+            except OSError:
+                pass
+            with open(path, 'w') as f:
+                f.write(text)
     if a.report:
         with open(a.report, 'w') as f:
             json.dump(report, f, indent=1)
@@ -898,9 +1217,12 @@ def main():
     print(f'{layout["name"]}: {report["functions"]} functions ({report["functions_complete"]} complete), '
           f'{report["instructions"]} instructions, {report["handled"]} handled ({share:.2f} %), '
           f'{report["table_jumps"]} jump tables, {report["dispatch_jumps"]} indirect jumps', file=sys.stderr)
-    sweep_share = 100.0 * (report['sweep_instructions'] - report['sweep_unsupported']) / max(1, report['sweep_instructions'])
-    print(f'  linear sweep of the code: {report["sweep_instructions"]} instructions, '
-          f'{report["sweep_unsupported"]} not handled ({sweep_share:.2f} % handled)', file=sys.stderr)
+    if a.report:
+        sweep_share = 100.0 * (report['sweep_instructions'] - report['sweep_unsupported']) / max(1, report['sweep_instructions'])
+        print(f'  linear sweep of the code: {report["sweep_instructions"]} instructions, '
+              f'{report["sweep_unsupported"]} not handled ({sweep_share:.2f} % handled)', file=sys.stderr)
+    print(f'  flags read after a call: {report["flags_read_after_call"]} sites, '
+          f'live at entry: {report["flags_live_at_entry"]} functions', file=sys.stderr)
     for name, count in report['top_missing'][:15]:
         print(f'  {count:6}  {name}', file=sys.stderr)
 

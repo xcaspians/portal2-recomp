@@ -65,7 +65,7 @@ class ControlFlow(unittest.TestCase):
 
     def test_jump_to_another_entry_is_a_tail_call(self):
         code, successors, callees = tr('jmp', '0x3000', module=FakeModule(entries=[0x3000]))
-        self.assertEqual((code, successors), ('c->flags = f; fn_3000(c); return;', []))
+        self.assertEqual((code, successors), (lift64.SAVE_F + ' fn_3000(c); return;', []))
         code, successors, _ = tr('jne', '0x1010')
         self.assertEqual(successors, [0x1010, 0x1004])
 
@@ -86,7 +86,23 @@ class ControlFlow(unittest.TestCase):
 
     def test_unknown_instruction_is_reported(self):
         with self.assertRaises(lift64.Unsupported):
-            tr('vfmadd231ps', 'ymm0, ymm1, ymm2')
+            tr('fbstp', 'tbyte ptr [rax]')
+
+    def test_privileged_and_invalid_opcodes_fault_like_on_linux(self):
+        for op, args in (('out', 'dx, al'), ('sti', ''), ('(bad)', ''), ('ff', '')):
+            code, successors, _ = tr(op, args)
+            self.assertIn('rt64_trap', code)
+            self.assertEqual(successors, [])
+
+    def test_loop(self):
+        code, successors, _ = tr('loopne', '0x1000', size=2)
+        self.assertIn('--c->r[RCX]', code)
+        self.assertEqual(successors, [0x1000, 0x1002])
+
+    def test_extensions_cpuid_does_not_report_trap(self):
+        code, successors, _ = tr('vfmadd231ps', 'ymm0, ymm1, ymm2')
+        self.assertIn('not reported by CPUID', code)
+        self.assertEqual(successors, [])
 
 
 class Coverage(unittest.TestCase):
@@ -102,6 +118,29 @@ class Coverage(unittest.TestCase):
     def test_form(self):
         self.assertEqual(lift64.form('movsd', 'xmm0, qword ptr [rip + 0x10]'), 'movsd xmm,m64')
         self.assertEqual(lift64.form('shl', 'rax, 0x3'), 'shl r64,imm')
+
+
+class Flags(unittest.TestCase):
+    def test_effects(self):
+        self.assertEqual(lift64.flag_effect('jne', '0x10'), (lift64.ZF, 0))
+        self.assertEqual(lift64.flag_effect('adc', 'rax, rbx'), (lift64.CF, lift64.ALL_FLAGS))
+        self.assertEqual(lift64.flag_effect('inc', 'eax')[1] & lift64.CF, 0)     # INC keeps CF
+        self.assertEqual(lift64.flag_effect('shl', 'rax, cl'), (0, 0))           # count may be 0
+        self.assertEqual(lift64.flag_effect('shl', 'rax, 0x3')[1] & lift64.CF, lift64.CF)
+
+    def test_hand_over_dropped_unless_flags_are_read_after_the_call(self):
+        insns = {0x10: (0x15, 'call', '0x100'), 0x15: (0x18, 'cmp', 'eax, 0x1'), 0x18: (0x1a, 'je', '0x10'),
+                 0x1a: (0x1b, 'ret', '')}
+        body, _ = lift64.lift_function(0x10, FakeModule(insns=insns), keep_flags=False)
+        self.assertNotIn('c->flags', body)
+        self.assertIn('FL64 f = (FL64)', body)                                   # nothing live at entry
+        insns[0x15] = (0x18, 'mov', 'ecx, 0x1')                                  # JE now reads the callee's flags
+        stats = lift64.new_stats()
+        body, _ = lift64.lift_function(0x10, FakeModule(insns=insns), stats, keep_flags=False)
+        self.assertIn(lift64.LOAD_F, body)
+        self.assertEqual(stats['read_after_call'], [0x10])
+        body, _ = lift64.lift_function(0x10, FakeModule(insns=insns), keep_flags=True)
+        self.assertIn('FL64 f = c->flags', body)
 
 
 if __name__ == '__main__':
