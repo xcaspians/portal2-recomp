@@ -118,8 +118,9 @@ To jump straight to a chamber from Terminal with Steam running:
 
 ## Known limits
 
-- **macOS only**: iOS support (`--ios`) is not enabled yet (`ios=False` in
-  `tools/games.py`).
+- **iOS: phase 1** ([ios.md](ios.md#portal-stories-mel-phase-1),
+  [fork/MEL_IOS_PLAN.md](fork/MEL_IOS_PLAN.md)): the app builds for the
+  simulator and the device; not played on a device yet.
 - **Playthrough coverage**: a full playthrough, later chapters, Steam
   achievements, and extended gameplay performance have not been tested yet.
 - **Indirect call roots**: a crash ending with `target not recompiled` means an
