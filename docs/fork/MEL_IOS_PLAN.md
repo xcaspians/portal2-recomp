@@ -48,7 +48,7 @@ free-space check first). It copies:
 | Linux binaries (depot 317404) | 90 MB | `Documents/linux` |
 | prepared modules (with i386 `libstdc++` and `libgcc_s`) | 71 MB | `Documents/prep` |
 
-About **8.8 GB** in all, plus 1 GB kept free.
+About **9.3 GB** in all (8.7 GiB, measured by `mel data push --dry-run`), plus 1 GB kept free.
 
 **Trimming:** almost nothing is safe to drop.
 
