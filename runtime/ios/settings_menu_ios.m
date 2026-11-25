@@ -229,12 +229,13 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         [stack.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor],
     ]];
 
-    // Portal 2 only: iCloud saves, Maps & Mods and Community Maps (its maps
-    // folders and Workshop app). Portal Stories: Mel has the rest.
+    // Portal 2 only: Maps & Mods and Community Maps (its maps folders and
+    // Workshop app). iCloud saves where the game has them (icloud_saves_ios.m).
     BOOL portal2 = !strcmp(rt_ios_current_game()->name, "portal2");
     for (int i = 0; i < rt_menu_item_count; ++i) {
         const rt_menu_item *it = &rt_menu_items[i];
-        if (!portal2 && !strcmp(it->key, "P2ICloudSaves")) continue;
+        if (!rt_ios_icloud_supported() && !strcmp(it->key, "P2ICloudSaves")) continue;
+        if (!rt_menu_item_for_game(it, rt_ios_current_game()->back_taps)) continue;
         if (it->section) [self addSection:@(it->section)];
         [self addSettingRow:it];
         if (!strcmp(it->key, "P2MaxFPS")) [self addRecommendedRow];
