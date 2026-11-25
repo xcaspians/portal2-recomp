@@ -65,7 +65,7 @@ static long long data_size(const rt_ios_game *g) {
     rt_picker_game p = picker_game(g);
     char rel[256];
     long long total = 0;
-    for (int i = 0; rt_picker_removable(&p, i, rel, sizeof(rel)); ++i)
+    for (int i = 0; rt_picker_owned(&p, i, rel, sizeof(rel)); ++i)
         total += folder_size([documents() stringByAppendingPathComponent:@(rel)]);
     return total;
 }

@@ -68,16 +68,22 @@ class IosPaths(unittest.TestCase):
         self.assertEqual((alone['GAME_ROOT'], alone['LINUX_ROOT']), ('', ''))
         with no_bundle_env():
             p1 = ios_game.values('portal1', 'device', THREE)
+        # Portal 1 lives in the Portal app (Portal 2's ios_guests): that app, its
+        # ID, and its own data in Documents/portal1.
         self.assertEqual((p1['GAME_ROOT'], p1['LINUX_ROOT'], p1['PREP'], p1['IOS_DIR'], p1['IOS_APP'], p1['MOD']),
                          ('/p1', '/p1-linux', 'build/portal1/prep', 'build/portal1/ios/device',
-                          'build/portal1/ios/device/Portal.app', 'portal'))
-        self.assertEqual(p1['APP_ID'], 'local.portal1recomp.team')
+                          'build/ios/device/Portal2.app', 'portal'))
+        self.assertEqual((p1['APP_ID'], p1['HOST'], p1['DATA_ROOT']),
+                         ('local.portal2recomp.team', 'portal2', 'Documents/portal1'))
+        self.assertIn('portal1', games.GAMES['portal2']['ios_guests'])
         self.assertEqual(p1['IOS_DATA'].split(), list(games.GAMES['portal1']['ios_data']))
         # Portal 1 not set up: empty folders, never Portal 2's.
         with no_bundle_env():
             alone = ios_game.values('portal1', 'sim', {'game_root': '/p2', 'linux_root': '/p2-linux'})
-        self.assertEqual((alone['GAME_ROOT'], alone['LINUX_ROOT'], alone['APP_ID']),
-                         ('', '', 'com.example.portal1-recomp'))
+        self.assertEqual((alone['GAME_ROOT'], alone['LINUX_ROOT']), ('', ''))
+        with no_bundle_env():   # its own former app (P2_STANDALONE=1) keeps its own ID
+            own = ios_game.values('portal1', 'sim', THREE, standalone=True)
+        self.assertEqual((own['APP_ID'], own['DATA_ROOT']), ('local.portal1recomp.team', 'Documents'))
 
 
 class BundleIds(unittest.TestCase):
@@ -114,6 +120,16 @@ class LaunchArgs(unittest.TestCase):
             p2 = localconfig.game_config(config, 'portal2')
             self.assertEqual(build_ios.launch_args(games.profile(p2), p2)[-4:],
                              ['-novid', '-fullscreen', '-language', 'english'])
+
+    def test_hosted_game_names_its_own_program(self):
+        # Portal 1 in the Portal app: the app is built as portal2_linux, Portal
+        # is hl2_linux (without it the launch stopped on Portal 2's data check).
+        p2, p1, mel = (dict(games.GAMES[g], name=g) for g in ('portal2', 'portal1', 'mel'))
+        with no_bundle_env():
+            args = build_ios.launch_args(p1, {}, host=p2)
+            self.assertEqual(args[:4], ['--program', 'hl2_linux', '--', '-game'])
+            self.assertEqual(build_ios.launch_args(mel, {}, host=p2)[:2], ['--', '-game'])   # same program
+            self.assertEqual(build_ios.launch_args(p1, {})[:2], ['--', '-game'])   # its own app
 
 
 if __name__ == '__main__':

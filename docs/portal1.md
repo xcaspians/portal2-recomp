@@ -152,3 +152,14 @@ found` (the voice chat codec, missing from the reporter's depot 404; a
 single-player game does not need it) and one function not compiled in
 `mssmixer.mix` (an indexed jump the lifter does not decode; the same message
 appears for Half-Life 2, where audio works too).
+
+## In the Portal app on iPhone and iPad (fork, 25 November 2026)
+
+Portal now lives in the one Portal app, next to Portal 2 and Portal Stories:
+Mel: the game picker offers it, with Portal 2's touch layout (both portal
+buttons), the in-game settings menu and controller handling. Its data goes to
+`Documents/portal1` (`tools/ios_device.sh --game portal1 data`, about 4.4 GB
+with the Linux depot), its saves to `Documents/portal-userdata`. The app is
+built as `portal2_linux`, so `launch-portal1.args` starts with
+`--program hl2_linux` (`tools/build_ios.py`). On the M5 iPad Pro the first
+chamber runs at 120 fps, about 1.4 GB.

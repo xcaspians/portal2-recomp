@@ -154,7 +154,8 @@ def main():
         cover(app, config, game)
         for guest, guest_config in guests:
             cover(app, guest_config, guest)
-            (app / f'launch-{guest["name"]}.args').write_text(''.join(f'{w}\n' for w in launch_args(guest, guest_config)))
+            (app / f'launch-{guest["name"]}.args').write_text(
+                ''.join(f'{w}\n' for w in launch_args(guest, guest_config, host=game)))
     if args.target == 'sim':
         subprocess.run(['codesign', '-s', '-', '-f', str(app)], check=True)
     else:
@@ -280,14 +281,16 @@ def fork_version(root=ROOT):
     return f'{FORK_VERSION} ({commit}{"+" if dirty else ""})'
 
 
-def launch_args(game, config):
+def launch_args(game, config, host=None):
     """Arguments of a launch from the home screen (launch.args; the data
     folders are added by ios/main_ios.c). The language comes from
     tools/language.py at build time, for this game's config (its folder and
     appmanifest): to change it, set "language" in config/local.json and
-    rebuild."""
+    rebuild. A hosted game whose program isn't the app's (Portal 1's hl2_linux
+    in the Portal app, built as portal2_linux) names it: --program."""
     words = games.forced_args(game, ['-game', game['mod'], '-novid', '-fullscreen'])   # L4D2: offline, always
-    return ['--', *words, *language.language_args(config, words)]
+    program = ['--program', game['program']] if host and game['program'] != host['program'] else []
+    return [*program, '--', *words, *language.language_args(config, words)]
 
 
 def d3d9metal_library(given, target, config):

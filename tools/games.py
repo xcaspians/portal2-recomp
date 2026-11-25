@@ -52,11 +52,12 @@ GAMES = {
         # Folders of the game copy that tools/ios_device.sh data copies to the
         # device (Documents/game), without the soundtrack or sdk_content.
         ios_data=('bin', 'platform', 'update', 'portal2', 'portal2_dlc1', 'portal2_dlc2'),
-        # Games on Portal 2's engine that live in this app too (game picker at
-        # launch, runtime/ios/game_picker_ios.m), each with its data in
+        # The other Portal games live in this app too (game picker at launch,
+        # runtime/ios/game_picker_ios.m): Mel on its own Portal 2 engine, Portal
+        # on Source 2013 like Half-Life 2. Each has its data in
         # Documents/<name> and its own saves and settings: one app ID, one
         # profile, Portal 2's increased memory limit for all of them.
-        ios_guests=('mel',),
+        ios_guests=('mel', 'portal1'),
     ),
     # Half-Life 2 since the 20th anniversary update (depot 224): episodes and
     # Lost Coast live in the hl2_complete mod; hl2/ and hl2mp/ hold other
@@ -123,7 +124,8 @@ GAMES = {
         binary='build/portal1/portal1-native',
         executable='portal1-native',
         ios_dir='build/portal1/ios',
-        ios=True,
+        ios=True,   # in the Portal app (portal2's ios_guests); a standalone build still works
+        ios_host='portal2',
         ios_name='Portal',
         ios_executable='portal',
         ios_app='Portal.app',
