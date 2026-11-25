@@ -1,6 +1,7 @@
 // Réglages iOS (runtime/ios/settings.c) : traduction en variables P2_*,
 // priorité des variables déjà posées, concordance avec ios/Settings.bundle.
 #include "checks.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -219,7 +220,9 @@ RT_CHECK(ios_menu_steps_and_display) {
     assert(!strcmp(rt_menu_step(size, "0.75", -1, out, sizeof(out)), "0.75"));
     rt_menu_display(size, "1.25", out, sizeof(out)); assert(!strcmp(out, "125 %"));
     const rt_menu_item *fps = rt_menu_item_named("P2MaxFPS");
-    assert(fps->flags & RT_MENU_RELAUNCH_ON_METAL);
+    assert(!(fps->flags & RT_MENU_RELAUNCH_ON_METAL));   // applies at once, Metal too (round 11)
+    const rt_menu_item *counter = rt_menu_item_named("P2ShowFPS");
+    assert(counter && counter->kind == RT_MENU_TOGGLE && !strcmp(counter->def, "0"));   // off by default
     assert(!strcmp(rt_menu_step(fps, "auto", -1, out, sizeof(out)), "120"));
     assert(!strcmp(rt_menu_step(fps, "auto", 1, out, sizeof(out)), "auto"));  // stops at the end
     assert(!strcmp(rt_menu_step(fps, "30", -1, out, sizeof(out)), "30"));
@@ -279,4 +282,37 @@ RT_CHECK(ios_menu_items_per_game) {
     const rt_menu_item *gyro = rt_menu_item_named("P2Gyro");
     assert(!strcmp(rt_menu_item_default(gyro, "hl2"), "1") && !strcmp(rt_menu_item_default(gyro, "portal2"), "0"));
     assert(!strcmp(rt_menu_item_default(rt_menu_item_named("P2TouchSize"), "hl2"), "1"));
+}
+
+// Frames per second: Auto asks the display for 120 on a 120 Hz screen and 60
+// on a 60 Hz one; the setting applies live (round 11).
+RT_CHECK(ios_frame_rate_auto_range_and_live_pacing) {
+    float lo, hi, pref;
+    rt_ios_display_range(rt_ios_fps_choice("auto", 120), 120, &lo, &hi, &pref);
+    assert(lo == 120 && hi == 120 && pref == 120);
+    rt_ios_display_range(rt_ios_fps_choice("auto", 60), 60, &lo, &hi, &pref);
+    assert(lo == 60 && hi == 60 && pref == 60);
+    rt_ios_display_range(rt_ios_fps_choice("120", 60), 60, &lo, &hi, &pref);   // 120 on a 60 Hz screen: 60
+    assert(pref == 60);
+    rt_ios_display_range(60, 120, &lo, &hi, &pref); assert(pref == 60);
+    rt_ios_display_range(40, 120, &lo, &hi, &pref); assert(pref == 120);       // 40: every third refresh
+    rt_ios_display_range(30, 120, &lo, &hi, &pref); assert(pref == 30);
+    // Metal starts at the screen's maximum, so Auto can be chosen later without a restart.
+    assert(rt_ios_metal_launch_cap(120) == 120 && rt_ios_metal_launch_cap(60) == 60);
+    // Pacing at 60 under a 120 cap: a game drawing every 5 ms presents every 16.7 ms.
+    double last = 0, t = 100, prev = 0;
+    int frames = 0;
+    for (int i = 0; i < 200; ++i) {
+        double until = rt_ios_pace(t, &last, 60, 120);
+        if (until > t) t = until;
+        if (prev > 0) assert(t - prev > 1.0 / 60 - 1e-9);
+        prev = t; ++frames;
+        t += 0.005;
+    }
+    assert(fabs((t - 100) / frames - 1.0 / 60) < 0.001);
+    // At or over Metal's cap: nothing to do (Metal paces itself).
+    last = 5; assert(rt_ios_pace(200, &last, 120, 120) == 0 && last == 0);
+    // A long hitch: no burst of frames to catch up.
+    last = 0; rt_ios_pace(300, &last, 30, 120);
+    assert(rt_ios_pace(302, &last, 30, 120) == 0 && rt_ios_pace(302.001, &last, 30, 120) > 302.03);
 }

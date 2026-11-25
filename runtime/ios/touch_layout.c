@@ -133,6 +133,15 @@ int rt_touch_custom_parse(const char *text, rt_touch_custom_layout *out) {
     return found;
 }
 
+void rt_touch_fps_box(rt_ios_layout layout, double area_w, int chars, int lines, double pixel, double *x, double *y,
+                      double *w, double *h) {
+    double margin = 2 * pixel;
+    *w = (chars * 6 - 1) * pixel + 2 * margin;
+    *h = (lines * 9 - 2) * pixel + 2 * margin;
+    *y = 8;
+    *x = layout == RT_IOS_LAYOUT_HL2 ? 8 : round((area_w - *w) / 2);
+}
+
 void rt_touch_custom_merge(rt_touch_custom_layout *stored, const rt_touch_custom_layout *edited, rt_ios_layout layout) {
     int count = 0;
     const rt_touch_button *b = rt_touch_layout(layout, &count);

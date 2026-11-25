@@ -17,6 +17,7 @@
 #include "gl4esinit.h"
 #include "lifecycle_ios.h"
 #include "power_ios.h"
+#include "settings.h"
 
 void gl4es_pre_swap(void);
 void gl4es_post_swap(void);
@@ -766,15 +767,22 @@ void *rt_ios_gl_share_group(void *context) {
 // soient l'antialiasing, l'échelle et la synchro du jeu). Un CADisplayLink
 // qui demande jusqu'à 120 Hz fait monter la fréquence de l'écran ; il ne fait
 // rien d'autre. Avec CADisableMinimumFrameDurationOnPhone (Info.plist).
-// Désactivé par défaut : pour jouer, 60 i/s réguliers (avec MSAA) valent mieux
-// que des sauts entre 60 et 120 ; P2_IOS_MAX_FPS=120 le réactive. Un plafond
-// qui ne divise pas 60 (40) le demande aussi : à 120 Hz, 40 i/s tombent
-// toutes les trois rafraîchissements, à 60 Hz ils alterneraient 1 et 2.
+// The link asks for the cap itself (min = max = preferred: 60 by default, 120
+// for Auto or 120), and follows it live; a cap that doesn't divide 60 (40)
+// asks for 120: à 120 Hz, 40 i/s tombent toutes les trois rafraîchissements,
+// à 60 Hz ils alterneraient 1 et 2.
 @interface P2FrameRate : NSObject
 - (void)tick:(CADisplayLink *)link;
+- (void)apply:(id)unused;
 @end
+static CADisplayLink *frame_link;
+static P2FrameRate *frame_target;
+static NSThread *frame_thread;
+static _Atomic double display_hz;   // the display's current refresh rate, as the link sees it
 @implementation P2FrameRate
 - (void)tick:(CADisplayLink *)link {
+    double interval = link.targetTimestamp - link.timestamp;
+    if (interval > 0) display_hz = 1 / interval;
     // Diagnostic : fréquence réelle des rappels (donc de l'écran), une fois.
     static CFTimeInterval first; static int count, reported;
     if (reported) return;
@@ -785,30 +793,45 @@ void *rt_ios_gl_share_group(void *context) {
                 NSProcessInfo.processInfo.lowPowerModeEnabled ? "active" : "inactive");
     }
 }
+// On the link's own thread: the range for the cap now (settings.c rt_ios_display_range).
+- (void)apply:(id)unused {
+    (void)unused;
+    float lo, hi, pref;
+    rt_ios_display_range(rt_ios_max_fps(), (int)UIScreen.mainScreen.maximumFramesPerSecond, &lo, &hi, &pref);
+    frame_link.preferredFrameRateRange = CAFrameRateRangeMake(lo, hi, pref);   // avec un minimum de 60, iOS restait à 60
+    fprintf(stderr, "[gl-ios] fréquence d'affichage demandée : %.0f Hz\n", pref);
+}
 @end
-// Aussi pour le rendu Metal (metal_ios.m).
+// The display's current refresh rate (Hz): measured by the display link, else the screen's maximum.
+double rt_ios_display_hz(void) {
+    double hz = display_hz;
+    return hz > 0 ? hz : (double)UIScreen.mainScreen.maximumFramesPerSecond;
+}
+// Aussi pour le rendu Metal (metal_ios.m). On a ProMotion screen the link
+// always runs, so a new cap (Frames per second, power saving) applies at once
+// (rt_ios_frame_rate_changed); a 60 Hz screen has nothing to choose.
 void rt_ios_request_frame_rate(void) {
-    static CADisplayLink *link;
-    if (link) return;
+    if (frame_link) return;
     const char *renderer = getenv("P2_RENDERER");
     rt_ios_power_watch(renderer && !strcmp(renderer, "d3d9"));   // économie d'énergie suivie (power_ios.m)
-    float screen = (float)UIScreen.mainScreen.maximumFramesPerSecond, cap = (float)rt_ios_max_fps();
-    float wanted = fminf(cap, screen);
-    if (wanted < 60 && fmodf(60, wanted) != 0 && screen >= 120) wanted = 120;   // 40 i/s : écran à 120 Hz
-    if (wanted <= 60) return;
-    link = [CADisplayLink displayLinkWithTarget:[P2FrameRate new] selector:@selector(tick:)];
-    link.preferredFrameRateRange = CAFrameRateRangeMake(wanted, wanted, wanted);   // avec un minimum de 60, iOS restait à 60
+    if (UIScreen.mainScreen.maximumFramesPerSecond < 120) return;
+    frame_target = [P2FrameRate new];
+    frame_link = [CADisplayLink displayLinkWithTarget:frame_target selector:@selector(tick:)];
+    [frame_target apply:nil];
     // Sur son propre thread : la boucle du thread principal n'est servie que
     // quand le jeu lit ses événements (~20 fois/s mesuré), et iOS ignore une
     // demande dont les rappels ne suivent pas (écran resté à 60 Hz hors toucher).
-    NSThread *thread = [[NSThread alloc] initWithBlock:^{
-        [link addToRunLoop:NSRunLoop.currentRunLoop forMode:NSRunLoopCommonModes];
+    frame_thread = [[NSThread alloc] initWithBlock:^{
+        [frame_link addToRunLoop:NSRunLoop.currentRunLoop forMode:NSRunLoopCommonModes];
         for (;;) [NSRunLoop.currentRunLoop runMode:NSDefaultRunLoopMode beforeDate:NSDate.distantFuture];
     }];
-    thread.name = @"P2FrameRate";
-    thread.qualityOfService = NSQualityOfServiceUserInteractive;
-    [thread start];
-    fprintf(stderr, "[gl-ios] fréquence d'affichage demandée : jusqu'à %.0f Hz\n", wanted);
+    frame_thread.name = @"P2FrameRate";
+    frame_thread.qualityOfService = NSQualityOfServiceUserInteractive;
+    [frame_thread start];
+}
+void rt_ios_frame_rate_changed(void) {
+    if (!frame_link || !frame_thread) return;
+    [frame_target performSelector:@selector(apply:) onThread:frame_thread withObject:nil waitUntilDone:NO];
 }
 
 float rt_ios_render_scale(void);                     // sdl_ios.m
