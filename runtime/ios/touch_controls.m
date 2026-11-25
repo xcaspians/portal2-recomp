@@ -126,6 +126,20 @@ static const CGFloat kButtonSize = 54;   // boutons : touch_layout.c
 static const float kStickLook = 90;      // comptes de souris par image, stick à fond (≈ 360°/s à la sensibilité 3 du jeu)
 static const float kTrackpadLook = 3.5f; // comptes de souris par point de glissement
 static NSString *const kTrackpadKey = @"P2TouchTrackpad";
+// Edit button layout (touch_editor_ios.m): the stored layout of this device
+// kind (phone or iPad) and game, or NULL.
+NSString *rt_ios_touch_layout_key(void) {
+    char own[160];
+    const char *base = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad ? "P2TouchLayout.pad"
+                                                                                           : "P2TouchLayout.phone";
+    return @(rt_ios_pref_key(base, own, sizeof(own)));
+}
+const char *rt_ios_touch_layout_text(char *out, size_t size) {
+    NSString *v = [NSUserDefaults.standardUserDefaults stringForKey:rt_ios_touch_layout_key()];
+    if (!v) return NULL;
+    snprintf(out, size, "%s", v.UTF8String);
+    return out;
+}
 // The running game's preference key (game_ios.c: a hosted game's under "<game>.").
 static NSString *game_key(NSString *key) {
     char own[160];
@@ -634,6 +648,9 @@ static UIImage *icon_image(NSString *symbol, CGFloat point_size) {
 - (int)buttons:(Button *)b {
     CGRect a = self.area;
     palette_init();
+    rt_touch_custom_layout custom;
+    char text[1024];
+    rt_touch_custom_parse(rt_ios_touch_layout_text(text, sizeof(text)), &custom);
     int count;
     const rt_touch_button *layout = rt_touch_layout(rt_ios_current_game()->layout, &count);
     int n = 0;
@@ -641,14 +658,16 @@ static UIImage *icon_image(NSString *symbol, CGFloat point_size) {
         const rt_touch_button *t = &layout[i];
         if ((t->flags & RT_TOUCH_PORTAL) && !portal_buttons()) continue;
         if ((t->flags & RT_TOUCH_DATASET) && !rt_ios_backtap_dataset_on()) continue;
-        double cx, cy;
-        rt_touch_place_scaled(t, sizeScale, CGRectGetMinX(a), CGRectGetMinY(a), a.size.width, a.size.height, &cx, &cy);
+        double cx, cy, size;
+        // The player's own place and size (Edit button layout), else the built-in one.
+        rt_touch_place_custom(t, &custom.b[t->action], sizeScale, CGRectGetMinX(a), CGRectGetMinY(a), a.size.width,
+                              a.size.height, &cx, &cy, &size);
         UIColor *color = t->color == RT_TOUCH_BLUE ? blue : t->color == RT_TOUCH_ORANGE ? orange
                        : t->color == RT_TOUCH_RED ? red : t->color == RT_TOUCH_FLAG ? flag_red : ink;
         // Mode de la caméra : l'icône montre le mode actuel.
         NSString *symbol = t->action == RT_TOUCH_LOOK_MODE ? (trackpad ? @"hand.draw.fill" : @"r.joystick.fill")
                          : t->symbol ? @(t->symbol) : nil;
-        b[n++] = (Button){t->action, symbol, color, CGPointMake(cx, cy), t->size * sizeScale, t->flags};
+        b[n++] = (Button){t->action, symbol, color, CGPointMake(cx, cy), size, t->flags};
     }
     return n;
 }
