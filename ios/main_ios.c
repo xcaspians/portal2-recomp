@@ -18,6 +18,7 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "device_ios.h"
 #include "game_ios.h"
 #include "metal_ios.h"
 #include "settings.h"
@@ -74,6 +75,16 @@ static void exclude_from_backup(const char *documents) {
 }
 
 int main(int argc, char **argv) {
+    // tools/ios_device.sh (space, workshop push, mel data push) : place libre,
+    // modèle et mémoire, écrits dans Documents/device-report.txt, puis sortie
+    // sans démarrer le jeu (devicectl ne donne que la capacité totale).
+    if (getenv("P2_DEVICE_REPORT") && getenv("HOME")) {
+        char documents[PATH_MAX], report[PATH_MAX];
+        snprintf(documents, sizeof(documents), "%s/Documents", getenv("HOME"));
+        mkdir(documents, 0755);
+        snprintf(report, sizeof(report), "%s/device-report.txt", documents);
+        return rt_ios_device_report_write(report, documents) ? 0 : 1;
+    }
     // Réglages de l'app Réglages d'iOS : avant tout le reste (P2Log pose P2_LOG_FILE).
     char settings[1024];
     int applied = rt_ios_settings_load(settings, sizeof(settings));
