@@ -37,7 +37,7 @@ static const struct { double x, y, w, h; } areas[] = {
     {0, 0, 667, 375}, {59, 0, 932 - 118, 430 - 21}, {0, 0, 1194, 834 - 20}};
 
 RT_CHECK(ios_touch_layout_fits_the_screen) {
-    for (int layout = RT_IOS_LAYOUT_PORTAL2; layout <= RT_IOS_LAYOUT_HL2; ++layout) {
+    for (int layout = RT_IOS_LAYOUT_PORTAL2; layout < RT_IOS_LAYOUT_COUNT; ++layout) {
         int n;
         const rt_touch_button *b = rt_touch_layout((rt_ios_layout)layout, &n);
         assert(n > 0 && n <= 16);   // MAX_BUTTONS de touch_controls.m
@@ -54,11 +54,11 @@ RT_CHECK(ios_touch_layout_fits_the_screen) {
                 rt_touch_place(&b[i], x, y, w, h, &cx, &cy);
                 assert(cx - r >= x - .5 && cx + r <= x + w + .5 && cy - r >= y - .5 && cy + r <= y + h + .5);
                 assert(!(cx < corner_w && cy < corner_h));
-                if (layout == RT_IOS_LAYOUT_HL2) assert(!(cx - r < corner_w && cy - r < corner_h));   // pas même le bord
+                if (layout != RT_IOS_LAYOUT_PORTAL2) assert(!(cx - r < corner_w && cy - r < corner_h));   // pas même le bord
                 assert(hypot(cx - stick_x, cy - stick_y) > stick_r + r);
                 // HL2 : aucun bouton sur le stick de la caméra au repos (Portal 2 :
                 // le saut et l'accroupi y touchent, disposition d'origine).
-                if (layout == RT_IOS_LAYOUT_HL2) assert(hypot(cx - look_x, cy - stick_y) > stick_r + r);
+                if (layout != RT_IOS_LAYOUT_PORTAL2) assert(hypot(cx - look_x, cy - stick_y) > stick_r + r);
                 for (int j = 0; j < i; ++j) {
                     // Portal 2 sur iPhone SE : le portail bleu de droite touche la
                     // pause (disposition d'origine ; ses boutons ne s'affichent
@@ -172,7 +172,7 @@ RT_CHECK(ios_touch_overlay_hides_on_controller_input) {
 // is unchanged.
 RT_CHECK(ios_touch_layout_scaled_stays_on_screen) {
     static const double scales[] = {.75, 1, 1.25, 1.5};
-    for (int layout = RT_IOS_LAYOUT_PORTAL2; layout <= RT_IOS_LAYOUT_HL2; ++layout) {
+    for (int layout = RT_IOS_LAYOUT_PORTAL2; layout < RT_IOS_LAYOUT_COUNT; ++layout) {
         int n;
         const rt_touch_button *b = rt_touch_layout((rt_ios_layout)layout, &n);
         for (size_t a = 0; a < sizeof(areas) / sizeof(*areas); ++a) {
@@ -299,19 +299,58 @@ RT_CHECK(touch_editor_layouts_save_and_load) {
 // The FPS counter's corner box (three lines: renderer, frames per second,
 // "120 HZ CAP 120") stays clear of every built-in button, on a phone and an iPad.
 RT_CHECK(touch_fps_counter_clear_of_buttons) {
-    static const double areas[][2] = {{852, 393}, {932, 430}, {1133, 744}, {1366, 1024}, {744, 1133}};
+    static const double areas[][2] = {{667, 375}, {852, 393}, {932, 430}, {1133, 744}, {1366, 1024}, {744, 1133}};
+    static const double scales[] = {.75, 1, 1.25, 1.5};   // every Button size, not just the largest
     double bx, by, bw, bh;
-    for (int layout = 0; layout <= RT_IOS_LAYOUT_HL2; ++layout) {
+    for (int layout = 0; layout < RT_IOS_LAYOUT_COUNT; ++layout) {
         int count = 0;
         const rt_touch_button *b = rt_touch_layout((rt_ios_layout)layout, &count);
         for (size_t a = 0; a < sizeof(areas) / sizeof(*areas); ++a)
-            for (int i = 0; i < count; ++i) {
-                rt_touch_fps_box((rt_ios_layout)layout, areas[a][0], 17, 3, 2, &bx, &by, &bw, &bh);
-                double cx, cy, r = b[i].size * 1.5 / 2;   // the largest Button size
-                rt_touch_place_scaled(&b[i], 1.5, 0, 0, areas[a][0], areas[a][1], &cx, &cy);
-                double nx = fmax(bx, fmin(cx, bx + bw)), ny = fmax(by, fmin(cy, by + bh));
-                if (hypot(cx - nx, cy - ny) <= r) fprintf(stderr, "layout %d area %zu button %s at %.0f,%.0f r %.0f\n", layout, a, rt_touch_action_name(b[i].action), cx, cy, r);
-                assert(hypot(cx - nx, cy - ny) > r);
-            }
+            for (size_t k = 0; k < sizeof(scales) / sizeof(*scales); ++k)
+                for (int i = 0; i < count; ++i) {
+                    rt_touch_fps_box((rt_ios_layout)layout, areas[a][0], 17, 3, 2, &bx, &by, &bw, &bh);
+                    double cx, cy, r = b[i].size * scales[k] / 2;
+                    rt_touch_place_scaled(&b[i], scales[k], 0, 0, areas[a][0], areas[a][1], &cx, &cy);
+                    double nx = fmax(bx, fmin(cx, bx + bw)), ny = fmax(by, fmin(cy, by + bh));
+                    if (hypot(cx - nx, cy - ny) <= r)
+                        fprintf(stderr, "layout %d area %zu scale %.2f: %s over the FPS counter\n", layout, a, scales[k],
+                                rt_touch_action_name(b[i].action));
+                    assert(hypot(cx - nx, cy - ny) > r);
+                }
     }
+}
+
+// A controller hides the touch buttons, never the FPS counter (round 11 item 6).
+RT_CHECK(touch_fps_counter_stays_with_a_controller) {
+    assert(rt_touch_fps_visible(1, 60, 1) && rt_touch_fps_visible(1, 60, 0));
+    assert(!rt_touch_fps_visible(0, 60, 0) && !rt_touch_fps_visible(1, 0, 1));
+}
+
+// Left 4 Dead 2's layout: every action the spec asks for, the item slots on keys 1 to 5.
+RT_CHECK(touch_layout_l4d2_has_its_actions) {
+    int n = 0;
+    const rt_touch_button *b = rt_touch_layout(RT_IOS_LAYOUT_L4D2, &n);
+    static const rt_touch_action wanted[] = {RT_TOUCH_FIRE, RT_TOUCH_ALT_FIRE, RT_TOUCH_USE, RT_TOUCH_RELOAD, RT_TOUCH_CROUCH,
+        RT_TOUCH_JUMP, RT_TOUCH_SLOT1, RT_TOUCH_SLOT2, RT_TOUCH_SLOT3, RT_TOUCH_SLOT4, RT_TOUCH_SLOT5, RT_TOUCH_FLASHLIGHT,
+        RT_TOUCH_PAUSE};
+    for (size_t w = 0; w < sizeof(wanted) / sizeof(*wanted); ++w) {
+        int found = 0;
+        for (int i = 0; i < n; ++i) found |= b[i].action == wanted[w];
+        assert(found);
+    }
+    assert(!strcmp(rt_touch_action_name(RT_TOUCH_SLOT5), "slot5"));
+    rt_touch_custom_layout l, back;   // editable like any other button
+    memset(&l, 0, sizeof(l));
+    l.b[RT_TOUCH_SLOT4] = (rt_touch_custom){1, .3f, .2f, 1.2f};
+    char text[256];
+    assert(rt_touch_custom_format(&l, text, sizeof(text)) && rt_touch_custom_parse(text, &back) == 1 && back.b[RT_TOUCH_SLOT4].set);
+}
+
+// Left 4 Dead 2's iOS profile follows tools/games.py: mod, Steam app id, its
+// own saves folder, no back taps, its own layout.
+RT_CHECK(ios_l4d2_profile) {
+    const rt_ios_game *g = rt_ios_game_named("l4d2");
+    assert(!strcmp(g->name, "l4d2") && !strcmp(g->mod, "left4dead2") && !strcmp(g->app_id, "550"));
+    assert(!strcmp(g->userdata, "l4d2-userdata") && !g->back_taps && g->layout == RT_IOS_LAYOUT_L4D2);
+    assert(!strcmp(g->cvar_interface, "VEngineCvar007") && g->find_command_base == 10 && !strcmp(g->data_dir, ""));
 }

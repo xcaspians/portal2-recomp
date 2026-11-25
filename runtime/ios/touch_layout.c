@@ -61,13 +61,37 @@ static const rt_touch_button hl2[] = {
     {RT_TOUCH_LOOK_MODE, "r.joystick.fill", RT_TOUCH_INK, 0, 0, 170, EDGE, SMALL, 0},
 };
 
+// Left 4 Dead 2: Half-Life 2's right-thumb cluster (shoot, shove on the
+// secondary fire, reload, jump, crouch, use), the item slots in a row at the
+// top centre (primary, secondary, throwable, medkit, pills), flashlight and
+// pause at the top right, camera mode at the top left as in Half-Life 2.
+// Crouch is a toggle (a thumb can't hold it and aim); shoot aims while held.
+#define SLOT (SMALL * 1.15f)
+static const rt_touch_button l4d2[] = {
+    {RT_TOUCH_FIRE, "scope", RT_TOUCH_RED, 1, .64f, -62, 0, 72, RT_TOUCH_AIM},
+    {RT_TOUCH_ALT_FIRE, "hand.raised.fill", RT_TOUCH_INK, 1, .60f, -150, 0, 50, RT_TOUCH_AIM},   // shove
+    {RT_TOUCH_RELOAD, "arrow.clockwise", RT_TOUCH_INK, 1, .36f, -110, 0, 46, 0},
+    {RT_TOUCH_JUMP, "arrow.up", RT_TOUCH_INK, 1, .36f, -34, 0, B, 0},
+    {RT_TOUCH_CROUCH, "arrow.down", RT_TOUCH_INK, 1, .88f, -62, 0, 50, RT_TOUCH_TOGGLE},
+    {RT_TOUCH_USE, "hand.point.up.left.fill", RT_TOUCH_INK, 1, .86f, -140, 0, 50, 0},
+    {RT_TOUCH_SLOT1, "1.circle.fill", RT_TOUCH_INK, .5f, 0, -2 * SLOT, EDGE, SMALL, 0},
+    {RT_TOUCH_SLOT2, "2.circle.fill", RT_TOUCH_INK, .5f, 0, -SLOT, EDGE, SMALL, 0},
+    {RT_TOUCH_SLOT3, "flame.fill", RT_TOUCH_INK, .5f, 0, 0, EDGE, SMALL, 0},
+    {RT_TOUCH_SLOT4, "cross.case.fill", RT_TOUCH_INK, .5f, 0, SLOT, EDGE, SMALL, 0},
+    {RT_TOUCH_SLOT5, "pills.fill", RT_TOUCH_INK, .5f, 0, 2 * SLOT, EDGE, SMALL, 0},
+    {RT_TOUCH_FLASHLIGHT, "flashlight.on.fill", RT_TOUCH_INK, 1, 0, -B * 1.35f, EDGE, SMALL, 0},
+    {RT_TOUCH_PAUSE, "pause.fill", RT_TOUCH_INK, 1, 0, -EDGE, EDGE, SMALL, 0},
+    {RT_TOUCH_LOOK_MODE, "r.joystick.fill", RT_TOUCH_INK, 0, 0, 170, EDGE, SMALL, 0},
+};
+
 const rt_touch_button *rt_touch_layout(rt_ios_layout layout, int *count) {
     if (layout == RT_IOS_LAYOUT_HL2) { *count = (int)(sizeof(hl2) / sizeof(*hl2)); return hl2; }
+    if (layout == RT_IOS_LAYOUT_L4D2) { *count = (int)(sizeof(l4d2) / sizeof(*l4d2)); return l4d2; }
     *count = (int)(sizeof(portal2) / sizeof(*portal2));
     return portal2;
 }
 
-double rt_touch_look_rest(rt_ios_layout layout) { return layout == RT_IOS_LAYOUT_HL2 ? .64 : .80; }
+double rt_touch_look_rest(rt_ios_layout layout) { return layout == RT_IOS_LAYOUT_PORTAL2 ? .80 : .64; }
 
 void rt_touch_place(const rt_touch_button *b, double x, double y, double w, double h, double *cx, double *cy) {
     *cx = x + w * b->ax + b->ox;
@@ -106,7 +130,7 @@ void rt_touch_overlay_update(rt_overlay_state *s, rt_overlay_event event, int pa
 // ---- Button layout editor ----
 static const char *const action_names[RT_TOUCH_ACTION_COUNT] = {
     "jump", "crouch", "use", "pause", "fire", "alt_fire", "look_mode", "flag", "reload", "sprint", "flashlight",
-    "weapon_prev", "weapon_next", "quicksave"};
+    "weapon_prev", "weapon_next", "quicksave", "slot1", "slot2", "slot3", "slot4", "slot5"};
 const char *rt_touch_action_name(rt_touch_action a) { return a < RT_TOUCH_ACTION_COUNT ? action_names[a] : "?"; }
 
 int rt_touch_custom_format(const rt_touch_custom_layout *l, char *out, size_t size) {
@@ -125,7 +149,7 @@ int rt_touch_custom_parse(const char *text, rt_touch_custom_layout *out) {
     for (const char *p = text + 2; (p = strchr(p, ' ')); ) {
         ++p;
         char name[32]; float fx, fy, scale;
-        if (sscanf(p, "%31[a-z_]=%f,%f,%f", name, &fx, &fy, &scale) != 4) continue;
+        if (sscanf(p, "%31[a-z_0-9]=%f,%f,%f", name, &fx, &fy, &scale) != 4) continue;
         if (!(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1 && scale >= 0.5f && scale <= 2)) continue;   // damaged entry
         for (int i = 0; i < RT_TOUCH_ACTION_COUNT; ++i)
             if (!strcmp(name, action_names[i])) { out->b[i] = (rt_touch_custom){1, fx, fy, scale}; ++found; }
@@ -138,8 +162,15 @@ void rt_touch_fps_box(rt_ios_layout layout, double area_w, int chars, int lines,
     double margin = 2 * pixel;
     *w = (chars * 6 - 1) * pixel + 2 * margin;
     *h = (lines * 9 - 2) * pixel + 2 * margin;
-    *y = 8;
-    *x = layout == RT_IOS_LAYOUT_HL2 ? 8 : round((area_w - *w) / 2);
+    // Top centre; in Half-Life 2's and Left 4 Dead 2's layouts, under their top
+    // row of small buttons (weapons, item slots) at their largest size.
+    *x = round((area_w - *w) / 2);
+    *y = layout == RT_IOS_LAYOUT_PORTAL2 ? 8 : round(8 + SMALL * 1.5 + 8);
+}
+
+int rt_touch_fps_visible(int setting_on, int fps, int concealed) {
+    (void)concealed;
+    return setting_on && fps > 0;
 }
 
 void rt_touch_custom_merge(rt_touch_custom_layout *stored, const rt_touch_custom_layout *edited, rt_ios_layout layout) {

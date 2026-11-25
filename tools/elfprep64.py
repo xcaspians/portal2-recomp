@@ -138,6 +138,166 @@ class Elf64:
                       if s['flags'] & SHF_EXECINSTR and s['size'] and s['addr'])
 
 
+def _uleb(data, at):
+    value = shift = 0
+    while True:
+        byte = data[at]
+        at += 1
+        value |= (byte & 0x7f) << shift
+        shift += 7
+        if byte < 0x80:
+            return value, at
+
+
+def _sleb(data, at):
+    value = shift = 0
+    while True:
+        byte = data[at]
+        at += 1
+        value |= (byte & 0x7f) << shift
+        shift += 7
+        if byte < 0x80:
+            if byte & 0x40:
+                value -= 1 << shift
+            return value, at
+
+
+def _encoded(data, at, encoding, address):
+    """The value of a DWARF pointer encoding's format (DW_EH_PE_* & 0x0f) at file offset `at`."""
+    del address
+    if encoding == 0xff:
+        return None, at
+    form = encoding & 0x0f
+    if form == 0x00:
+        value, at = struct.unpack_from('<Q', data, at)[0], at + 8
+    elif form == 0x01:
+        value, at = _uleb(data, at)
+    elif form == 0x02:
+        value, at = struct.unpack_from('<H', data, at)[0], at + 2
+    elif form == 0x03:
+        value, at = struct.unpack_from('<I', data, at)[0], at + 4
+    elif form == 0x04:
+        value, at = struct.unpack_from('<Q', data, at)[0], at + 8
+    elif form == 0x09:
+        value, at = _sleb(data, at)
+    elif form == 0x0a:
+        value, at = struct.unpack_from('<h', data, at)[0], at + 2
+    elif form == 0x0b:
+        value, at = struct.unpack_from('<i', data, at)[0], at + 4
+    elif form == 0x0c:
+        value, at = struct.unpack_from('<q', data, at)[0], at + 8
+    else:
+        raise ValueError(f'pointer encoding {encoding:#x}')
+    return value, at
+
+
+def landing_pads(elf):
+    """{FDE start: [landing pads]} from .eh_frame and the LSDAs in
+    .gcc_except_table: where a C++ exception (or a cleanup) continues in
+    each function. Module offsets."""
+    eh = elf.secs.get('.eh_frame')
+    if not eh:
+        return {}
+    data, base_off, base_addr = elf.data, eh['off'], eh['addr']
+    cies, result = {}, {}
+    at = base_off
+    end = base_off + eh['size']
+    while at + 4 <= end:
+        length = struct.unpack_from('<I', data, at)[0]
+        if length == 0:
+            break
+        header = 4
+        if length == 0xffffffff:
+            length = struct.unpack_from('<Q', data, at + 4)[0]
+            header = 12
+        record = at + header
+        next_record = record + length
+        cie_id = struct.unpack_from('<I', data, record)[0]
+        try:
+            if cie_id == 0:
+                p = record + 4
+                version = data[p]
+                p += 1
+                aug_end = data.index(b'\0', p)
+                augmentation = data[p:aug_end].decode('latin-1')
+                p = aug_end + 1
+                _, p = _uleb(data, p)            # code alignment
+                _, p = _sleb(data, p)            # data alignment
+                if version == 1:
+                    p += 1
+                else:
+                    _, p = _uleb(data, p)
+                info = dict(fde_enc=0, lsda_enc=0xff)
+                if augmentation.startswith('z'):
+                    _, p = _uleb(data, p)
+                    for ch in augmentation[1:]:
+                        if ch == 'R':
+                            info['fde_enc'] = data[p]; p += 1
+                        elif ch == 'L':
+                            info['lsda_enc'] = data[p]; p += 1
+                        elif ch == 'P':
+                            enc = data[p]; p += 1
+                            _, p = _pointer(data, p, enc, base_addr + (p - base_off))
+                cies[at] = info
+            else:
+                cie = cies.get(record - cie_id)
+                if cie:
+                    p = record + 4
+                    start, p = _pointer(data, p, cie['fde_enc'], base_addr + (p - base_off))
+                    _, p = _pointer(data, p, cie['fde_enc'] & 0x0f, 0)
+                    lsda = None
+                    if cie['lsda_enc'] != 0xff:
+                        _, p = _uleb(data, p)
+                        lsda, p = _pointer(data, p, cie['lsda_enc'], base_addr + (p - base_off))
+                    if lsda:
+                        pads = _lsda_pads(elf, lsda, start)
+                        if pads:
+                            result.setdefault(start, set()).update(pads)
+        except (IndexError, ValueError, struct.error):
+            pass
+        at = next_record
+    return {k: sorted(v) for k, v in result.items()}
+
+
+def _pointer(data, at, encoding, address):
+    """Like _encoded, with the pc-relative base being `address` (the field's own address)."""
+    if encoding == 0xff:
+        return None, at
+    value, after = _encoded(data, at, encoding & 0x0f, 0)
+    if encoding & 0x70 == 0x10:
+        value += address
+    return value & 0xffffffffffffffff, after
+
+
+def _lsda_pads(elf, lsda, function_start):
+    at = elf.v2o(lsda)
+    if at is None:
+        return []
+    data = elf.data
+    lp_enc = data[at]
+    at += 1
+    lp_start = function_start
+    if lp_enc != 0xff:
+        lp_start, at = _pointer(data, at, lp_enc, lsda + (at - elf.v2o(lsda)))
+    ttype_enc = data[at]
+    at += 1
+    if ttype_enc != 0xff:
+        _, at = _uleb(data, at)
+    cs_enc = data[at]
+    at += 1
+    cs_length, at = _uleb(data, at)
+    table_end = at + cs_length
+    pads = []
+    while at < table_end:
+        _, at = _pointer(data, at, cs_enc, 0)
+        _, at = _pointer(data, at, cs_enc, 0)
+        pad, at = _pointer(data, at, cs_enc, 0)
+        _, at = _uleb(data, at)
+        if pad:
+            pads.append(lp_start + pad)
+    return pads
+
+
 def layout(elf, image_path=None):
     """Everything the lifter and the runtime loader need, as a JSON-ready dict."""
     exports = elf.exports()
@@ -156,7 +316,7 @@ def layout(elf, image_path=None):
             local = sym['shndx'] != 0 and (sym['bind'] == 0 or sym['visibility'] in (1, 2, 3) or sym['name'] in exports)
             if local:
                 entry['value'] = sym['value']   # defined in this module: base + value
-            elif kind not in ('DTPMOD64',):
+            else:
                 if sym['name'] not in import_index:
                     import_index[sym['name']] = len(imports)
                     imports.append(dict(name=sym['name'], weak=sym['bind'] == 2, object=sym['type'] == 1))
@@ -172,6 +332,8 @@ def layout(elf, image_path=None):
     for tag in (DT_INIT, DT_FINI):
         if tag in elf.dyn:
             entries.add(elf.dyn[tag])
+    if elf.e_entry and in_code(elf.e_entry):
+        entries.add(elf.e_entry)          # _start of an executable (or a .so that runs)
 
     # Code pointers stored in data (vtables, callback tables): RELATIVE and
     # 64 relocations whose target is code and whose slot is not.
@@ -202,13 +364,14 @@ def layout(elf, image_path=None):
         plt=[[s['addr'], s['addr'] + s['size']] for s in plt],
         tls=dict(vaddr=elf.tls['vaddr'], filesz=elf.tls['filesz'], memsz=elf.tls['memsz'],
                  align=elf.tls['align']) if elf.tls else None,
-        init=elf.dyn.get(DT_INIT, 0), fini=elf.dyn.get(DT_FINI, 0),
+        init=elf.dyn.get(DT_INIT, 0), fini=elf.dyn.get(DT_FINI, 0), entry=elf.e_entry,
         init_array=init_array, fini_array=fini_array,
         entries=sorted(entries), data_ptrs=data_ptrs,
         names={hex(k): v for k, v in sorted(names.items())},
         exports={n: s['value'] for n, s in sorted(exports.items())},
         export_types={n: s['type'] for n, s in sorted(exports.items())},
-        needed=elf.needed, imports=imports, relocations=relocs, relocation_counts=counts)
+        needed=elf.needed, imports=imports, relocations=relocs, relocation_counts=counts,
+        landing_pads={hex(k): v for k, v in landing_pads(elf).items()})
 
 
 def prepare(path, out_dir):

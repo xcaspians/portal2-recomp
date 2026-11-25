@@ -81,3 +81,35 @@ V8 jitless with its built-ins (2–3, uncertain), Panorama and the rest up to
 the menu (2–3). iOS after that: memory (64-bit, V8), MoltenVK on iOS, touch
 layout (2–3). Much bigger than Mel, as expected; worth doing only as its
 own project.
+
+## Update, 25 November 2026: depots 440003 and 601363
+
+Both depots are now on the Mac. The `file`/`strings` comparison the round-10
+note asked for:
+
+| | P2CE 440003 | P2CE 440005 | Revolution 601363 |
+|---|---|---|---|
+| Platform | **Windows**, x86-64 (`bin/win64`, PE32+) | Linux, x86-64 (`bin/linux64`, ELF64) | **Windows only**, x86-64 (`bin/win64`, PE32+): **no Linux build at all** |
+| Engine build | `Exe build: 07:12:08 Apr 23 2026` | `Exe build: 07:08:27 Apr 23 2026` | `Exe build: 01:56:13 Jan  5 2025` |
+| Source paths in `engine.dll`/`.so` | `/builds/portal-2-community-edition/release/` | same | `E:\Licensee\PortalRevolution\revo\` (a licensed Strata branch), plus the same `D:\src\chaos\p2ce\` paths as P2CE |
+| Interfaces | `VEngineClient015`, `VEngineServer023`, `VFileSystem018`, `VClient018` | same | same versions |
+| Files | 162 in `bin/win64` | 114 `.so` | 113 in `bin/win64`; 90 shared with P2CE |
+| Physics | `vphysics.dll` and `vphysics_jolt.dll` | `vphysics_jolt.so` | `vphysics.dll` only |
+| Own files | | | `revolution.exe`, `soundsystem.dll`, `openvr_api.dll`, MySQL connectors, `mdllib.dll`, `unitlib.dll`; `revolution/bin/win64/client.dll`, `server.dll` |
+
+Conclusions:
+
+- **440003 is not needed to run P2CE on this project:** it is P2CE's Windows
+  build. The Linux build (440005) is complete on its own: its `p2ce.sh` starts
+  `bin/linux64/p2ce -game p2ce` with `libmimalloc.so` preloaded. The P2CE
+  plan stays on 440005.
+- **Revolution is a modified Strata engine from January 2025** (P2CE is from
+  April 2026). Its interface versions are the same, but **it ships Windows
+  binaries only**. Its game code (`revolution/bin/win64/client.dll`,
+  `server.dll`) exists only as Windows DLLs, so running it here would need a
+  64-bit **PE** front end for the lifter (Windows file format and calling
+  convention, which differ from Linux's: arguments in `rcx`, `rdx`, `r8`,
+  `r9`, a 32-byte shadow area on the stack, `xmm6`-`xmm15` preserved) and a
+  Windows system bridge, or P2CE's Linux engine with Revolution's Windows
+  game DLLs, which mixes a 2025 game with a 2026 engine. Either way it is a
+  separate project after P2CE, not a game profile on top of it.

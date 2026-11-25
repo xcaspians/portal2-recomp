@@ -93,6 +93,14 @@ class SlimPackTest(unittest.TestCase):
         self.assertTrue(mel_slim.boot_ok('Host_NewGame on map sp_a1_tramride')[0])
         self.assertFalse(mel_slim.boot_ok('This game needs Portal 2: ...')[0])
         self.assertFalse(mel_slim.boot_ok('')[0])
+        self.assertFalse(mel_slim.boot_ok("Can't load '7656/1795587607', file missing!")[0])
+        # The console keeps every launch: only this one's part counts.
+        with tempfile.TemporaryDirectory() as d:
+            log = Path(d) / 'console.log'
+            earlier = b'Loading game from SAVE/x/old.sav...\n'
+            log.write_bytes(earlier + b"Can't load 'x/1795587607', file missing!\n")
+            self.assertEqual(mel_slim.main(['boot-ok', '--log', str(log), '--since', str(len(earlier))]), 1)
+            self.assertEqual(mel_slim.main(['boot-ok', '--log', str(log)]), 0)   # the whole file would wrongly pass
 
     @unittest.skipUnless(os.environ.get('P2_REAL_MEL_SLIM'), 'P2_REAL_MEL_SLIM=1: the real Mel and Portal 2 (slow)')
     def test_real_games(self):

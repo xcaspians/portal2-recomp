@@ -226,6 +226,10 @@ static const client_slots kClientSlots[] = {
     {"mel", "VEngineClient015", 25, 90, 108},
     {"hl2", "VEngineClient014", 26, 87, 106},
     {"portal1", "VEngineClient014", 26, 87, 106},
+    // Left 4 Dead 2: VEngineClient013, from the Mac edition's engine.dylib
+    // (CEngineClient's vtable: IsInGame 26, IsLevelMainMenuBackground 90,
+    // ClientCmd_Unrestricted 106).
+    {"l4d2", "VEngineClient013", 26, 90, 106},
 };
 static const client_slots *slots;
 #define CLIENT_IS_IN_GAME (slots->in_game)
@@ -250,6 +254,38 @@ int rt_ios_game_command(const char *line) {
     if (engine_client <= 1 || command_count >= 4 || strlen(line) >= sizeof(command_queue[0])) return 0;
     snprintf(command_queue[command_count++], sizeof(command_queue[0]), "%s", line);
     return 1;
+}
+
+// P2_MEMORY_LOG=1 (device measurements): the process's memory footprint, now
+// and at its peak (what iOS counts against the app's limit), every 10 s.
+static void memory_log(uint64_t now) {
+    static int on = -1;
+    static uint64_t next;
+    if (on < 0) on = rt_env_flag("P2_MEMORY_LOG");
+    if (!on || now < next) return;
+    next = now + 10000;
+    long long current, peak, available;
+    if (!rt_ios_memory_footprint(&current, &peak, &available)) return;
+    fprintf(stderr, "[ios] mémoire : %lld Mo maintenant, pic %lld Mo, %lld Mo encore disponibles%s\n", current >> 20,
+            peak >> 20, available >> 20, in_level ? " (en partie)" : "");
+}
+
+// P2_IOS_MENU_EXEC="<console command>" (device tests: tools/ios_device.sh mel
+// slim switch loads a save this way): sent once, 3 s after the main menu is up
+// with no level loaded, as a player would from the menu. A command-line +load
+// runs before the menu on a slower device and the engine answers "file missing".
+static void menu_exec(uint64_t now) {
+    static int done;
+    static uint64_t since;
+    if (done) return;
+    const char *line = getenv("P2_IOS_MENU_EXEC");
+    if (!line || !*line) { done = 1; return; }
+    if (!(ui_visible && engine_client > 1 && !in_level)) { since = 0; return; }
+    if (!since) { since = now; return; }
+    if (now - since < 3000) return;
+    done = 1;
+    fprintf(stderr, "[ios] commande du menu (P2_IOS_MENU_EXEC) : %s%s\n", line,
+            rt_ios_game_command(line) ? "" : " refusée");
 }
 
 static void client_unavailable(const char *why) {
@@ -404,5 +440,7 @@ void rt_ios_game_state_poll(void) {
     watch_community_dialog(c, visible);
     if (linear_wanted || saved_response[0]) update_move_response(c);
     autoexec(c);
+    menu_exec(now);
+    memory_log(now);
 }
 #endif

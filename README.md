@@ -1,13 +1,84 @@
-# Portal 2, Half-Life 2, Portal and Portal Stories: Mel, statically recompiled for Apple silicon
+# Portal Natif: Source games, recompiled for iPhone, iPad and Mac
 
-[![Portal 2 running natively on iPhone (video)](https://img.youtube.com/vi/YWX2BeMnlQI/maxresdefault.jpg)](https://youtu.be/YWX2BeMnlQI)
+**Play Portal 2, Portal Stories: Mel, Half-Life 2 and Left 4 Dead 2 natively on
+Apple silicon, from your own Steam copies, with touch controls built for the
+iPad and iPhone.**
 
-*Video: Portal 2 running natively on an iPhone 15 Pro Max.*
+[![CI](https://github.com/xcaspians/portal2-recomp/actions/workflows/ci.yml/badge.svg)](https://github.com/xcaspians/portal2-recomp/actions/workflows/ci.yml)
+![Platforms](https://img.shields.io/badge/platforms-iPadOS%20%7C%20iOS%20%7C%20macOS-blue)
+![Apple silicon](https://img.shields.io/badge/Apple%20silicon-native-success)
+![Games](https://img.shields.io/badge/games-Portal%202%20%7C%20Mel%20%7C%20HL2%20%7C%20L4D2-orange)
+
+> This is **Caspian's fork** ([xcaspians/portal2-recomp](https://github.com/xcaspians/portal2-recomp)) of
+> [kanapitsas/source-recomp](https://github.com/kanapitsas/source-recomp), the static recompiler that makes all
+> of this possible. The recompiler, the runtime and the Metal renderer are upstream's work; this fork adds the
+> iPad-first app experience below.
 
 <p>
-  <img src="docs/images/iphone-menu.jpg" alt="Portal 2 main menu on iPhone, 60 fps" width="49%">
+  <img src="docs/images/fork-settings-menu.jpg" alt="The fork's in-game settings menu on iPad Pro" width="49%">
+  <img src="docs/images/fork-layout-editor.jpg" alt="Editing the touch button layout on iPad Pro" width="49%">
+</p>
+<p>
+  <img src="docs/images/fork-hl2-ipad.jpg" alt="Half-Life 2 on iPad Pro with touch controls and the FPS counter" width="49%">
   <img src="docs/images/iphone-ingame.jpg" alt="Portal 2 in game on iPhone with touch controls" width="49%">
 </p>
+
+*iPad Pro screenshots: the settings menu and the layout editor (shown in Half-Life 2, the same in every game),
+Half-Life 2 with the FPS counter; Portal 2 on iPhone from upstream.*
+
+## What's new in this fork
+
+- **One Portal app, a game picker.** Portal 2 and Portal Stories: Mel live in one app: pick a game at launch
+  (or let it remember), see sizes and saves in **Manage games**. Mel borrows Portal 2's files, so it takes
+  2.4 GB less.
+- **Touch layout editor.** Drag any on-screen button where your thumbs want it, resize it, save. One layout
+  for every game.
+- **In-game settings menu.** A gear on the main and pause menus: button size and opacity, camera and gyro
+  speed, back taps, frame rate, an FPS counter, iCloud saves, without leaving the game.
+- **Community Maps.** Browse Portal 2's Workshop chambers and play them on the iPad, or push your Mac's
+  subscribed maps over with one command.
+- **Back taps.** Tap the back of the iPad on the left or right to fire the blue or orange portal, with a
+  calibration screen for your device and guards against accidental taps.
+- **120 Hz.** Auto frame rate runs up to 120 fps on ProMotion iPads and iPhones, and the setting applies
+  instantly.
+- **Controllers.** Plug in a controller and the touch buttons step aside (the FPS counter stays); touch the
+  screen and they come back.
+- **More games.** Half-Life 2 and Left 4 Dead 2 (offline, single player with bots) run on the Mac and the
+  iPad Pro in their own apps; a 64-bit recompiler for Portal 2: Community Edition is under way.
+
+## Supported games
+
+| Game | Mac | iPad / iPhone | Status |
+|---|---|---|---|
+| **Portal 2** | ✅ | ✅ Portal app | Plays start to finish; Community Maps, co-op on the LAN |
+| **Portal Stories: Mel** | ✅ | ✅ Portal app | Plays; chapters 1–4 checked, a full playthrough not yet |
+| **Half-Life 2** (+ episodes) | ✅ | ✅ own app | Menu and first chapters at 100–120 fps on iPad Pro; long play untested |
+| **Portal** | ✅ | ⚠️ own app | Experimental: early chambers played |
+| **Left 4 Dead 2** | ✅ | ⚠️ own app | Offline only: campaign map with bots and a horde on the Mac; first map on iPad Pro |
+| **Portal 2: Community Edition** | 🚧 | — | 64-bit recompiler in progress: its launcher starts, no menu yet |
+
+You must own each game on Steam. Left 4 Dead 2 builds never connect to Valve's online servers.
+
+## Install (this fork)
+
+The easiest way is the **Natif Installer**, a Mac app that builds everything from your own Steam games and
+copies them to your iPad or iPhone:
+
+```sh
+git clone https://github.com/xcaspians/portal2-recomp.git
+cd portal2-recomp
+./tools/build_installer.sh      # builds "Natif Installer.app"
+```
+
+Open the installer, tick your games, press Install, then plug in (or pair) your iPad or iPhone and use
+**Devices > Download**. From Terminal instead: `./setup.sh` for the Mac apps, `./setup.sh --ios` for the
+iPhone and iPad apps (details below).
+
+---
+
+The rest of this page is upstream's full documentation, still accurate for this fork.
+
+## About the recompiler
 
 This project builds native Mac and iPhone apps from your own copies of
 Portal 2, Half-Life 2 (with Episode One, Episode Two and Lost Coast),
@@ -213,8 +284,8 @@ Portal 2 installer, so an update rebuilds only what changed; its log is
 **With Terminal**:
 
 ```sh
-git clone https://github.com/kanapitsas/source-recomp.git
-cd source-recomp
+git clone https://github.com/xcaspians/portal2-recomp.git
+cd portal2-recomp
 ./setup.sh                    # every game found: Portal 2, Half-Life 2, Portal, Mel
 ./setup.sh --game hl2         # one game (portal2, hl2, portal1, mel), or --game all
 ./setup.sh --puzzle-maker     # Portal 2 with its map compilers, for the Puzzle Maker (docs/puzzlemaker.md)

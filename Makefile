@@ -145,15 +145,23 @@ d3d9metal-check: build/d3d9metal-check
 # `make check`.
 X64_RUNTIME := $(sort $(wildcard runtime/x64/*.c))
 X64_CFLAGS ?= -O1 -g -Wall -Wextra -Werror
+X64_LIBS = -liconv
 build/x64/libx64fixture.so: tests/x64_programs.s tests/x64_link.py
 	@mkdir -p build/x64
 	$(CC) -target x86_64-linux-gnu -c tests/x64_programs.s -o build/x64/x64_programs.o
 	$(PYTHON) tests/x64_link.py build/x64/x64_programs.o $@
-build/x64/fixture.c: build/x64/libx64fixture.so tools/elfprep64.py tools/lift64.py
+build/x64/fixture.c: build/x64/libx64fixture.so tools/elfprep64.py tools/lift64.py tools/simd64.py tools/x87_64.py
 	$(PYTHON) tools/elfprep64.py --out build/x64 build/x64/libx64fixture.so
 	$(PYTHON) tools/lift64.py --layout build/x64/libx64fixture.so.layout.json --all --symbol x64_fixture --out $@
-build/x64-check: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c tests/x64_checks.c
-	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) build/x64/fixture.c tests/x64_checks.c -o $@
+build/x64/libx64second.so: tests/x64_programs2.s tests/x64_link.py
+	@mkdir -p build/x64
+	$(CC) -target x86_64-linux-gnu -c tests/x64_programs2.s -o build/x64/x64_programs2.o
+	$(PYTHON) tests/x64_link.py --needed libx64fixture.so build/x64/x64_programs2.o $@
+build/x64/second.c: build/x64/libx64second.so tools/elfprep64.py tools/lift64.py tools/simd64.py tools/x87_64.py
+	$(PYTHON) tools/elfprep64.py --out build/x64 build/x64/libx64second.so
+	$(PYTHON) tools/lift64.py --layout build/x64/libx64second.so.layout.json --all --symbol x64_second --out $@
+build/x64-check: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c build/x64/second.c tests/x64_checks.c
+	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) build/x64/fixture.c build/x64/second.c tests/x64_checks.c $(X64_LIBS) -o $@
 
 # Live milestone (needs P2CE's depot 440005, never part of `make check`):
 # lifts P2CE's own libtier0.so into build/p2ce-tier0 and calls some of its
@@ -172,5 +180,57 @@ p2ce-tier0-check: $(X64_RUNTIME) runtime/x64/rt64.h tests/x64_tier0_live.c tools
 	$(PYTHON) tools/lift64.py --layout build/p2ce-tier0/libtier0.so.layout.json --all --report build/p2ce-tier0/coverage.json; \
 	$(PYTHON) tools/lift64.py --layout build/p2ce-tier0/libtier0.so.layout.json --symbol p2ce_tier0 \
 		--out build/p2ce-tier0/tier0.c $(P2CE_TIER0_ROOTS); \
-	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) build/p2ce-tier0/tier0.c tests/x64_tier0_live.c -o build/p2ce-tier0-check; \
+	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) build/p2ce-tier0/tier0.c tests/x64_tier0_live.c $(X64_LIBS) -o build/p2ce-tier0-check; \
 	./build/p2ce-tier0-check
+
+# P2CE plan, round B: `make p2ce-coverage` sweeps every x86-64 module of the
+# depot (tools/coverage64.py, about 15 minutes, build/p2ce-coverage/summary.json);
+# `make p2ce-build` lifts and compiles whole modules into static libraries
+# (tools/build64.py, two compiles at a time, waits while swap is above 6 GB).
+P2CE_BUILD_MODULES ?= libtier0.so libvstdlib.so
+.PHONY: p2ce-coverage p2ce-build
+p2ce-coverage:
+	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-coverage: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
+	$(PYTHON) tools/coverage64.py --out build/p2ce-coverage "$(P2CE_ROOT)"
+p2ce-build:
+	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-build: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
+	$(PYTHON) tools/build64.py --out build/p2ce/lib $(foreach m,$(P2CE_BUILD_MODULES),"$(P2CE_ROOT)/bin/linux64/$(m)")
+
+# Round C: libtier0 + libvstdlib + filesystem_stdio (+ libmimalloc.so, which
+# carries P2CE's C++ runtime) loaded together, their
+# constructors run, CommandLine()->CheckParm() (tests/x64_modules_live.c).
+P2CE_MODULES_C = libmimalloc.so libtier0.so libvstdlib.so filesystem_stdio.so
+P2CE_LIBS = build/p2ce/lib/m_mimalloc/libm_mimalloc.a build/p2ce/lib/m_tier0/libm_tier0.a build/p2ce/lib/m_vstdlib/libm_vstdlib.a \
+	build/p2ce/lib/m_filesystem_stdio/libm_filesystem_stdio.a
+.PHONY: p2ce-modules-check
+p2ce-modules-check: $(X64_RUNTIME) runtime/x64/rt64.h tests/x64_modules_live.c tests/x64_except.cpp
+	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-modules-check: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
+	set -e; mkdir -p build/x64; \
+	$(CC) -target x86_64-linux-gnu -fPIC -O1 -fexceptions -c tests/x64_except.cpp -o build/x64/x64_except.o; \
+	$(PYTHON) tests/x64_link.py --needed libmimalloc.so build/x64/x64_except.o build/x64/libx64except.so; \
+	$(PYTHON) tools/build64.py --out build/p2ce/lib $(foreach m,$(P2CE_MODULES_C),"$(P2CE_ROOT)/bin/linux64/$(m)") \
+		build/x64/libx64except.so; \
+	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) tests/x64_modules_live.c $(P2CE_LIBS) \
+		build/p2ce/lib/m_x64except/libm_x64except.a $(X64_LIBS) -o build/p2ce-modules-check; \
+	./build/p2ce-modules-check
+
+# Round D: P2CE's own program (bin/linux64/p2ce -> launcher.so -> engine.so)
+# lifted with the modules it loads, run from a mirror of the game folder
+# (tools/run64.py; the depot is never written). P2CE_ARGS are the game's.
+P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/libtier0.so \
+	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/libsteam_api.so bin/linux64/launcher.so \
+	bin/linux64/filesystem_stdio.so bin/linux64/engine.so
+P2CE_ARGS ?= -game p2ce -textmode -novid -nosound
+P2CE_CONTENT ?= $(subst depot_440005,depot_440002,$(P2CE_ROOT))
+P2CE_TIMEOUT ?= 120
+# -O0 by default: engine.so is 170 C files; -O1 takes about 2 GB and minutes per file.
+P2CE_OPT ?= 0
+.PHONY: p2ce-launch
+p2ce-launch: $(X64_RUNTIME) runtime/x64/rt64.h src/main64.c tools/run64.py
+	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-launch: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
+	set -e; $(PYTHON) tools/build64.py --out build/p2ce/lib --opt $(P2CE_OPT) --registry build/p2ce/registry.c \
+		$(foreach m,$(P2CE_LAUNCH_MODULES),"$(P2CE_ROOT)/$(m)"); \
+	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) src/main64.c build/p2ce/registry.c \
+		$$(ls build/p2ce/lib/*/lib*.a) $(X64_LIBS) -o build/p2ce/p2ce-run; \
+	$(PYTHON) tools/run64.py --depot "$(P2CE_ROOT)" --depot "$(P2CE_CONTENT)" --mirror build/p2ce/game --timeout $(P2CE_TIMEOUT) \
+		build/p2ce/p2ce-run $(P2CE_ARGS)

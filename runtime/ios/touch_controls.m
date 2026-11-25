@@ -312,7 +312,7 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, h
         dataTaps = -1;
         fpsHidden = !rt_ios_env_flag("P2_SHOW_FPS", 0);   // gear menu > FPS counter (off by default; settings.c)
         rt_ios_backtap_start();
-        rt_ios_gyro_start(rt_ios_current_game()->layout == RT_IOS_LAYOUT_HL2);
+        rt_ios_gyro_start(rt_ios_current_game()->layout != RT_IOS_LAYOUT_PORTAL2);   // HL2, L4D2: gyro aiming on by default
         [self setupLayers];
         // Menu des réglages : sous-vue, gardée devant les vues de SDL avec la surcouche.
         settingsMenu = (__bridge_transfer UIView *)rt_ios_settings_menu_create();
@@ -576,6 +576,11 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
     case RT_TOUCH_SPRINT: [self key:SDL_SCANCODE_LSHIFT down:down]; break;
     case RT_TOUCH_FLASHLIGHT: [self key:SDL_SCANCODE_F down:down]; break;
     case RT_TOUCH_QUICKSAVE: [self quickSave:down]; break;
+    case RT_TOUCH_SLOT1: [self key:SDL_SCANCODE_1 down:down]; break;   // Left 4 Dead 2's item slots
+    case RT_TOUCH_SLOT2: [self key:SDL_SCANCODE_2 down:down]; break;
+    case RT_TOUCH_SLOT3: [self key:SDL_SCANCODE_3 down:down]; break;
+    case RT_TOUCH_SLOT4: [self key:SDL_SCANCODE_4 down:down]; break;
+    case RT_TOUCH_SLOT5: [self key:SDL_SCANCODE_5 down:down]; break;
     case RT_TOUCH_WEAPON_PREV: if (down) [self wheel:1]; break;
     case RT_TOUCH_WEAPON_NEXT: if (down) [self wheel:-1]; break;
     default: break;
@@ -1050,7 +1055,7 @@ static void set_circle(CAShapeLayer *l, CGFloat diameter) {
 // Bitmap du compteur, refait seulement quand ce qu'il montre change (FpsKey,
 // comparée avant de construire textes et cadre).
 - (void)renderFPS {
-    fpsLayer.hidden = concealed || fps <= 0;   // le compteur reste dans les menus
+    fpsLayer.hidden = !rt_touch_fps_visible(!fpsHidden, fps, concealed);   // menus and controllers too: only the buttons hide
     if (fpsLayer.hidden) return;
     FpsKey key;
     memset(&key, 0, sizeof(key));   // rembourrage à zéro : comparée par memcmp
