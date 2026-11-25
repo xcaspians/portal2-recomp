@@ -66,3 +66,15 @@ model iPhone19,2 strong  iPhone 18 Pro
 model iPad16,1   strong  iPad mini (A17 Pro)
 model iPad16,2   strong  iPad mini (A17 Pro)
 model iPad19,1   strong  iPad mini (A20 Pro)
+
+# Back taps (runtime/ios/back_tap.c; seconds, g, rad/s). A jolt is ignored
+# from touch_after before a screen touch starts or ends (a button let go, the
+# hand moving off: Start in the calibration screen) to touch_before after it
+# (UIKit reports a touch a little late). It only counts if the device was
+# steady for steady_window just before it: largest acceleration under
+# steady_accel, each rotation axis moving less than steady_rot (a hand shifting
+# its grip). calib_gate: the calibration screen hears taps from this fraction
+# of the play thresholds, and a calibration never goes under it. Same rules in
+# calibration and in play. Checked by tests/checks_back_tap.c.
+backtap touch_before=0.08 touch_after=0.30 steady_window=0.15
+backtap steady_accel=0.08 steady_rot=0.6 calib_gate=0.5

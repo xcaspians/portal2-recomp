@@ -786,16 +786,13 @@ static Sint16 axis_value(CGFloat speed, int response) {
     for (P2Finger *f in fingers.objectEnumerator) if (f.role == role) return YES;
     return NO;
 }
-// Un toucher secoue le téléphone : pas de tape au dos autour (début et fin).
-static void backtap_touches(NSSet<UITouch *> *touches) {
-    for (UITouch *t in touches) rt_ios_backtap_touch(t.timestamp);
-}
+// Un toucher secoue le téléphone : pas de tape au dos autour (début et fin),
+// signalé par P2TouchWatcher pour toute la fenêtre.
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     (void)event;
     // A touch brings back the overlay hidden for a controller, except with
     // "Off with a controller": then touches drive no hidden control at all.
     [self overlayEvent:RT_OVERLAY_TOUCH padActive:hasGamepad && pad_input_active()];
-    backtap_touches(touches);
     if (concealed) return;
     for (UITouch *t in touches) {
         P2Finger *f = [P2Finger new];
@@ -853,7 +850,6 @@ static void backtap_touches(NSSet<UITouch *> *touches) {
 }
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     (void)event;
-    backtap_touches(touches);
     for (UITouch *t in touches) {
         P2Finger *f = [fingers objectForKey:t];
         if (f.role == ROLE_BUTTON && !f.toggle) [self action:f.action down:NO];
@@ -1061,6 +1057,37 @@ static void set_circle(CAShapeLayer *l, CGFloat diameter) {
 
 static P2TouchControls *controls;
 
+// Every touch in the game's window, on any view (the overlay, the settings
+// menu's buttons, the calibration screen's Start): its start and end go to the
+// back-tap detector, since a finger on the glass shakes the device too. It
+// never recognizes, delays or cancels anything.
+#import <UIKit/UIGestureRecognizerSubclass.h>
+@interface P2TouchWatcher : UIGestureRecognizer <UIGestureRecognizerDelegate>
+@end
+@implementation P2TouchWatcher
+- (instancetype)init {
+    if (!(self = [super initWithTarget:nil action:nil])) return nil;
+    self.cancelsTouchesInView = NO; self.delaysTouchesBegan = NO; self.delaysTouchesEnded = NO;
+    self.delegate = self;
+    return self;
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)g shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)o {
+    (void)g; (void)o; return YES;
+}
+- (BOOL)canPreventGestureRecognizer:(UIGestureRecognizer *)o { (void)o; return NO; }
+- (BOOL)canBePreventedByGestureRecognizer:(UIGestureRecognizer *)o { (void)o; return NO; }
+static void watched(NSSet<UITouch *> *touches) { for (UITouch *t in touches) rt_ios_backtap_touch(t.timestamp); }
+- (void)touchesBegan:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { (void)e; watched(t); }
+- (void)touchesEnded:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e {
+    watched(t);
+    NSUInteger alive = 0;
+    for (UITouch *x in [e touchesForGestureRecognizer:self])
+        alive += x.phase != UITouchPhaseEnded && x.phase != UITouchPhaseCancelled;
+    if (!alive) self.state = UIGestureRecognizerStateFailed;   // resets for the next touch
+}
+- (void)touchesCancelled:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { [self touchesEnded:t withEvent:e]; }
+@end
+
 // Appelé à la création de la fenêtre du jeu (sdl_ios.m), sur le thread principal.
 void rt_ios_touch_controls_attach(SDL_Window *window) {
     rt_ios_settings_watch();   // réglages changés en jeu ou dans l'app Réglages (live_settings_ios.m)
@@ -1079,5 +1106,6 @@ void rt_ios_touch_controls_attach(SDL_Window *window) {
     controls = [[P2TouchControls alloc] initWithWindow:window];
     controls.frame = host.bounds;
     [host addSubview:controls];
+    [host addGestureRecognizer:[P2TouchWatcher new]];
 }
 #endif
