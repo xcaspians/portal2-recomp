@@ -214,6 +214,7 @@ typedef struct RT64Module {
     const uint64_t *fini_array; size_t fini_count;
     uint64_t tls_vaddr, tls_filesz, tls_memsz, tls_align;   // PT_TLS (memsz 0: none)
     const char *const *needed; size_t needed_count;         // DT_NEEDED
+    uint64_t entry;                                          // e_entry (_start of a program)
 } RT64Module;
 
 // Modules (loader64.c). Each generated module registers itself at start-up;
@@ -226,6 +227,13 @@ typedef struct RT64Loaded RT64Loaded;
 RT64Loaded *rt64_open(CPU64 *c, const char *name);       // NULL if unknown or failed
 int rt64_load(const RT64Module *module, const char *image_path);   // load without constructors; 0 on success
 void rt64_run_constructors(CPU64 *c, const RT64Module *module);
+// Runs a lifted program like the kernel and ld.so do: argc, argv, envp and
+// an auxiliary vector on a fresh guest stack, then its _start (which calls
+// __libc_start_main, cxa64.c). Returns main's status (or exit()'s).
+int rt64_run_program(const RT64Module *program, int argc, char **argv, char **envp);
+// The main thread's CPU; threads made by pthread_create have their own.
+CPU64 *rt64_main_cpu(void);
+void rt64_program_exit(CPU64 *c, int status);   // exit(): ends rt64_run_program
 uint64_t rt64_export(const RT64Module *module, const char *name);  // 0 if unknown
 uint64_t rt64_lookup_global(const char *name);           // first definition in load order, 0 if none
 const RT64Module *rt64_module_at(uint64_t address, uint64_t *base);  // module containing address
@@ -254,6 +262,15 @@ void rt64_dispatch(CPU64 *c, uint64_t target);
 __attribute__((noreturn)) void rt64_trap(CPU64 *c, uint64_t pc, const char *why);
 __attribute__((noreturn)) void rt64_bad_return(CPU64 *c, uint64_t expected);
 void rt64_cpuid(CPU64 *c);
+void rt64_syscall(CPU64 *c);                        // the SYSCALL instruction (posix64.c)
+RT64_ALWAYS_INLINE uint64_t rt64_get_rflags(CPU64 *c, const FL64 *f) {
+    return f->cf | ((uint64_t)parity64(f->pf) << 2) | (f->af << 4) | (f->zf << 6) | (f->sf << 7) | ((uint64_t)c->df << 10)
+         | (f->of << 11) | 0x202;
+}
+RT64_ALWAYS_INLINE void rt64_set_rflags(CPU64 *c, FL64 *f, uint64_t v) {
+    f->cf = v & 1; f->pf = (v >> 2) & 1 ? 0 : 1; f->af = (v >> 4) & 1; f->zf = (v >> 6) & 1; f->sf = (v >> 7) & 1;
+    c->df = (v >> 10) & 1; f->of = (v >> 11) & 1;
+}
 uint64_t rt64_rdtsc(void);
 void rt64_div(CPU64 *c, uint64_t divisor, int width, int is_signed, uint64_t pc);
 double rt64_ld80(uint64_t address);                 // x87 80-bit memory -> double

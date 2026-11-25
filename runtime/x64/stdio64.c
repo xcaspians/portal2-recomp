@@ -210,7 +210,16 @@ static void s_fputc(CPU64 *c) { RET(c, fputc((int)ARG(c, 0), FILEP(1))); }
 static void s_fwrite(CPU64 *c) { RET(c, fwrite(PTR(c, 0), (size_t)ARG(c, 1), (size_t)ARG(c, 2), FILEP(3))); }
 static void s_fread(CPU64 *c) { RET(c, fread(PTR(c, 0), (size_t)ARG(c, 1), (size_t)ARG(c, 2), FILEP(3))); }
 static void s_fflush(CPU64 *c) { RET(c, fflush(FILEP(0))); }
-static void s_fopen(CPU64 *c) { FILE *f = fopen(STR(0), STR(1)); if (!f) rt64_set_errno(errno); RET(c, (uintptr_t)f); }
+int rt64_proc_open(const char *path);
+void rt64_prepare_write(const char *path);
+static void s_fopen(CPU64 *c) {
+    int proc = rt64_proc_open(STR(0));
+    if (proc != -2) { RET(c, proc < 0 ? 0 : (uintptr_t)fdopen(proc, "r")); if (proc < 0) rt64_set_errno(ENOENT); return; }
+    if (strpbrk(STR(1), "wa+")) rt64_prepare_write(STR(0));
+    FILE *f = fopen(STR(0), STR(1));
+    if (!f) rt64_set_errno(errno);
+    RET(c, (uintptr_t)f);
+}
 static void s_fdopen(CPU64 *c) { RET(c, (uintptr_t)fdopen((int)ARG(c, 0), STR(1))); }
 static void s_freopen(CPU64 *c) { RET(c, (uintptr_t)freopen(STR(0), STR(1), FILEP(2))); }
 static void s_fclose(CPU64 *c) { RET(c, fclose(FILEP(0))); }

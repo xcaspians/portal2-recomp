@@ -18,7 +18,18 @@ static void s_exit(CPU64 *c) {
     int status = (int)ARG(c, 0);
     rt64_run_exit_handlers(c, 0);
     fflush(NULL);
-    exit(status);
+    rt64_program_exit(c, status);
+}
+// __libc_start_main(main, argc, argv, init, fini, rtld_fini, stack_end): the
+// constructors already ran (rt64_open); main(argc, argv, envp), then exit.
+static void s_libc_start_main(CPU64 *c) {
+    uint64_t main_function = ARG(c, 0), argc = ARG(c, 1), argv = ARG(c, 2);
+    uint64_t envp = argv + 8 * (argc + 1);
+    c->r[RDI] = argc; c->r[RSI] = argv; c->r[RDX] = envp;
+    c->r[RSP] &= ~UINT64_C(15);
+    rt64_call(c, main_function);
+    c->r[RDI] = (uint32_t)c->r[RAX];
+    s_exit(c);
 }
 static void s_quick_exit(CPU64 *c) { fflush(NULL); _exit((int)ARG(c, 0)); }
 // struct tls_index { unsigned long module, offset; }
@@ -126,7 +137,7 @@ static const char *program_full = "p2ce";
 
 static const RT64Shim shims[] = {
     {"__cxa_atexit", s_cxa_atexit}, {"atexit", s_atexit}, {"__cxa_thread_atexit_impl", s_cxa_thread_atexit},
-    {"__cxa_finalize", s_cxa_finalize}, {"exit", s_exit}, {"_exit", s_quick_exit}, {"_Exit", s_quick_exit},
+    {"__cxa_finalize", s_cxa_finalize}, {"exit", s_exit}, {"__libc_start_main", s_libc_start_main}, {"_exit", s_quick_exit}, {"_Exit", s_quick_exit},
     {"quick_exit", s_quick_exit}, {"__tls_get_addr", s_tls_get_addr}, {"__stack_chk_fail", s_stack_chk_fail},
     {"__cxa_pure_virtual", s_cxa_pure_virtual}, {"__register_atfork", s_register_atfork},
     {"pthread_atfork", s_register_atfork}, {"getpid", s_getpid}, {"getppid", s_getppid}, {"getuid", s_getuid},

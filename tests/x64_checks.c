@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 extern const RT64Module x64_fixture, x64_second;
 static CPU64 cpu;
@@ -133,6 +134,13 @@ int main(void) {
     EXPECT(out(0) == 0xf && out(8) == 0x0f && out(16) == 0xe0 && out(24) == 0xf000);
     EXPECT(out(32) == 4 && out(40) == 15 && out(48) == 0 && out(56) == 28);
 
+    memset((void *)(uintptr_t)sym("x64_out"), 0xee, 64);
+    CALL0("x64_misc");
+    EXPECT(out(0) == 1 && out8(8) == 1 && out8(9) == 0 && out8(10) == 21);   // PUSHFQ, POPFQ, XLATB
+    EXPECT(out(16) == (uint64_t)getpid());                                   // SYSCALL 39
+    EXPECT(out8(32) == 0 && out8(33) == 0xee);                               // MASKMOVDQU: byte 0 only
+    EXPECT(out(48) == 0x0004000300020001u);                                  // MOVNTQ
+
     // Round C: a second module opened by name (DT_NEEDED, constructors, TLS, setjmp/longjmp).
     rt64_thread_tls(&cpu);
     rt64_register(&x64_fixture);
@@ -144,9 +152,10 @@ int main(void) {
     EXPECT(CALL0("x64b_tls_gd") == 11 && CALL0("x64b_tls_gd") == 12);   // __tls_get_addr, .tdata copied
     EXPECT(CALL0("x64b_tls_ie") == 77);                  // TPOFF64 from fs
     EXPECT(CALL0("x64b_setjmp") == 42);                  // longjmp across a lifted frame, rbx restored
+    EXPECT(CALL0("x64b_threads") == 1000 * (1 + 2 + 3 + 4));   // pthread_create/join, own CPU and stack
 
     if (failures) { fprintf(stderr, "x64-check: %d of %d checks failed\n", failures, checks); return 1; }
     printf("x64-check: PASS, %d checks (System V calls, 16 registers, RIP-relative data, "
-           "flags, jump tables, imports, atomics, SSE2 to SSE4.1, x87, MMX, BMI, two modules, TLS, setjmp)\n", checks);
+           "flags, jump tables, imports, atomics, SSE2 to SSE4.1, x87, MMX, BMI, two modules, TLS, setjmp, threads)\n", checks);
     return 0;
 }

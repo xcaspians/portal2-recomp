@@ -396,6 +396,39 @@ x64_bmi:
     mov qword ptr [rdi + 56], rdx
     ret
 
+# PUSHFQ/POPFQ, XLATB, SYSCALL (getpid), MASKMOVDQU, MOVNTQ.
+.globl x64_misc
+.type x64_misc, @function
+x64_misc:
+    lea rdi, [rip + x64_out]
+    stc
+    pushfq
+    pop rax
+    and eax, 1
+    mov qword ptr [rdi], rax                  # CF seen through RFLAGS: 1
+    push 0x40                                 # ZF only
+    popfq
+    setz byte ptr [rdi + 8]                   # 1
+    setc byte ptr [rdi + 9]                   # 0
+    lea rbx, [rip + x64_v2]
+    mov eax, 5
+    xlatb                                     # al = x64_v2[5] = 21
+    mov byte ptr [rdi + 10], al
+    push rdi
+    mov eax, 39                               # getpid
+    syscall
+    pop rdi
+    mov qword ptr [rdi + 16], rax
+    movdqa xmm0, xmmword ptr [rip + x64_v1]
+    movdqa xmm1, xmmword ptr [rip + x64_shuf] # byte 0 has bit 7: only byte 0 stored
+    lea rdi, [rip + x64_out + 32]
+    maskmovdqu xmm0, xmm1
+    lea rdi, [rip + x64_out]
+    movq mm0, qword ptr [rip + x64_i16]
+    movntq qword ptr [rdi + 48], mm0
+    emms
+    ret
+
 .section .rodata
 .p2align 2
 .Ltable:
