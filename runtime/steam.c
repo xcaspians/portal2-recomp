@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+// SHIMS: SteamAPI_Init SteamAPI_IsSteamRunning
 // SHIMS: SteamAPI_InitSafe SteamAPI_Shutdown SteamAPI_RestartAppIfNecessary SteamAPI_RunCallbacks
 // SHIMS: SteamAPI_RegisterCallback SteamAPI_UnregisterCallback SteamAPI_RegisterCallResult SteamAPI_UnregisterCallResult
 // SHIMS: SteamAPI_GetHSteamPipe SteamAPI_GetHSteamUser SteamAPI_SetTryCatchCallbacks SteamAPI_GetSteamInstallPath
@@ -335,6 +336,26 @@ void *steam_proxy_host(uint32_t proxy) {
 // ISteamGameCoordinator001 : SendMessage, IsMessageAvailable, RetrieveMessage.
 static int virtual_bridge(CPU *c, const char *name, uint32_t table, long iface) {
     unsigned slot;
+    // Timeline V001 (SDK 1.60; Left 4 Dead 2): its methods only feed Steam's
+    // game recording timeline (state text, events, game mode) and return
+    // nothing the game reads: answered as done, nothing sent.
+    // ISteamNetworking's old socket API (slots 8 and up: CreateListenSocket,
+    // CreateP2PConnectionSocket, ... GetMaxPacketSize), dropped from the flat
+    // functions of newer SDKs. Left 4 Dead 2 opens a listen socket for its
+    // local server; offline there is nothing to listen on through Steam:
+    // invalid handle (0) or failure (false), as Steam answers without a network.
+    if (!strncmp(name, "SteamNetworking006::slot", 24) && atoi(name + 24) >= 8) {
+        static int logged;
+        if (!logged++) fprintf(stderr, "steam: %s and the other Steam socket calls answer \"none\" (offline)\n", name);
+        c->eax = 0;
+        return 1;
+    }
+    if (!strncmp(name, "STEAMTIMELINE_INTERFACE_V001::", 30)) {
+        static int logged;
+        if (!logged++) fprintf(stderr, "steam: STEAMTIMELINE_INTERFACE_V001 calls ignored (game recording timeline)\n");
+        c->eax = 0;
+        return 1;
+    }
     if (!strcmp(name, "SteamInput006::slot17") || !strcmp(name, "SteamInput006::slot21") ||
         !strcmp(name, "SteamInput006::slot29")) {
         // Steam Input returns these structures by value. C++ i386 uses a
@@ -865,9 +886,11 @@ static int steam_shim(CPU *c, const char *name) {
         c->eax = (uint32_t)result;
     } else if (!strcmp(name, "SteamAPI_SetBreakpadAppID")) {
         log_once(&breakpad_app_logged, "SteamAPI_SetBreakpadAppID");
-    } else if (!strcmp(name, "SteamAPI_InitSafe")) {
+    } else if (!strcmp(name, "SteamAPI_IsSteamRunning")) {
+        c->eax = FLAT(bool (*)(void), "SteamAPI_IsSteamRunning")();
+    } else if (!strcmp(name, "SteamAPI_InitSafe") || !strcmp(name, "SteamAPI_Init")) {   // Init: Left 4 Dead 2
         set_app_id();
-        bool (*init)(void) = FLAT(bool (*)(void), "SteamAPI_InitSafe");
+        bool (*init)(void) = FLAT(bool (*)(void), name);
         Capture capture; capture_begin(&capture);
         bool ok = init();
         capture_end(&capture);
