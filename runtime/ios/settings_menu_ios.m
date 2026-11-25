@@ -24,8 +24,10 @@
 #include "live_settings.h"
 #include "mods_list.h"
 #include "rt.h"
+const char *rt_user_root(void);   // runtime/paths.c
 #include "settings_menu.h"
 #include "settings_menu_ios.h"
+#include "workshop_ios.h"
 
 extern _Atomic int rt_ios_metal_active;   // metal_ios.m
 
@@ -33,7 +35,7 @@ static int menu_open, closing_hold;
 int rt_ios_settings_menu_captures_pad(void) { return menu_open || closing_hold; }
 int rt_ios_settings_menu_open(void) { return menu_open; }
 
-typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP } RowKind;
+typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY } RowKind;
 
 @interface P2MenuRow : NSObject
 @property (nonatomic) RowKind kind;
@@ -72,6 +74,7 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     CFTimeInterval repeatAt[2];
     CFTimeInterval resetArmedUntil;
     NSString *padName;        // localized name of the options button, for the gear
+    UIView *community;        // Community Maps browser (workshop_ios.m), over the panel while open
     UILabel *icloudStatus;    // "Last synced ..." under the iCloud switch
     CFTimeInterval icloudShownAt;
 }
@@ -234,12 +237,26 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     icloudStatus.text = @(text);
     icloudShownAt = CACurrentMediaTime();
 }
+// ---- Community Maps ----
+static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)ctx communityClosed:all]; }
+- (void)openCommunity {
+    if (community || !panel) return;
+    community = (__bridge_transfer UIView *)rt_ios_community_create(community_closed, (__bridge void *)self);
+    community.frame = panel.bounds;
+    [panel addSubview:community];
+}
+- (void)communityClosed:(int)all {
+    [community removeFromSuperview];
+    community = nil;
+    [self closeMenu];
+    if (!all) [self openMenu];   // back to the settings, Maps & Mods read again (new downloads)
+}
 - (void)closeMenu {
     if (!menu_open) return;
     menu_open = 0;
     closing_hold = [self padActive];   // the B that closed it stays away from the game
     [dim removeFromSuperview]; [panel removeFromSuperview];
-    dim = panel = header = nil; scroll = nil; stack = nil; rows = nil; icloudStatus = nil;
+    dim = panel = header = nil; scroll = nil; stack = nil; rows = nil; icloudStatus = nil; community = nil;
     focus = -1;
     resetArmedUntil = 0;
 }
@@ -394,10 +411,16 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     if (!root || !*root) return @[];
     NSString *game = @(root);
     NSFileManager *files = NSFileManager.defaultManager;
-    NSMutableArray<NSString *> *found = [NSMutableArray array];
-    for (NSString *sub in @[@"portal2/maps/custom", @"portal2/maps/workshop"])
-        for (NSString *relative in [files enumeratorAtPath:[game stringByAppendingPathComponent:sub]])
-            [found addObject:[sub stringByAppendingPathComponent:relative]];
+    NSMutableOrderedSet<NSString *> *found = [NSMutableOrderedSet orderedSet];
+    // Maps can also be in the user folder, which the engine reads first:
+    // Community Maps downloads go there (workshop_ios.m).
+    NSMutableArray<NSString *> *roots = [NSMutableArray arrayWithObject:game];
+    const char *user = rt_user_root();
+    if (user && *user && strcmp(user, root)) [roots addObject:@(user)];
+    for (NSString *base in roots)
+        for (NSString *sub in @[@"portal2/maps/custom", @"portal2/maps/workshop"])
+            for (NSString *relative in [files enumeratorAtPath:[base stringByAppendingPathComponent:sub]])
+                [found addObject:[sub stringByAppendingPathComponent:relative]];
     for (NSString *folder in [files contentsOfDirectoryAtPath:game error:nil]) {
         if (!rt_mods_addon_folder(folder.UTF8String)) continue;
         [addons addObject:folder];
@@ -407,7 +430,7 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     }
     NSMutableArray<NSString *> *maps = [NSMutableArray array];
     char name[256];
-    for (NSString *relative in found)
+    for (NSString *relative in found.array)
         if (rt_mods_map_name(relative.UTF8String, name, sizeof(name))) [maps addObject:relative];
     [addons sortUsingSelector:@selector(localizedStandardCompare:)];
     return [maps sortedArrayUsingSelector:@selector(localizedStandardCompare:)];
@@ -427,6 +450,28 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
 }
 - (void)addMapsSection {
     [self addSection:@"Maps & Mods"];
+    {
+        P2MenuRow *row = [P2MenuRow new];
+        row.kind = ROW_COMMUNITY;
+        __weak P2SettingsMenu *weakMenu = self;
+        UIButtonConfiguration *conf = [UIButtonConfiguration filledButtonConfiguration];
+        conf.title = @"Community Maps";
+        conf.subtitle = @"Browse and download Workshop chambers";
+        conf.image = [UIImage systemImageNamed:@"globe"];
+        conf.imagePadding = 10;
+        conf.baseBackgroundColor = [UIColor colorWithRed:.2 green:.45 blue:.8 alpha:.85];
+        conf.baseForegroundColor = UIColor.whiteColor;
+        conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+        row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+            (void)a; [weakMenu openCommunity];
+        }]];
+        row.button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
+        row.view = row.button;
+        row.view.layer.cornerRadius = 12;
+        [row.button.heightAnchor constraintGreaterThanOrEqualToConstant:56].active = YES;
+        [stack addArrangedSubview:row.button];
+        [rows addObject:row];
+    }
     NSMutableArray<NSString *> *addons = [NSMutableArray array];
     NSArray<NSString *> *maps = [self customMaps:addons];
     BOOL can_start = rt_ios_game_commands_available() != 0;
@@ -564,6 +609,7 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     case ROW_CLOSE: [self closeMenu]; return;
     case ROW_RESET: [self resetPressed]; return;
     case ROW_MAP: [self startMap:row]; return;
+    case ROW_COMMUNITY: [self openCommunity]; return;
     case ROW_SETTING: break;
     }
     const rt_menu_item *it = row.item;
@@ -584,6 +630,18 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         else if (paused) [self openMenu];
     }
     prevOptions = options;
+    if (community && g) {
+        float cx = g.dpad.xAxis.value, cy = g.dpad.yAxis.value;
+        if (fabsf(g.leftThumbstick.xAxis.value) > fabsf(cx)) cx = g.leftThumbstick.xAxis.value;
+        if (fabsf(g.leftThumbstick.yAxis.value) > fabsf(cy)) cy = g.leftThumbstick.yAxis.value;
+        CFTimeInterval t = CACurrentMediaTime();
+        int dx = axis_step(cx > .5f ? 1 : cx < -.5f ? -1 : 0, &held[0], &repeatAt[0], t);
+        int dy = axis_step(cy > .5f ? 1 : cy < -.5f ? -1 : 0, &held[1], &repeatAt[1], t);
+        BOOL pa = a && !prevA, pb = b && !prevB;
+        prevA = a; prevB = b;
+        rt_ios_community_pad((__bridge void *)community, dx, dy, pa, pb);
+        return;
+    }
     if (menu_open && g) {
         if (b && !prevB) [self closeMenu];
         else if (a && !prevA) [self activate];
@@ -616,6 +674,24 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         auto_open = 0;
         [self openMenu];
         for (P2MenuRow *row in rows) if (start && row.kind == ROW_MAP) { [self startMap:row]; break; }
+    }
+    // P2_COMMUNITY_TEST=<Workshop id> (simulator checks): at the first pause, opens
+    // Community Maps on that chamber, downloads it and starts it;
+    // =show:<id> only opens its details (screenshots of the browser).
+    static int community_test = -1;
+    static unsigned long long community_id;
+    if (community_test < 0) {
+        const char *e = getenv("P2_COMMUNITY_TEST");
+        int show = e && !strncmp(e, "show:", 5);
+        community_id = e ? strtoull(e + (show ? 5 : 0), NULL, 10) : 0;
+        community_test = !community_id ? 0 : show ? 2 : 1;
+    }
+    if (community_test && !gear.hidden) {
+        int play = community_test == 1;
+        community_test = 0;
+        [self openMenu];
+        [self openCommunity];
+        if (community) rt_ios_community_open_item((__bridge void *)community, community_id, play);
     }
     if (closing_hold && ![self padActive]) closing_hold = 0;
     if (icloudStatus && CACurrentMediaTime() - icloudShownAt > 1) [self showICloudStatus];
