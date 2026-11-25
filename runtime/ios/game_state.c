@@ -250,8 +250,12 @@ static void update_level(CPU *c, int visible) {
     uint32_t game = rt_invoke(c, R32(table + CLIENT_IS_IN_GAME * 4), &engine_client, 1) & 0xff;
     uint32_t background = rt_invoke(c, R32(table + CLIENT_IS_MENU_BACKGROUND * 4), &engine_client, 1) & 0xff;
     if (game > 1 || background > 1) { client_unavailable("réponse non booléenne"); return; }
-    // Two seconds of gameplay without a level: not the method we think.
-    level_mismatch = !visible && !game ? level_mismatch + 1 : 0;
+    // Two seconds of gameplay without a level: not the method we think. Only
+    // counted once a level has loaded: before Portal 2's GameUI exists the UI
+    // reads as hidden at start-up, which would turn the gear off for good.
+    static int level_seen;
+    level_seen |= game;
+    level_mismatch = level_seen && !visible && !game ? level_mismatch + 1 : 0;
     if (level_mismatch > 20) { client_unavailable("partie sans niveau"); return; }
     int now = game && !background;
     if (now != in_level) fprintf(stderr, "[ios] niveau %s\n", now ? "chargé" : "fermé");

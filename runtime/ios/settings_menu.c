@@ -96,3 +96,13 @@ void rt_menu_display(const rt_menu_item *it, const char *value, char *out, size_
     case RT_MENU_CHOICE: snprintf(out, size, "%s", it->labels[choice_index(it, value)]); break;
     }
 }
+
+int rt_menu_pad_dropped(rt_pad_event kind, int options_button, int value, int paused, int captured) {
+    if (paused && options_button && (kind == RT_PAD_BUTTON_DOWN || kind == RT_PAD_BUTTON_UP)) return 1;
+    if (!captured) return 0;
+    switch (kind) {
+    case RT_PAD_AXIS: return value > 6000 || value < -6000;   // under the game's dead zone: a return to centre
+    case RT_PAD_BUTTON_DOWN: case RT_PAD_OTHER_MOTION: return 1;
+    default: return 0;
+    }
+}

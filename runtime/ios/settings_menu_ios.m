@@ -85,6 +85,15 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         focus = -1;
         [self makeGear];
+        // A setting changed elsewhere (the Settings app, read again on return):
+        // the open panel shows it.
+        __weak P2SettingsMenu *weakSelf = self;
+        [NSNotificationCenter.defaultCenter addObserverForName:@"P2SettingsChanged" object:nil
+                                                         queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
+            (void)n;
+            P2SettingsMenu *menu = weakSelf;
+            if (menu) [menu refreshRows];
+        }];
     }
     return self;
 }
@@ -518,6 +527,7 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
 }
 
 // ---- values ----
+- (void)refreshRows { for (P2MenuRow *r in rows) if (r.kind == ROW_SETTING) [self refresh:r]; }
 - (void)refresh:(P2MenuRow *)row {
     if (row.kind != ROW_SETTING) return;
     const rt_menu_item *it = row.item;
