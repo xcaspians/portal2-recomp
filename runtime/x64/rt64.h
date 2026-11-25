@@ -12,7 +12,7 @@
 #include <string.h>
 
 typedef union {
-    uint8_t b[16]; uint16_t w[8]; uint32_t d[4]; int32_t i[4];
+    uint8_t b[16]; int8_t sb[16]; uint16_t w[8]; int16_t sw[8]; uint32_t d[4]; int32_t i[4];
     uint64_t q[2]; int64_t s[2]; float f[4]; double g[2];
 } XMM64;
 
@@ -30,8 +30,16 @@ typedef struct CPU64 {
     uint32_t df;           // direction flag (0/1)
     uint32_t mxcsr;
     uint64_t fs_base, gs_base;
-    XMM64 xmm[16];
+    XMM64 xmm[18];         // 16 and 17: scratch for MMX instructions lowered as SSE2
+    double st[8];          // x87 stack in doubles (tools/x87_64.py)
+    uint32_t ftop;
+    uint16_t fcw, fsw;
+    uint64_t mm[8];        // MMX registers, separate from st[]
 } CPU64;
+
+#define ST(i) (c->st[(c->ftop + (i)) & 7])
+#define FPUSH(cpu, v) do { double fpush_ = (v); (cpu)->ftop = ((cpu)->ftop - 1) & 7; (cpu)->st[(cpu)->ftop] = fpush_; } while (0)
+#define FPOP(cpu) ((cpu)->ftop = ((cpu)->ftop + 1) & 7)
 
 typedef void (*gfn64)(CPU64 *);
 
@@ -50,6 +58,9 @@ RT64_ALWAYS_INLINE void rt64_w16(uint64_t a, uint64_t v) { uint16_t x = (uint16_
 RT64_ALWAYS_INLINE void rt64_w32(uint64_t a, uint64_t v) { uint32_t x = (uint32_t)v; memcpy((void *)(uintptr_t)a, &x, 4); }
 RT64_ALWAYS_INLINE void rt64_w64(uint64_t a, uint64_t v) { memcpy((void *)(uintptr_t)a, &v, 8); }
 RT64_ALWAYS_INLINE void rt64_wx(uint64_t a, XMM64 v) { memcpy((void *)(uintptr_t)a, &v, 16); }
+RT64_ALWAYS_INLINE XMM64 rt64_xq(uint64_t v) { XMM64 x; x.q[0] = v; x.q[1] = 0; return x; }
+// Saturation of a wide intermediate to [lo, hi] (packs, saturating adds).
+RT64_ALWAYS_INLINE int64_t rt64_sat(int64_t v, int64_t lo, int64_t hi) { return v < lo ? lo : v > hi ? hi : v; }
 #define R8(a)  rt64_r8(a)
 #define R16(a) rt64_r16(a)
 #define R32(a) rt64_r32(a)
@@ -135,6 +146,17 @@ RT64_ALWAYS_INLINE uint64_t f64_imul(FL64 *f, uint64_t a, uint64_t b, int n) {
     uint64_t rr = (uint64_t)r & MSK64(n);
     f->cf = f->of = r != (__int128)(int64_t)sx64(rr, n); f->af = 0; szp64(f, rr, n); return rr;
 }
+// BMI2 PDEP/PEXT: deposit/extract the bits of a under the mask.
+RT64_ALWAYS_INLINE uint64_t rt64_pdep(uint64_t a, uint64_t mask, int n) {
+    uint64_t r = 0; mask &= MSK64(n);
+    for (uint64_t bit = 1; mask; bit <<= 1) { uint64_t low = mask & (0 - mask); if (a & bit) r |= low; mask &= mask - 1; }
+    return r;
+}
+RT64_ALWAYS_INLINE uint64_t rt64_pext(uint64_t a, uint64_t mask, int n) {
+    uint64_t r = 0; mask &= MSK64(n);
+    for (uint64_t bit = 1; mask; bit <<= 1) { uint64_t low = mask & (0 - mask); if (a & low) r |= bit; mask &= mask - 1; }
+    return r;
+}
 RT64_ALWAYS_INLINE int parity64(uint32_t v) { return !__builtin_parity(v & 0xff); }
 
 enum { CC_O, CC_NO, CC_B, CC_AE, CC_E, CC_NE, CC_BE, CC_A, CC_S, CC_NS, CC_P, CC_NP, CC_L, CC_GE, CC_LE, CC_G };
@@ -191,6 +213,11 @@ uint64_t rt64_import_address(const RT64Module *module, size_t index);
 void rt64_cpuid(CPU64 *c);
 uint64_t rt64_rdtsc(void);
 void rt64_div(CPU64 *c, uint64_t divisor, int width, int is_signed, uint64_t pc);
+double rt64_ld80(uint64_t address);                 // x87 80-bit memory -> double
+void rt64_st80(uint64_t address, double value);
+double rt64_x87_round(CPU64 *c, double value);      // rounding of the x87 control word
+// FNSTENV (0), FLDENV (1), FNSAVE (2), FRSTOR (3), FXSAVE (4), FXRSTOR (5).
+void rt64_fpu_state(CPU64 *c, uint64_t address, int kind);
 
 // Import shims (shims64.c): a guest call to an import runs the host
 // function registered under its name, which reads its arguments from the

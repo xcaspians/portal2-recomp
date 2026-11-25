@@ -35,7 +35,8 @@ class StringTable:
 
 
 def read_object(path):
-    data = open(path, 'rb').read()
+    with open(path, 'rb') as f:
+        data = f.read()
     assert data[:4] == b'\x7fELF' and data[4] == 2, 'ELF64 relocatable expected'
     e_type, machine = struct.unpack_from('<HH', data, 16)
     assert e_type == 1 and machine == 62, 'x86-64 ET_REL expected'

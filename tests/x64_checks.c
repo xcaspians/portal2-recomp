@@ -97,8 +97,41 @@ int main(void) {
     double value; uint64_t bits = out(0); memcpy(&value, &bits, 8);
     EXPECT(value == 10.75 && out8(8) == 1 && cpu.xmm[0].g[0] == 10.75);
 
+    CALL0("x64_simd");
+    for (int i = 1; i < 16; ++i) EXPECT(out8(i) == i - 1);
+    EXPECT(out8(0) == 0);                                                   // PSHUFB: bit 7 clears the byte
+    for (int i = 0; i < 16; ++i) EXPECT(out8(16 + i) == 4 + i);            // PALIGNR 4
+    EXPECT(out(32) == 0x0000000d0000000cu && out(40) == 0x0000000f0000000eu);   // PMOVZXBD
+    EXPECT(out(48) == 0xfffe7fff0007fffbu && out(56) == 0xfffe7fff0007fffbu);   // PACKSSDW saturates
+    EXPECT(out(64) == 0x00000003fffffffdu && out(72) == 0xffffffff0000c350u);   // PSRAD 1
+    EXPECT(out(80) == 0x00000000fffffffbu && out(88) == 0xfffffffe00000000u);   // PMINSD
+    EXPECT(out(96) == 0xffffffffu && out(104) == 0);                       // CMPLTPS
+    float lanes[4]; memcpy(lanes, (void *)(uintptr_t)(sym("x64_out") + 112), 16);
+    EXPECT(lanes[0] == 1.5f && lanes[1] == -3.0f && lanes[2] == 3.0f && lanes[3] == 0);   // INSERTPS 0x58
+    memcpy(lanes, (void *)(uintptr_t)(sym("x64_out") + 128), 16);
+    EXPECT(lanes[0] == 2.0f && lanes[1] == -2.5f && lanes[2] == 3.0f && lanes[3] == 4.0f); // BLENDPS 5
+    double rounded[2]; memcpy(rounded, (void *)(uintptr_t)(sym("x64_out") + 144), 16);
+    EXPECT(rounded[0] == 2.0 && rounded[1] == 3.0);                         // ROUNDSD 0 and 2
+    EXPECT(out8(160) == 0 && out8(161) == 1 && out8(162) == 0);             // PTEST ZF, CF
+    EXPECT(out(176) == 0x0000001900000005u && out(184) == 0x000000710000003du);   // PMADDWD
+    EXPECT(out(192) == 0x0006000600050005u && out(200) == 0x0008000800070007u);   // PUNPCKHWD
+
+    CALL0("x64_x87");
+    double fifteen; uint64_t raw = out(0); memcpy(&fifteen, &raw, 8);
+    EXPECT(fifteen == 15.0);
+    EXPECT((uint32_t)out(8) == 8);                                          // FISTP rounds to nearest even
+    EXPECT(out(16) == 0xa000000000000000u && (out(24) & 0xffff) == 0x4000); // 2.5 as an 80-bit value
+    EXPECT(out8(32) == 1 && (out(34) & 0xffff) == 0x37f);                   // FCOMIP, FNSTCW
+    EXPECT(out(40) == 0x000c000a00080006u);                                 // PADDW mm
+    EXPECT(out(48) == 0x080706050c0a0806u);                                 // PACKUSWB mm
+    EXPECT(out(56) == 0x0005000600070008u);                                 // PSHUFW mm 0x1b
+
+    CALL0("x64_bmi");
+    EXPECT(out(0) == 0xf && out(8) == 0x0f && out(16) == 0xe0 && out(24) == 0xf000);
+    EXPECT(out(32) == 4 && out(40) == 15 && out(48) == 0 && out(56) == 28);
+
     if (failures) { fprintf(stderr, "x64-check: %d of %d checks failed\n", failures, checks); return 1; }
     printf("x64-check: PASS, %d checks (System V calls, 16 registers, RIP-relative data, "
-           "flags, jump tables, imports, atomics, SSE2)\n", checks);
+           "flags, jump tables, imports, atomics, SSE2 to SSE4.1, x87, MMX, BMI)\n", checks);
     return 0;
 }
