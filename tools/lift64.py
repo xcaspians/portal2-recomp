@@ -504,6 +504,12 @@ def translate(pc, insn, mod, entry, callees):
         return f'if ({test}) goto L{t:x}; {end}', [t, nxt]
 
     ops = [Operand(x, nxt) for x in args.split(',')] if args else []
+    if op == 'lea' and len(ops) == 2 and ops[1].addr is not None and ops[1].addr.startswith('(B_ + '):
+        # A code address taken with LEA (callbacks, thread entry points,
+        # atexit destructors): lift the function there too.
+        taken = int(re.search(r'0x[0-9a-f]+', ops[1].addr)[0], 16)
+        if taken in mod.insns and getattr(mod, 'is_code', lambda _: True)(taken):
+            callees.add(taken)
     sse = translate_sse(op, ops, here)
     if sse is not None:
         return sse + ' ' + end, [nxt]
@@ -834,11 +840,26 @@ def generate(layout, roots, symbol, objdump='objdump', every=False):
                f'{layout["size"]:#x}, &B_, functions_, {len(bodies)}, relocs_, {len(rows)}, '
                f'imports_, {len(layout["imports"])}, exports_, {len(layout["exports"])}}};')
     handled = stats['pcs'] - stats['unsupported_pcs']
+    # Linear sweep: every decoded instruction of the code sections, reached
+    # or not (code only reached through exception tables, for example).
+    sweep, sweep_missing = 0, collections.Counter()
+    jumps = (mod.table_jumps, mod.unbounded_tables, mod.dispatch_jumps)
+    plt = layout.get('plt') or []
+    for pc, insn in insns.items():
+        if insn[1] in ('int3', 'nop') or any(lo <= pc < hi for lo, hi in plt) or not mod.is_code(pc):
+            continue
+        sweep += 1
+        try:
+            translate(pc, insn, mod, None, set())
+        except (Unsupported, KeyError, IndexError, ValueError):
+            sweep_missing[form(insn[1], insn[2])] += 1
     report = dict(functions=len(bodies),
                   functions_complete=sum('not lifted:' not in b for b in bodies.values()),
                   instructions=len(stats['pcs']), handled=len(handled),
                   unsupported=len(stats['unsupported_pcs']),
-                  table_jumps=mod.table_jumps, unbounded_tables=mod.unbounded_tables, dispatch_jumps=mod.dispatch_jumps,
+                  sweep_instructions=sweep, sweep_unsupported=sum(sweep_missing.values()),
+                  sweep_top_missing=sweep_missing.most_common(40),
+                  table_jumps=jumps[0], unbounded_tables=jumps[1], dispatch_jumps=jumps[2],
                   top_missing=stats['missing'].most_common(40),
                   why={k: stats['why'].get(k, '') for k, _ in stats['missing'].most_common(40)})
     return '\n'.join(out) + '\n', report
@@ -877,6 +898,9 @@ def main():
     print(f'{layout["name"]}: {report["functions"]} functions ({report["functions_complete"]} complete), '
           f'{report["instructions"]} instructions, {report["handled"]} handled ({share:.2f} %), '
           f'{report["table_jumps"]} jump tables, {report["dispatch_jumps"]} indirect jumps', file=sys.stderr)
+    sweep_share = 100.0 * (report['sweep_instructions'] - report['sweep_unsupported']) / max(1, report['sweep_instructions'])
+    print(f'  linear sweep of the code: {report["sweep_instructions"]} instructions, '
+          f'{report["sweep_unsupported"]} not handled ({sweep_share:.2f} % handled)', file=sys.stderr)
     for name, count in report['top_missing'][:15]:
         print(f'  {count:6}  {name}', file=sys.stderr)
 
