@@ -406,8 +406,9 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
         if (!strcmp(scale_names[i][0], c->scale)) scale = scale_names[i][1];
     const char *upscale = !strcmp(c->upscale, "0.75") ? "MetalFX Quality" : !strcmp(c->upscale, "0.5") ? "MetalFX Performance"
                                                                                                          : "no MetalFX";
-    UILabel *info = label([NSString stringWithFormat:@"Defaults for %s: resolution %s, %s, %s fps%s", c->name, scale, upscale,
-                           c->fps, c->low_memory ? ", memory saving on" : ""], 13, UIFontWeightRegular, .65);
+    // %@, not %s: %s reads C strings as Mac Roman, and "×" came out as "√ó".
+    UILabel *info = label([NSString stringWithFormat:@"Defaults for %@: resolution %@, %@, %@ fps%@", @(c->name), @(scale),
+                           @(upscale), @(c->fps), c->low_memory ? @", memory saving on" : @""], 13, UIFontWeightRegular, .65);
     info.numberOfLines = 0;
     [stack addArrangedSubview:info];
     P2MenuRow *row = [P2MenuRow new];
