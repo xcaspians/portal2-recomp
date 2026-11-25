@@ -455,9 +455,12 @@ RT_CHECK(backtap_calibration_fit_on_recorded_taps) {
     rt_backtap_params def; rt_backtap_defaults(&def);
     rt_btcal_fit fit;
     assert(rt_btcal_fit_taps(taps, 16, &noise, &def, &fit));
-    // The rules: 60 % of the softest taps, over 3 x noise, never above the defaults.
-    assert(fit.accel_min < def.accel_min && fit.accel_min >= 3 * noise.a_rms && fit.accel_min <= 0.6f * 0.06f);
-    assert(fit.jerk_min <= def.jerk_min && fit.jerk_min >= 3 * noise.jerk_rms);
+    // The rules: 60 % of the softest taps, over 3 x noise and the calibration
+    // gate (calib_gate of the defaults: never looser than calibration could hear), never above the defaults.
+    float gate = rt_backtap_tuning_now()->calib_gate;
+    assert(fit.accel_min < def.accel_min && fit.accel_min >= 3 * noise.a_rms);
+    assert(fabsf(fit.accel_min - gate * def.accel_min) < 1e-6f);   // 60 % of 0.055 g is under the gate: the gate
+    assert(fit.jerk_min <= def.jerk_min && fit.jerk_min >= 3 * noise.jerk_rms && fit.jerk_min >= gate * def.jerk_min - 1e-6f);
     // Before: the defaults miss these soft taps; after: all on their side, none wrong.
     assert(fit.before < 8);
     assert(fit.after >= 14 && fit.wrong_after == 0);
@@ -538,4 +541,122 @@ RT_CHECK(backtap_calibration_replay_soft_taps) {
             after += o.accepted == 1 && o.side[0] == side;
         }
     assert(before == 0 && after == 8);
+}
+
+// ---- Recorded traces (tests/data/backtap/*.txt, raw "Record taps" format) ----
+#include <dirent.h>
+
+typedef struct { int left, right, heard, rejected; char reasons[256]; } TraceResult;
+
+// Replays one trace through a detector with these values; calibration: count
+// what the calibration screen hears (r.heard), as backtap_ios.m does.
+static TraceResult replay_trace(const char *path, const rt_backtap_params *p) {
+    TraceResult res; memset(&res, 0, sizeof(res));
+    FILE *f = fopen(path, "r");
+    assert(f);
+    static rt_backtap d;
+    rt_backtap_init(&d, p);
+    char line[512];
+    while (fgets(line, sizeof(line), f)) {
+        rt_backtap_sample s; int orient, active; double t;
+        if (line[0] == 't' && sscanf(line, "t %lf", &t) == 1) { rt_backtap_touch(&d, t); continue; }
+        if (line[0] != 'm' || sscanf(line, "m %lf %f %f %f %f %f %f %f %f %f %d %d", &s.t, &s.a[0], &s.a[1], &s.a[2],
+                                     &s.w[0], &s.w[1], &s.w[2], &s.g[0], &s.g[1], &s.g[2], &orient, &active) != 12)
+            continue;
+        rt_backtap_report r;
+        if (!rt_backtap_feed(&d, &s, orient, active, &r) || r.weak) continue;
+        res.heard += r.heard;
+        if (!r.reject) { if (r.side < 0) ++res.left; else ++res.right; }
+        else {
+            ++res.rejected;
+            size_t n = strlen(res.reasons);
+            snprintf(res.reasons + n, sizeof(res.reasons) - n, "%s%s", n ? ", " : "", r.reject);
+        }
+    }
+    fclose(f);
+    return res;
+}
+
+static void load_tuning_from_repo(void) {
+    FILE *f = fopen("ios/device_defaults.txt", "r");
+    assert(f);
+    static char text[65536];
+    size_t n = fread(text, 1, sizeof(text) - 1, f);
+    text[n] = 0;
+    fclose(f);
+    rt_backtap_tuning t;
+    assert(rt_backtap_tuning_parse(text, &t) == 6);   // every backtap value is in the config file
+    rt_backtap_tuning_use(&t);
+}
+
+RT_CHECK(backtap_tuning_from_config_file) {
+    rt_backtap_tuning t, b;
+    rt_backtap_tuning_builtin(&b);
+    assert(rt_backtap_tuning_parse("", &t) == 0 && !memcmp(&t, &b, sizeof(t)));
+    assert(rt_backtap_tuning_parse("backtap touch_after=0.5 calib_gate=7 bogus=1\nbacktapx steady_rot=9\n", &t) == 1);
+    assert(fabsf(t.touch_after - 0.5f) < 1e-6f && t.calib_gate == b.calib_gate && t.steady_rot == b.steady_rot);
+    load_tuning_from_repo();
+    rt_backtap_params p;
+    rt_backtap_defaults(&p);
+    assert(p.touch_after == rt_backtap_tuning_now()->touch_after && p.steady_window > 0);
+    rt_backtap_params g;
+    rt_backtap_calibration_gate(&g);   // looser than play, but only by calib_gate
+    assert(g.accel_min < p.accel_min && g.accel_min >= 0.25f * p.accel_min);
+    rt_backtap_tuning_use(&b);
+}
+
+// Every trace: play and the calibration screen give the verdict its file expects.
+RT_CHECK(backtap_recorded_traces_verdicts) {
+    load_tuning_from_repo();
+    DIR *dir = opendir("tests/data/backtap");
+    assert(dir);
+    int files = 0;
+    for (struct dirent *e; (e = readdir(dir));) {
+        size_t n = strlen(e->d_name);
+        if (n < 5 || strcmp(e->d_name + n - 4, ".txt")) continue;
+        char path[512];
+        snprintf(path, sizeof(path), "tests/data/backtap/%s", e->d_name);
+        FILE *f = fopen(path, "r");
+        char line[256]; int left = -1, right = -1, heard = -1;
+        while (fgets(line, sizeof(line), f) && line[0] == '#')
+            if (sscanf(line, "# expect left=%d right=%d heard=%d", &left, &right, &heard) == 3) break;
+        fclose(f);
+        if (left < 0) continue;   // no expect line: not a check
+        ++files;
+        rt_backtap_params play, cal;
+        rt_backtap_defaults(&play);
+        rt_backtap_calibration_gate(&cal);
+        TraceResult rp = replay_trace(path, &play), rc = replay_trace(path, &cal);
+        if (rp.left != left || rp.right != right || rc.heard != heard)
+            fprintf(stderr, "%s: play %d left %d right (%s), calibration heard %d (%s)\n", e->d_name, rp.left, rp.right,
+                    rp.reasons, rc.heard, rc.reasons);
+        assert(rp.left == left && rp.right == right);
+        assert(rc.heard == heard);
+    }
+    closedir(dir);
+    assert(files >= 4);
+    rt_backtap_tuning b; rt_backtap_tuning_builtin(&b); rt_backtap_tuning_use(&b);
+}
+
+// The two new gates on their own: a jolt 130 ms after a touch ends, and one
+// right after the device was turned by hand.
+RT_CHECK(backtap_touch_after_and_steadiness_gates) {
+    Scene sc = scene(100);
+    back_tap(&sc, 1.0, 1);
+    sc.touches[sc.ntouch++] = 0.80; sc.touches[sc.ntouch++] = 0.87;   // a button let go 130 ms before
+    Outcome o = play(&sc);
+    assert(o.reports == 1 && o.accepted == 0 && !strcmp(o.reject[0], "toucher à l'écran"));
+    sc.params.touch_after = 0.1f;   // a shorter window lets it through
+    o = play(&sc);
+    assert(o.accepted == 1);
+    sc = scene(100);
+    back_tap(&sc, 1.0, -1);
+    sc.turn_from = 0.5;            // turning at a steady 1 rad/s (gyro aiming)
+    sc.params.gravity_max = 10;    // only the steadiness gate left to catch it
+    sc.params.steady_rot = 0.5f;
+    o = play(&sc);
+    assert(o.accepted == 1);       // a smooth turn is steady enough (gyro aiming)
+    sc.turn_from = 0.92;           // the hand starts turning it 80 ms before: a grip shift
+    o = play(&sc);
+    assert(o.reports == 1 && o.accepted == 0 && !strcmp(o.reject[0], "pas immobile avant"));
 }
