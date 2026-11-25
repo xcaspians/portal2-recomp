@@ -138,7 +138,8 @@ def main():
             '-o', str(app / game['ios_executable'])]
     subprocess.run(link, check=True)
     plist = (ROOT / 'ios/Info.plist.in').read_text()
-    for key, value in dict(EXECUTABLE=game['ios_executable'], IDENTIFIER=bundle_id(game=game['name']), NAME=game['ios_name'],
+    for key, value in dict(EXECUTABLE=game['ios_executable'], IDENTIFIER=bundle_id(game=game['name']),
+                           NAME=games.app_name(config) if game.get('ios_guests') else game['ios_name'],
                            GAME=game['name'], PLATFORM=target['plist'], FORK_VERSION=fork_version()).items():
         plist = plist.replace(f'@{key}@', value)
     (app / 'Info.plist').write_text(plist)
@@ -147,7 +148,7 @@ def main():
     # Défauts par appareil (runtime/ios/device_defaults.c), lus au lancement.
     shutil.copy2(ROOT / 'ios/device_defaults.txt', app / 'device_defaults.txt')
     settings_for_game(app / 'Settings.bundle/Root.plist', game['name'])
-    app_icon(app, config, game['icon'])
+    app_icon(app, config, game['icon'], own=ROOT / APP_ICON if game.get('ios_guests') else None)
     (app / 'launch.args').write_text(''.join(f'{word}\n' for word in launch_args(game, config)))
     shutil.rmtree(app / 'covers', ignore_errors=True)
     if guests:   # the game picker's covers and each hosted game's arguments
@@ -266,7 +267,7 @@ def cover(app, config, game):
 
 # Version of Caspian's fork, shown at the bottom of the in-game settings menu
 # (Info.plist key P2ForkVersion, settings_menu_ios.m).
-FORK_VERSION = '0.4.0-fork.2'
+FORK_VERSION = '0.5.0-fork.1'   # round 19: the one app, Sauce
 
 
 def fork_version(root=ROOT):
@@ -327,12 +328,24 @@ def settings_for_game(root_plist, game):
         plistlib.dump(root, f, fmt=plistlib.FMT_BINARY)
 
 
-def app_icon(app, config, relative):
+# The one app's icon (tools/make_app_icon.swift): our own art, no Valve image.
+APP_ICON = 'ios/AppIcon.png'
+ICON_SIZES = (('AppIcon60x60@2x.png', 120), ('AppIcon60x60@3x.png', 180), ('AppIcon76x76@2x~ipad.png', 152),
+              ('AppIcon83.5x83.5@2x~ipad.png', 167))
+
+
+def app_icon(app, config, relative, own=None):
     """App icon taken from the game's macOS icon (`icon` of the profile, e.g.
     portal2/resource/game.icns, under the game's game_root in `config`): a
     Valve image, read from the player's copy instead of being versioned.
     Old-style files (CFBundleIconFiles of ios/Info.plist.in), no asset
-    catalog. Without the file: iOS default icon."""
+    catalog. Without the file: iOS default icon. `own`: a PNG of ours used
+    instead (the one app, APP_ICON)."""
+    if own is not None:
+        for name, size in ICON_SIZES:
+            subprocess.run(['sips', '-z', str(size), str(size), str(own), '--out', str(app / name)],
+                           check=True, capture_output=True)
+        return
     icns = Path(config.get('game_root', '')) / relative
     if not icns.is_file():
         print(f'icône : {icns} absent, icône par défaut')
@@ -346,8 +359,7 @@ def app_icon(app, config, relative):
     else:
         subprocess.run(['iconutil', '-c', 'iconset', '-o', str(work / 'game.iconset'), str(icns)], check=True)
         largest = max((work / 'game.iconset').glob('icon_*.png'), key=lambda p: p.stat().st_size)
-    for name, size in (('AppIcon60x60@2x.png', 120), ('AppIcon60x60@3x.png', 180), ('AppIcon76x76@2x~ipad.png', 152),
-                       ('AppIcon83.5x83.5@2x~ipad.png', 167)):
+    for name, size in ICON_SIZES:
         subprocess.run(['sips', '-z', str(size), str(size), str(largest), '--out', str(app / name)],
                        check=True, capture_output=True)
 

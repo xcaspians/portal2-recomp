@@ -136,6 +136,17 @@ if __name__ == '__main__':
     unittest.main()
 
 
+class AppName(unittest.TestCase):
+    def test_one_place_for_the_name(self):
+        # Round 19: the one app's name lives in games.APP_NAME (or ios_app_name),
+        # never a Valve trademark.
+        self.assertEqual(games.app_name({}), games.APP_NAME)
+        self.assertEqual(games.app_name({'ios_app_name': 'Saurce'}), 'Saurce')
+        for mark in ('source', 'portal', 'half-life', 'valve', 'steam'):
+            self.assertNotIn(mark, games.APP_NAME.lower())
+        self.assertTrue((games.ROOT / build_ios.APP_ICON).is_file())
+
+
 class ForkVersionTests(unittest.TestCase):
     """Version shown at the bottom of the in-game settings menu."""
     def test_version_names_the_commit(self):

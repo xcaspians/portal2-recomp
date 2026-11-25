@@ -14,6 +14,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# The one iPhone and iPad app every game lives in (round 19): its name on the
+# home screen. A rename is this line, or "ios_app_name" in config/local.json.
+# No Valve trademark here or in its icon (ios/AppIcon.png); game names stay
+# inside the game picker.
+APP_NAME = 'Sauce'
+
+
+def app_name(config=None):
+    """The one app's display name: config/local.json's ios_app_name, else APP_NAME."""
+    return (config or {}).get('ios_app_name') or APP_NAME
+
 # Modules never prepared, whatever the game: authoring tools, the optional
 # legacy Steam client and DXVK (shaderapivk.so gets its Direct3D 9 from the
 # runtime bridge, runtime/d3d9.c, so Direct3DCreate9 becomes a shim).

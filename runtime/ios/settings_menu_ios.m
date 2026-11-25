@@ -247,9 +247,10 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     [self addResetRow];
     if (rt_ios_has_game_choice()) [self addSwitchGameRow];
     [rows addObject:close];   // last in controller order, first on screen
+    // "Sauce 0.4.0-fork.3 (abc1234) · Half-Life 2": the app, its version, the running game (round 19).
     NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"P2ForkVersion"] ?: @"unknown";
-    UILabel *footer = label([NSString stringWithFormat:@"%@ · recomp fork · version %@", @(rt_ios_current_game()->title),
-                                                       version], 13,
+    NSString *app = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"recomp fork";
+    UILabel *footer = label([NSString stringWithFormat:@"%@ %@ · %@", app, version, @(rt_ios_current_game()->title)], 13,
                             UIFontWeightRegular, .5);
     footer.textAlignment = NSTextAlignmentCenter;
     [stack addArrangedSubview:footer];
