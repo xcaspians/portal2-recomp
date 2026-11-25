@@ -85,6 +85,8 @@ def main():
                                                  for p, base, size in modules], indent=2) + '\n')
     command = [sys.executable, str(Path(__file__).with_name('elfprep.py')), '--out', str(args.out),
                '--program', f'{args.tool}_linux' if args.tool else games.profile(config)['program']]
+    if not args.tool:
+        command.extend(f'--host-export={spec}' for spec in games.profile(config).get('host_exports', ()))
     command.extend(f'{p}@{base:#x}' for p, base, _ in modules)
     subprocess.run(command, check=True)
 
