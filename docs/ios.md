@@ -642,11 +642,22 @@ Half-Life 2 and Portal stay separate apps.
   `launch.args` stay exactly where they were (`Documents/game`, `prep`,
   `linux`, `portal2-userdata`, the Settings app page). Mel's data is in
   `Documents/mel/` (`game`, `prep`, `linux`, `launch.args`), its saves in
-  `Documents/mel-userdata`, its settings under `mel.`-prefixed preference keys
-  (its own first-launch defaults too; the Settings app page shows Portal 2's).
-  iCloud saves sync Mel in its own folder (`Documents/mel/SAVE` in the
+  `Documents/mel-userdata`. iCloud saves sync Mel in its own folder (`Documents/mel/SAVE` in the
   container). Community Maps and Maps & Mods stay Portal 2 only. The menu's
   version line names the game.
+- **One set of controls and settings for every game** (round 11,
+  `rt_ios_pref_key` in `runtime/ios/game_ios.c`): the touch layout from the
+  layout editor, button size and opacity, back taps (switch, sensitivity,
+  calibration), gyro and camera speed, frame rate, the FPS counter and every
+  other general setting of the gear menu are the same keys in every game, so
+  a change in one applies in the other (and in the Settings app page). Only
+  what means something to one game stays per game: its iCloud saves switch
+  and last sync (`mel.`-prefixed keys), and by their folders its saves,
+  `launch.args` and the version line. Saving the layout from one game keeps
+  the place of a button only another game has (`rt_touch_custom_merge`).
+  Migration: Portal 2's settings became the shared set; Mel's old `mel.*`
+  keys stay in the preferences, untouched, and are copied once to
+  `Documents/mel-userdata/settings-before-shared.plist`.
 - **Mel's slim pack** (round 11, `tools/mel_slim.py`): Mel ships its own
   copy of Portal 2's `portal2` folder (2.4 GB, almost all of it VPK). Of its
   14,977 VPK entries, 14,656 are byte for byte in Portal 2's own VPK. The slim

@@ -133,6 +133,12 @@ int rt_touch_custom_parse(const char *text, rt_touch_custom_layout *out) {
     return found;
 }
 
+void rt_touch_custom_merge(rt_touch_custom_layout *stored, const rt_touch_custom_layout *edited, rt_ios_layout layout) {
+    int count = 0;
+    const rt_touch_button *b = rt_touch_layout(layout, &count);
+    for (int i = 0; i < count; ++i) stored->b[b[i].action] = edited->b[b[i].action];
+}
+
 void rt_touch_stick_rests(rt_ios_layout layout, double out[2][2]) {
     out[0][0] = .16; out[0][1] = .72;                         // move stick (touch_controls.m restingStick:)
     out[1][0] = rt_touch_look_rest(layout); out[1][1] = .72;  // camera stick
