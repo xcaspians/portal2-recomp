@@ -206,6 +206,11 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     [self watchControllers];
     [self measure];
     [self show:NULL animated:NO];
+    // Screenshots without a finger: P2_PICKER_SERIES=<id> opens a series, P2_PICKER_FOCUS=<n> lights a card.
+    const char *open = getenv("P2_PICKER_SERIES"), *lit = getenv("P2_PICKER_FOCUS");
+    for (int i = 0; open && i < rt_picker_series_count(); ++i)
+        if (!strcmp(rt_picker_series_at(i)->id, open)) [self show:rt_picker_series_at(i) animated:NO];
+    if (lit) { focus = atoi(lit); [self applyFocus]; }
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
