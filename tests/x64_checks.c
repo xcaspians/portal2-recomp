@@ -141,6 +141,8 @@ int main(void) {
     EXPECT(out8(32) == 0 && out8(33) == 0xee);                               // MASKMOVDQU: byte 0 only
     EXPECT(out(48) == 0x0004000300020001u);                                  // MOVNTQ
 
+    EXPECT(CALL0("x64_after_data") == 0x5a5a);                                // decoded again after data
+
     // Round C: a second module opened by name (DT_NEEDED, constructors, TLS, setjmp/longjmp).
     rt64_thread_tls(&cpu);
     rt64_register(&x64_fixture);

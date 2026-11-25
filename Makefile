@@ -213,3 +213,24 @@ p2ce-modules-check: $(X64_RUNTIME) runtime/x64/rt64.h tests/x64_modules_live.c t
 	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) tests/x64_modules_live.c $(P2CE_LIBS) \
 		build/p2ce/lib/m_x64except/libm_x64except.a $(X64_LIBS) -o build/p2ce-modules-check; \
 	./build/p2ce-modules-check
+
+# Round D: P2CE's own program (bin/linux64/p2ce -> launcher.so -> engine.so)
+# lifted with the modules it loads, run from a mirror of the game folder
+# (tools/run64.py; the depot is never written). P2CE_ARGS are the game's.
+P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/libtier0.so \
+	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/libsteam_api.so bin/linux64/launcher.so \
+	bin/linux64/filesystem_stdio.so bin/linux64/engine.so
+P2CE_ARGS ?= -game p2ce -textmode -novid -nosound
+P2CE_CONTENT ?= $(subst depot_440005,depot_440002,$(P2CE_ROOT))
+P2CE_TIMEOUT ?= 120
+# -O0 by default: engine.so is 170 C files; -O1 takes about 2 GB and minutes per file.
+P2CE_OPT ?= 0
+.PHONY: p2ce-launch
+p2ce-launch: $(X64_RUNTIME) runtime/x64/rt64.h src/main64.c tools/run64.py
+	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-launch: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
+	set -e; $(PYTHON) tools/build64.py --out build/p2ce/lib --opt $(P2CE_OPT) --registry build/p2ce/registry.c \
+		$(foreach m,$(P2CE_LAUNCH_MODULES),"$(P2CE_ROOT)/$(m)"); \
+	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) src/main64.c build/p2ce/registry.c \
+		$$(ls build/p2ce/lib/*/lib*.a) $(X64_LIBS) -o build/p2ce/p2ce-run; \
+	$(PYTHON) tools/run64.py --depot "$(P2CE_ROOT)" --depot "$(P2CE_CONTENT)" --mirror build/p2ce/game --timeout $(P2CE_TIMEOUT) \
+		build/p2ce/p2ce-run $(P2CE_ARGS)

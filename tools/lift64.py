@@ -64,9 +64,10 @@ SAVE_F = '/*s*/c->flags = f;'
 LOAD_F = '/*l*/f = c->flags;'
 
 
-def disassemble(path, objdump='objdump'):
-    """{pc: (next pc, mnemonic, operands)} for every executable section."""
-    raw = subprocess.run([objdump, '-d', '-z', '--x86-asm-syntax=intel', str(path)],
+def disassemble(path, objdump='objdump', start=None, stop=None):
+    """{pc: (next pc, mnemonic, operands)} for every executable section (or the window [start, stop))."""
+    window = [f'--start-address={start:#x}', f'--stop-address={stop:#x}'] if start is not None else []
+    raw = subprocess.run([objdump, '-d', '-z', '--x86-asm-syntax=intel', *window, str(path)],
                          check=True, capture_output=True, text=True).stdout
     insns = {}
     for line in raw.splitlines():
@@ -211,6 +212,16 @@ class Module:
         self.insns = insns
         self.order = sorted(insns)
         self.position = {pc: i for i, pc in enumerate(self.order)}
+        # A linear sweep can lose step on data inside the code (a jump
+        # table, padding) and swallow the start of a function: decode again
+        # from each entry point it missed, until it meets known instructions.
+        self.resynced = 0
+        for e in layout['entries']:
+            if e not in insns and self.is_code(e):
+                self.resync(e)
+        if self.resynced:
+            self.order = sorted(insns)
+            self.position = {pc: i for i, pc in enumerate(self.order)}
         self.entries = {e for e in layout['entries'] if e in insns}
         self.slots = {}
         for r in layout['relocations']:
@@ -239,6 +250,18 @@ class Module:
             with open(layout['image'], 'rb') as f:
                 self.image = f.read()
         self.table_jumps = self.dispatch_jumps = self.unbounded_tables = 0
+
+    def resync(self, pc):
+        """Decode from `pc` (an address the linear sweep did not start an instruction at)."""
+        window = disassemble(self.layout['source'], start=pc, stop=pc + 0x400)
+        at = pc
+        while at in window:
+            if at in self.insns and at != pc:
+                break
+            self.insns[at] = window[at]
+            at = window[at][0]
+        self.resynced += 1
+        return pc in self.insns
 
     def call_target_import(self, insn):
         """Name of the import a CALL reaches through the PLT or the GOT, or None."""
@@ -1045,6 +1068,8 @@ def lift_function(entry, mod, stats=None, keep_flags=None):
         if pc in done:
             continue
         insn = mod.insns.get(pc)
+        if insn is None and hasattr(mod, 'resync') and mod.is_code(pc) and mod.resync(pc):
+            insn = mod.insns.get(pc)
         if insn is None:
             done[pc] = f'rt64_trap(c, {code(pc)}, "no decoded instruction here");'
             if stats is not None:
