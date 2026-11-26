@@ -90,6 +90,8 @@ int main(void) {
 
     for (uint64_t i = 0; i < 4; ++i) EXPECT(CALL("x64_switch", i) == 10 + i);
     EXPECT((uint32_t)CALL("x64_switch", 4) == 0xffffffffu);
+    // Round 23: a pthread_once inside another's routine runs (it deadlocked: P2CE's engine.so).
+    EXPECT(CALL0("x64_once_nested") == 7 && CALL0("x64_once_nested") == 7);   // once each
     // Round 23: instructions between the add and the jmp (P2CE's launcher.so).
     EXPECT(CALL("x64_switch_gap", 0) == 20 && CALL("x64_switch_gap", 1) == 21 && CALL("x64_switch_gap", 2) == 22);
     EXPECT((uint32_t)CALL("x64_switch_gap", 3) == 0xfffffffeu);

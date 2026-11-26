@@ -212,6 +212,31 @@ x64_switch_gap:
     pop rbx
     ret
 
+# pthread_once inside another pthread_once routine (P2CE's engine.so
+# constructors, round 23): the inner one must run, not wait on the outer.
+.globl x64_once_nested
+.type x64_once_nested, @function
+x64_once_nested:
+    sub rsp, 8
+    lea rdi, [rip + x64_once_outer_ctl]
+    lea rsi, [rip + x64_once_outer]
+    call pthread_once@PLT
+    add rsp, 8
+    mov eax, dword ptr [rip + x64_once_flag]
+    ret
+.type x64_once_outer, @function
+x64_once_outer:
+    sub rsp, 8
+    lea rdi, [rip + x64_once_inner_ctl]
+    lea rsi, [rip + x64_once_inner]
+    call pthread_once@PLT
+    add rsp, 8
+    ret
+.type x64_once_inner, @function
+x64_once_inner:
+    add dword ptr [rip + x64_once_flag], 7
+    ret
+
 .globl x64_callptr
 .type x64_callptr, @function
 x64_callptr:
@@ -495,6 +520,9 @@ x64_f4b: .float 2.0, -3.0, 3.0, 1.0
     .long .Lgap2 - .Ltable2
 
 .data
+x64_once_outer_ctl: .long 0
+x64_once_inner_ctl: .long 0
+x64_once_flag: .long 0
 .p2align 3
 .globl x64_count
 x64_count: .quad 0
