@@ -257,6 +257,16 @@ static BOOL sensors_wanted(CFTimeInterval *idle_since, BOOL playing, CFTimeInter
 @implementation P2Finger
 @end
 
+// A synthetic finger (P2_TOUCH_TEST_FINGER, device checks): the overlay's own
+// touch handlers get it as they get a thumb.
+@interface P2FakeTouch : UITouch
+@property CGPoint point;
+@end
+@implementation P2FakeTouch
+- (CGPoint)locationInView:(UIView *)view { (void)view; return self.point; }
+- (NSTimeInterval)timestamp { return CACurrentMediaTime(); }
+@end
+
 // Ce que montre le compteur : comparé avant de construire textes et bitmap.
 typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, hz, cap; } FpsKey;
 
@@ -435,6 +445,7 @@ static BOOL pad_input_active(void) {
     if (hasGamepad && !concealed) [self overlayEvent:RT_OVERLAY_PAD_POLL padActive:pad_input_active()];
     if (pad && rt_ios_move_response() != padResponse) { padResponse = rt_ios_move_response(); [self updateMove]; }
     [self testStep];
+    [self testFinger:now];
     // Capteurs de mouvement : orientation de l'écran lue une fois par image.
     BOOL playing = !menu && !concealed;   // menu vaut aussi pour l'app quittée
     int orient = rt_ios_backtap_available() || rt_ios_gyro_available() ? [self orientationSign] : 0;
@@ -655,6 +666,42 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
         else [weak mouseButton:SDL_BUTTON_MIDDLE down:NO at:centre];
     });
 }
+// P2_TOUCH_TEST_FINGER="fx,fy,dx,dy,after,for" (round 25, Left 4 Dead 2's stick): a finger
+// down at (fx, fy) (fractions of the overlay) <after> seconds into a level, slid by
+// (dx, dy) points over half a second, held, lifted <for> seconds after it touched.
+- (void)testFinger:(CFTimeInterval)now {
+    static int state = -1;
+    static double fx, fy, dx, dy, after, hold, start, down;
+    static P2FakeTouch *touch;
+    if (state == 0) return;
+    if (state < 0) {
+        const char *e = getenv("P2_TOUCH_TEST_FINGER");
+        state = e && sscanf(e, "%lf,%lf,%lf,%lf,%lf,%lf", &fx, &fy, &dx, &dy, &after, &hold) == 6 ? 1 : 0;
+        return;
+    }
+    if (!rt_ios_game_in_level() || menu) return;
+    if (!start) start = now;
+    CGPoint origin = CGPointMake(self.bounds.size.width * fx, self.bounds.size.height * fy);
+    if (state == 1 && now - start >= after) {
+        state = 2; down = now;
+        touch = [P2FakeTouch new];
+        touch.point = origin;
+        [self touchesBegan:[NSSet setWithObject:touch] withEvent:nil];
+        P2Finger *f = [fingers objectForKey:touch];
+        fprintf(stderr, "[ios] essai doigt : posé à %.0f,%.0f, rôle %d\n", origin.x, origin.y, f ? (int)f.role : -1);
+    } else if (state == 2) {
+        double k = fmin(1, (now - down) / .5);
+        touch.point = CGPointMake(origin.x + dx * k, origin.y + dy * k);
+        [self touchesMoved:[NSSet setWithObject:touch] withEvent:nil];
+        static int logged;
+        if (k >= 1 && !logged) { logged = 1; fprintf(stderr, "[ios] essai doigt : axes %d,%d (manette %s)\n", padAxes[0], padAxes[1], pad ? "oui" : "non"); }
+        if (now - down >= hold) {
+            state = 0;
+            [self touchesEnded:[NSSet setWithObject:touch] withEvent:nil];
+            fprintf(stderr, "[ios] essai doigt : levé\n");
+        }
+    }
+}
 // P2_TOUCH_TEST_HOLD="zoom,<after>,<for>" (device checks, round 25): holds a
 // button by its stored name, <after> seconds into a level, for <for> seconds.
 - (void)testHold:(CFTimeInterval)now {
@@ -839,6 +886,9 @@ static UIImage *icon_image(NSString *symbol, CGFloat point_size) {
     }
     double move;
     if (rt_ios_touch_test_step(menu, pad != NULL || padRefused, &move)) { testMove = (CGFloat)move; [self updateMove]; }
+    // P2_TOUCH_TEST_LOOK=<points per frame> (round 25, Left 4 Dead 2's stick): the camera
+    // turns while the stick is tilted, as a thumb on the camera stick or the gyro would.
+    if (testMove && !menu) { static float look = -1; if (look < 0) look = rt_ios_env_float("P2_TOUCH_TEST_LOOK", 0, 0); if (look > 0) [self lookBy:look y:0]; }
 }
 
 // ---- manette virtuelle ----
@@ -878,12 +928,21 @@ static int controller_count(void) {
     return coopPad != NULL;
 }
 - (void)syncPad {
+    // Round 25 (Left 4 Dead 2's stick, not reproduced on the iPad Pro): a virtual controller
+    // the game's SDL dropped (its controller subsystem stopped and restarted) moves no one;
+    // forgotten here, so it's made again below and arrives as a newly plugged controller.
+    static SDL_JoystickID padID = -1;   // the pointer may be freed: looked up by its instance id
+    if (pad && !coopPad && SDL_JoystickFromInstanceID(padID) != pad) {
+        fprintf(stderr, "[ios] manette virtuelle : détachée par le jeu, recréée\n");
+        pad = NULL;
+    }
     if ([self syncCoop]) return;
     if (rt_ios_touch_test_wasd()) padRefused = YES;   // essai témoin : touches W/A/S/D
     // A phone controller (phonepad_ios.m) takes the first slot when no real controller holds it.
     BOOL wanted = !physicalPad && !padRefused && !rt_ios_phonepad_active() && SDL_WasInit(SDL_INIT_GAMECONTROLLER);
     if (wanted && !pad) {
         if (!(pad = virtual_pad())) padRefused = YES;
+        padID = pad ? SDL_JoystickInstanceID(pad) : -1;
         rt_ios_move_response_linear(pad != NULL);
         padAxes[0] = padAxes[1] = 0;
         [self updateMove];
