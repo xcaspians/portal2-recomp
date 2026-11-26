@@ -204,3 +204,26 @@ Storage can be handled. It is purgeable, but a cache refilled from the Mac makes
 5. **Memory round(s).** L4D2, then attempts at Portal 2 and Mel.
 
 Estimate: **3 rounds to Portal on the TV, about 5 rounds to HL2 streaming, and 6 or more for anything beyond that.** If the round-1 probe measures well under 2 GB, or Apple raises the cap, re-plan from there.
+
+## 7. Measured on the box (round 23 probe)
+
+`tools/tvos_probe.sh` builds `ios/tvprobe` (a tiny tvOS app, no game code),
+signs it with the paid team (Xcode registered the Apple TV on the account),
+installs it on "Bedroom" and reads its results. Developer Mode wasn't needed
+to install or run it. Raw output: `docs/fork/round23-tvprobe.txt`.
+
+| What | Measured on the A2737 (tvOS 27.2.1) |
+|---|---|
+| Model, memory | AppleTV14,1, 4.17 GB physical |
+| **Per-app memory limit** | **about 2,098 MB** (footprint + `os_proc_available_memory` stayed at 2,098 MB while 1,999 MB was allocated and touched) |
+| Increased-memory entitlement | Xcode drops it from a tvOS signature: the limit stays 2,098 MB |
+| GPU recommended working set | 2,731 MB (shared memory: it counts in the same footprint) |
+| Writable folders | `Library/Caches` and `tmp` only; `Documents` and `Library/Application Support` refuse writes |
+| Storage | 63.7 GB volume, 38.2 GB free; tvOS has no "available for important/opportunistic use" query |
+| Large file in Caches | 2 GB written at 125 MB/s, read back at 606 MB/s |
+
+**Verdict unchanged:** the 2 GB limit is real on this box, so Portal (about
+1.4 GB) and Half-Life 2 (about 1.5 GB) fit and Portal 2 (peak 3.2 GB) doesn't
+without a memory diet. Storage is roomier than feared: 38 GB free holds
+Portal's 4.4 GB, or Half-Life 2's 11 GB, whole in Caches, which tvOS may
+purge when space runs low.

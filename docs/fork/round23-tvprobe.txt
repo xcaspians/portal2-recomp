@@ -1,0 +1,41 @@
+device AppleTV14,1, tvOS 27.2.1, physical memory 4.17 GB
+GPU Apple A15 GPU, recommended working set 2731 MB
+folder Documents                    NOT writable (You don’t have permission to save the file “tvprobe-write.bin” in the folder “Documents”.)
+folder Library/Application Support  NOT writable (You don’t have permission to save the file “Application Support” in the folder “Library”.)
+folder Library/Caches               writable
+folder tmp                          writable
+volume total 63.68 GB, available 38.22 GB
+memory at start: footprint 5 MB, os_proc_available_memory 2093 MB, so the limit is about 2098 MB
+allocated 64 MB, footprint 69 MB, available 2029 MB
+allocated 128 MB, footprint 134 MB, available 1964 MB
+allocated 192 MB, footprint 205 MB, available 1893 MB
+allocated 256 MB, footprint 269 MB, available 1829 MB
+allocated 320 MB, footprint 333 MB, available 1765 MB
+allocated 384 MB, footprint 397 MB, available 1701 MB
+allocated 448 MB, footprint 461 MB, available 1637 MB
+allocated 512 MB, footprint 525 MB, available 1573 MB
+allocated 576 MB, footprint 590 MB, available 1508 MB
+allocated 640 MB, footprint 654 MB, available 1444 MB
+allocated 704 MB, footprint 718 MB, available 1380 MB
+allocated 768 MB, footprint 782 MB, available 1316 MB
+allocated 832 MB, footprint 846 MB, available 1252 MB
+allocated 896 MB, footprint 910 MB, available 1188 MB
+allocated 960 MB, footprint 974 MB, available 1124 MB
+allocated 1024 MB, footprint 1038 MB, available 1060 MB
+allocated 1088 MB, footprint 1102 MB, available 996 MB
+allocated 1152 MB, footprint 1166 MB, available 932 MB
+allocated 1216 MB, footprint 1230 MB, available 868 MB
+allocated 1280 MB, footprint 1294 MB, available 804 MB
+allocated 1344 MB, footprint 1358 MB, available 740 MB
+allocated 1408 MB, footprint 1422 MB, available 676 MB
+allocated 1472 MB, footprint 1486 MB, available 612 MB
+allocated 1536 MB, footprint 1550 MB, available 548 MB
+allocated 1600 MB, footprint 1614 MB, available 484 MB
+allocated 1664 MB, footprint 1678 MB, available 420 MB
+allocated 1728 MB, footprint 1742 MB, available 356 MB
+allocated 1792 MB, footprint 1806 MB, available 292 MB
+allocated 1856 MB, footprint 1870 MB, available 228 MB
+allocated 1920 MB, footprint 1935 MB, available 163 MB
+allocated 1984 MB, footprint 1999 MB, available 99 MB
+memory result: peak footprint 1999 MB with 99 MB still available (stopped 48 MB short, as asked)
+done

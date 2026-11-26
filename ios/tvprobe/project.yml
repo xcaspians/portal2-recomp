@@ -1,0 +1,29 @@
+# Apple TV round 1 probe (round 23): a tvOS app measuring the memory limit and
+# usable storage (main.m). Built and signed by Xcode with automatic signing:
+#   tools/tvos_probe.sh   (xcodegen, xcodebuild -allowProvisioningUpdates, devicectl)
+# Its own identifier, so Sauce's App ID is left alone.
+name: SauceTVProbe
+options:
+  deploymentTarget: {tvOS: "17.0"}
+settings:
+  base:
+    CODE_SIGN_STYLE: Automatic
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: "0.1"
+    CLANG_ENABLE_OBJC_ARC: YES
+targets:
+  SauceTVProbe:
+    type: application
+    platform: tvOS
+    sources: [main.m]
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Sauce Probe
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: "${P2_TVPROBE_ID}"
+        OTHER_LDFLAGS: ["-framework", "Metal"]
