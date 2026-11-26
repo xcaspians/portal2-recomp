@@ -460,6 +460,13 @@ void rt64_dispatch(CPU64 *c, uint64_t target) {
             return;
         }
     }
+    // Native code (P2CE piece D: the methods of Valve's Steam interfaces, in
+    // steamclient.dylib): called through the arm64 trampoline (native64.c).
+    if (rt64_is_native(target)) {
+        rt64_native_call(c, target);
+        c->rip = POP64(c);
+        return;
+    }
     rt64_trap(c, target, "indirect transfer outside every lifted module");
 }
 

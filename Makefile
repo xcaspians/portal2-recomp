@@ -217,9 +217,13 @@ p2ce-modules-check: $(X64_RUNTIME) runtime/x64/rt64.h tests/x64_modules_live.c t
 # Round D: P2CE's own program (bin/linux64/p2ce -> launcher.so -> engine.so)
 # lifted with the modules it loads, run from a mirror of the game folder
 # (tools/run64.py; the depot is never written). P2CE_ARGS are the game's.
+# libsteam_api.so is not lifted: its functions go to Valve's macOS
+# libsteam_api.dylib (runtime/x64/steam64.c, round 23), with Steam running.
 P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/libtier0.so \
-	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/libsteam_api.so bin/linux64/launcher.so \
+	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/launcher.so \
 	bin/linux64/filesystem_stdio.so bin/linux64/engine.so
+P2CE_STEAM_API ?= $(CURDIR)/deps/steamworks-2024.8.0/steam_api.bundle/Contents/MacOS/libsteam_api.dylib
+P2CE_APPID ?= 440000
 P2CE_ARGS ?= -game p2ce -textmode -novid -nosound
 P2CE_CONTENT ?= $(subst depot_440005,depot_440002,$(P2CE_ROOT))
 P2CE_TIMEOUT ?= 120
@@ -232,5 +236,6 @@ p2ce-launch: $(X64_RUNTIME) runtime/x64/rt64.h src/main64.c tools/run64.py
 		$(foreach m,$(P2CE_LAUNCH_MODULES),"$(P2CE_ROOT)/$(m)"); \
 	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) src/main64.c build/p2ce/registry.c \
 		$$(ls build/p2ce/lib/*/lib*.a) $(X64_LIBS) -o build/p2ce/p2ce-run; \
+	P2_STEAM_API_DYLIB="$(P2CE_STEAM_API)" P2_STEAM_APPID=$(P2CE_APPID) \
 	$(PYTHON) tools/run64.py --depot "$(P2CE_ROOT)" --depot "$(P2CE_CONTENT)" --mirror build/p2ce/game --timeout $(P2CE_TIMEOUT) \
 		build/p2ce/p2ce-run $(P2CE_ARGS)

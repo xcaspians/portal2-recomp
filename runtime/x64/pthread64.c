@@ -94,17 +94,28 @@ static void s_rwlock_unlock(CPU64 *c) { RESULT(c, pthread_rwlock_unlock(RWLOCK(0
 
 // pthread_once: 0 = not run, 1 = running, 2 = done (glibc uses other bits;
 // only the "done" state is ever read by inlined code, through this call).
+// The routine runs with no lock held: one routine may call pthread_once for
+// another control (P2CE's engine.so constructors), which deadlocked when a
+// single lock was held around every routine (round 23). Other threads that
+// arrive while it runs wait for "done".
 static pthread_mutex_t once_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t once_done = PTHREAD_COND_INITIALIZER;
 static void s_once(CPU64 *c) {
     uint64_t control = ARG(c, 0), routine = ARG(c, 1);
-    if (__atomic_load_n((int *)(uintptr_t)control, __ATOMIC_ACQUIRE) == 2) { RET(c, 0); return; }
-    pthread_mutex_lock(&once_lock);
-    if (*(int *)(uintptr_t)control == 0) {
-        *(int *)(uintptr_t)control = 1;
+    int *state = (int *)(uintptr_t)control;
+    if (__atomic_load_n(state, __ATOMIC_ACQUIRE) == 2) { RET(c, 0); return; }
+    int expected = 0;
+    if (__atomic_compare_exchange_n(state, &expected, 1, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
         rt64_call(c, routine);
-        __atomic_store_n((int *)(uintptr_t)control, 2, __ATOMIC_RELEASE);
+        pthread_mutex_lock(&once_lock);
+        __atomic_store_n(state, 2, __ATOMIC_RELEASE);
+        pthread_cond_broadcast(&once_done);
+        pthread_mutex_unlock(&once_lock);
+    } else {
+        pthread_mutex_lock(&once_lock);
+        while (__atomic_load_n(state, __ATOMIC_ACQUIRE) != 2) pthread_cond_wait(&once_done, &once_lock);
+        pthread_mutex_unlock(&once_lock);
     }
-    pthread_mutex_unlock(&once_lock);
     RET(c, 0);
 }
 

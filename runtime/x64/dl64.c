@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define HANDLE_MAIN UINT64_C(0x1)          // dlopen(NULL)
 #define HANDLE_SYSTEM UINT64_C(0x2)        // a library the runtime replaces with shims
@@ -25,6 +26,9 @@ static int is_system_library(const char *name) {
     const char *base = strrchr(name, '/') ? strrchr(name, '/') + 1 : name;
     for (int i = 0; system[i]; ++i)
         if (!strncmp(base, system[i], strlen(system[i]))) return 1;
+    // Valve's Steam API: with the bridge on (steam64.c), its functions are shims
+    // calling the macOS libsteam_api.dylib (P2CE piece D, round 23).
+    if (!strncmp(base, "libsteam_api.so", 15) && getenv("P2_STEAM_API_DYLIB")) return 1;
     return 0;
 }
 

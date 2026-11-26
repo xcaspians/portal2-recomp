@@ -290,13 +290,36 @@ class Module:
         if self.image is None:
             return None
         before = self.previous(pc, 40)
-        if not before or before[0][1][1] != 'add':
-            return None
-        parts = [x.strip() for x in before[0][1][2].split(',')]
-        if len(parts) != 2 or GPR.get(parts[0], (None,))[0] != GPR[reg][0]:
+        # The add that forms the target, possibly followed by a few instructions
+        # that leave its register alone (GCC: `add rcx, rdx; xor ebx, ebx; jmp rcx`).
+        at = None
+        for k, (_, (_, op, args)) in enumerate(before[:4]):
+            parts = [x.strip() for x in args.split(',')]
+            if op == 'add' and len(parts) == 2 and GPR.get(parts[0], (None,))[0] == GPR[reg][0]:
+                at = k
+                break
+            if op in ('ret', 'jmp', 'call') or any(GPR.get(x, (None,))[0] == GPR[reg][0] for x in parts[:1]):
+                return None   # control leaves, or the register is written: not this pattern
+        if at is None:
             return None
         table = load = index = base_reg = None
-        for p, (nxt, op, args) in before[1:]:
+        added = [x.strip() for x in before[at][1][2].split(',')][1]
+        # Unoptimised form (P2CE's engine.so, round 23): `lea rdx, [4*rax]; lea rax,
+        # [rip + T]; mov eax, dword ptr [rdx + rax]; cdqe; lea rdx, [rip + T];
+        # add rax, rdx; jmp rax`: the table is the rip-relative lea of the added
+        # register, the load a 32-bit read of a sum of two registers.
+        o0 = None
+        for p, (nxt, op, args) in before[at + 1:at + 8]:
+            m = re.fullmatch(r'(\w+), \[rip ([+-]) (0x[0-9a-f]+)\]', args)
+            if op == 'lea' and m and o0 is None and m[1] == added:
+                o0 = nxt + (1 if m[2] == '+' else -1) * int(m[3], 16)
+                continue
+            if o0 is not None and op == 'mov' and re.fullmatch(r'\w+, dword ptr \[\w+ \+ \w+\]', args):
+                table, load = o0, p
+                break
+            if op in ('ret', 'jmp', 'call'):
+                break
+        for p, (nxt, op, args) in ([] if table is not None else before[at + 1:]):
             if op in ('ret', 'jmp', 'call') and load is None:
                 return None
             m = re.fullmatch(r'(\w+), dword ptr \[(\w+) \+ 4\*(\w+)\]', args)
