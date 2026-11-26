@@ -775,6 +775,13 @@ static NSString *from_mac(const rt_ios_game *g) {
 @end
 
 int rt_ios_has_game_choice(void) { return rt_game_code_count > 1; }
+int rt_ios_layout_installed(rt_ios_layout layout) {
+    for (size_t i = 0; i < rt_game_code_count; ++i) {
+        const rt_ios_game *g = rt_ios_game_named(rt_game_codes[i].name);
+        if (g && g->layout == layout && playable(g)) return 1;
+    }
+    return 0;
+}
 
 void rt_ios_forget_game_choice(void) { [NSUserDefaults.standardUserDefaults setBool:NO forKey:kRemember]; }
 
@@ -821,6 +828,7 @@ const char *rt_ios_choose_game(void) {
 }
 #else
 int rt_ios_has_game_choice(void) { return 0; }
+int rt_ios_layout_installed(rt_ios_layout layout) { return layout == rt_ios_current_game()->layout; }
 void rt_ios_forget_game_choice(void) {}
 const char *rt_ios_choose_game(void) { return rt_ios_current_game()->name; }
 #endif

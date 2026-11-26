@@ -100,6 +100,16 @@ void rt_touch_stick_rests(rt_ios_layout layout, double out[2][2]);
 // A button's centre and diameter with a custom entry (else rt_touch_place_scaled).
 void rt_touch_place_custom(const rt_touch_button *b, const rt_touch_custom *c, double scale, double x, double y,
                            double w, double h, double *cx, double *cy, double *size);
+// Round 26: where a layout is stored. Each game layout has its own entry, per
+// device kind: "P2TouchLayout.pad" (Portal 2's, the key every game shared
+// before), "P2TouchLayout.pad.hl2", "P2TouchLayout.phone.l4d2"... Editing
+// Left 4 Dead 2's jump button no longer moves Portal 2's. `legacy` gets the
+// shared key a layout without its own entry yet is read from (its old places,
+// round 19 imports included), or "" for Portal 2's layout, which is that key.
+const char *rt_touch_layout_store_key(rt_ios_layout layout, int ipad, char *out, size_t size, char *legacy,
+                                      size_t legacy_size);
+// The layout's name in stored keys and the editor ("portal2", "hl2", "l4d2").
+const char *rt_touch_layout_id(rt_ios_layout layout);
 // Action names in the stored text ("jump", "use"...).
 const char *rt_touch_action_name(rt_touch_action a);
 

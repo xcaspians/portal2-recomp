@@ -465,3 +465,24 @@ RT_CHECK(touch_layout_portal2_zoom_button) {
         for (int i = 0; i < n; ++i) assert(b[i].action != RT_TOUCH_ZOOM);
     }
 }
+
+// Round 26: each game layout is stored apart, per device kind; a game layout
+// without its own entry yet reads the key every game shared before.
+RT_CHECK(touch_layout_stored_per_game_and_device_kind) {
+    char key[64], legacy[64], other[64];
+    assert(!strcmp(rt_touch_layout_store_key(RT_IOS_LAYOUT_PORTAL2, 1, key, sizeof(key), legacy, sizeof(legacy)),
+                   "P2TouchLayout.pad") && !legacy[0]);
+    rt_touch_layout_store_key(RT_IOS_LAYOUT_L4D2, 1, key, sizeof(key), legacy, sizeof(legacy));
+    assert(!strcmp(key, "P2TouchLayout.pad.l4d2") && !strcmp(legacy, "P2TouchLayout.pad"));
+    rt_touch_layout_store_key(RT_IOS_LAYOUT_L4D2, 0, other, sizeof(other), legacy, sizeof(legacy));
+    assert(!strcmp(other, "P2TouchLayout.phone.l4d2") && !strcmp(legacy, "P2TouchLayout.phone"));
+    for (int a = 0; a < RT_IOS_LAYOUT_COUNT; ++a)
+        for (int b = 0; b < RT_IOS_LAYOUT_COUNT; ++b)
+            for (int pa = 0; pa < 2; ++pa)
+                for (int pb = 0; pb < 2; ++pb) {
+                    rt_touch_layout_store_key((rt_ios_layout)a, pa, key, sizeof(key), NULL, 0);
+                    rt_touch_layout_store_key((rt_ios_layout)b, pb, other, sizeof(other), NULL, 0);
+                    assert((strcmp(key, other) == 0) == (a == b && pa == pb));
+                }
+    assert(!strcmp(rt_touch_layout_id(RT_IOS_LAYOUT_HL2), "hl2"));
+}

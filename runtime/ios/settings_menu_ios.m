@@ -34,6 +34,7 @@ int rt_ios_phonepad_active(void);
 #include "backtap_calibration_ios.h"
 #include "backtap_ios.h"
 #include "touch_editor_ios.h"
+#include "touch_layout.h"
 #include "icloud_saves.h"
 #include "live_settings.h"
 #include "mods_list.h"
@@ -258,7 +259,13 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
         if (it->section) [self addSection:@(it->section)];
         [self addSettingRow:it];
         if (!strcmp(it->key, "P2MaxFPS")) [self addRecommendedRow];
-        if (!strcmp(it->key, "P2PortalButtons")) [self addEditLayoutRow];
+        // Round 26: every game's buttons (not only where the portal-button setting shows);
+        // from the launcher, one row per installed game's layout.
+        if (!strcmp(it->key, "P2TouchSize")) {
+            if (!launcher) [self addEditLayoutRow:rt_ios_current_game()->layout];
+            else for (int l = 0; l < RT_IOS_LAYOUT_COUNT; ++l)
+                if (rt_ios_layout_installed((rt_ios_layout)l)) [self addEditLayoutRow:(rt_ios_layout)l];
+        }
         if (!strcmp(it->key, "P2BackTapSensitivity") && rt_ios_current_game()->back_taps && !launcher) [self addCalibrateRow];
     }
     if (portal2) [self addMapsSection];
@@ -499,22 +506,25 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
 // the picker shows when it is opened again.
 // "Edit button layout" (touch_editor_ios.m): the panel closes, the editor covers
 // the screen, and the panel comes back when it's done.
-- (void)addEditLayoutRow {
+static NSString *layout_title(rt_ios_layout l) {
+    return l == RT_IOS_LAYOUT_HL2 ? @"Half-Life 2" : l == RT_IOS_LAYOUT_L4D2 ? @"Left 4 Dead 2" : @"Portal 2, Portal and Mel";
+}
+- (void)addEditLayoutRow:(rt_ios_layout)layout {
     P2MenuRow *row = [P2MenuRow new];
     row.kind = ROW_EDIT_LAYOUT;
     __weak P2SettingsMenu *weakSelf = self;
     UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
-    conf.title = @"Edit button layout";
     BOOL pad = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad;
-    conf.subtitle = launcherClose ? (pad ? @"Saved for iPad, Portal 2's buttons" : @"Saved for iPhone, Portal 2's buttons")
-                                  : (pad ? @"Saved for iPad, this game" : @"Saved for iPhone, this game");
+    conf.title = launcherClose ? [NSString stringWithFormat:@"Edit button layout: %@", layout_title(layout)] : @"Edit button layout";
+    conf.subtitle = launcherClose ? (pad ? @"Saved for iPad" : @"Saved for iPhone")
+                                  : (pad ? @"Saved for iPad, this game's buttons" : @"Saved for iPhone, this game's buttons");
     conf.image = [UIImage systemImageNamed:@"square.and.pencil"];
     conf.imagePadding = 8;
     conf.baseForegroundColor = UIColor.whiteColor;
     conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
     conf.contentInsets = NSDirectionalEdgeInsetsMake(10, 14, 10, 14);
     row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
-        (void)a; [weakSelf openEditor];
+        (void)a; [weakSelf openEditor:layout];
     }]];
     row.button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
     row.view = row.button;
@@ -523,10 +533,10 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     [rows addObject:row];
 }
 static void editor_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx editorClosed]; }
-- (void)openEditor {
+- (void)openEditor:(rt_ios_layout)layout {
     if (editor) return;
     [self closeMenu];
-    editor = (__bridge_transfer UIView *)rt_ios_touch_editor_create(editor_closed, (__bridge void *)self);
+    editor = (__bridge_transfer UIView *)rt_ios_touch_editor_create(editor_closed, (__bridge void *)self, layout);
     editor.frame = self.bounds;
     [self addSubview:editor];
     gear.hidden = YES;
@@ -979,7 +989,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     case ROW_PHONE: [self showPhonePanel]; return;   // a controller's A on the row
     case ROW_NEARBY: [self showNearbyPanel]; return;
     case ROW_CALIBRATE: [self openCalibration]; return;
-    case ROW_EDIT_LAYOUT: [self openEditor]; return;
+    case ROW_EDIT_LAYOUT: [row.button sendActionsForControlEvents:UIControlEventPrimaryActionTriggered]; return;
     case ROW_MAP: [self startMap:row]; return;
     case ROW_COMMUNITY: [self openCommunity]; return;
     case ROW_SETTING: break;
@@ -1076,7 +1086,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     if (auto_open == 5 && !gear.hidden && !rt_ios_game_in_level()) {   // =editor: the layout editor, on the main menu
         auto_open = 0;
         [self openMenu];
-        [self openEditor];
+        [self openEditor:rt_ios_current_game()->layout];
     }
     if (auto_open && !gear.hidden && (auto_open == 4 ? !rt_ios_game_in_level() : rt_ios_game_paused())) {
         int start = auto_open == 2;
@@ -1128,6 +1138,13 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     launcherTick = [CADisplayLink displayLinkWithTarget:self selector:@selector(launcherStep)];
     [launcherTick addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
     [self openMenu];
+    // P2_CONTROLS_EDIT=<portal2|hl2|l4d2> (device checks, round 26): that game's layout editor opens.
+    const char *edit = getenv("P2_CONTROLS_EDIT");
+    if (edit)
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            for (int l = 0; l < RT_IOS_LAYOUT_COUNT; ++l)
+                if (!strcmp(rt_touch_layout_id((rt_ios_layout)l), edit)) [self openEditor:(rt_ios_layout)l];
+        });
     // P2_CONTROLS_TEST="<key>=<value>" (device checks): that row set as a tap would, then the panel closed.
     const char *test = getenv("P2_CONTROLS_TEST");
     if (test && strchr(test, '=')) {

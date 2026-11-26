@@ -265,3 +265,15 @@ void rt_touch_place_custom(const rt_touch_button *b, const rt_touch_custom *c, d
     *cx = clamp(x + w * c->fx, x + r, x + w - r);
     *cy = clamp(y + h * c->fy, y + r, y + h - r);
 }
+
+const char *rt_touch_layout_id(rt_ios_layout layout) {
+    return layout == RT_IOS_LAYOUT_HL2 ? "hl2" : layout == RT_IOS_LAYOUT_L4D2 ? "l4d2" : "portal2";
+}
+const char *rt_touch_layout_store_key(rt_ios_layout layout, int ipad, char *out, size_t size, char *legacy,
+                                      size_t legacy_size) {
+    const char *base = ipad ? "P2TouchLayout.pad" : "P2TouchLayout.phone";
+    if (layout == RT_IOS_LAYOUT_PORTAL2) snprintf(out, size, "%s", base);
+    else snprintf(out, size, "%s.%s", base, rt_touch_layout_id(layout));
+    if (legacy && legacy_size) snprintf(legacy, legacy_size, "%s", layout == RT_IOS_LAYOUT_PORTAL2 ? "" : base);
+    return out;
+}

@@ -15,8 +15,8 @@
 #include "touch_editor_ios.h"
 #include "touch_layout.h"
 
-NSString *rt_ios_touch_layout_key(void);                      // touch_controls.m
-const char *rt_ios_touch_layout_text(char *out, size_t size);  // touch_controls.m
+NSString *rt_ios_touch_layout_key_for(rt_ios_layout layout);                          // touch_controls.m
+const char *rt_ios_touch_layout_text_for(rt_ios_layout layout, char *out, size_t size);  // touch_controls.m
 int rt_ios_backtap_available(void);                           // backtap_ios.m
 int rt_ios_backtap_dataset_on(void);
 
@@ -26,6 +26,7 @@ int rt_ios_backtap_dataset_on(void);
 @implementation P2TouchEditor {
     void (*onClose)(void *);
     void *ctx;
+    rt_ios_layout which;   // the game layout edited
     rt_touch_custom_layout layout;
     const rt_touch_button *buttons;
     int count;
@@ -37,14 +38,14 @@ int rt_ios_backtap_dataset_on(void);
     UILabel *hint;
 }
 
-- (instancetype)initWithClose:(void (*)(void *))close ctx:(void *)c {
+- (instancetype)initWithClose:(void (*)(void *))close ctx:(void *)c layout:(rt_ios_layout)l {
     if (!(self = [super initWithFrame:CGRectZero])) return nil;
-    onClose = close; ctx = c;
+    onClose = close; ctx = c; which = l;
     self.backgroundColor = [UIColor colorWithWhite:0 alpha:.55];
     self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     char text[1024];
-    rt_touch_custom_parse(rt_ios_touch_layout_text(text, sizeof(text)), &layout);
-    buttons = rt_touch_layout(rt_ios_current_game()->layout, &count);
+    rt_touch_custom_parse(rt_ios_touch_layout_text_for(which, text, sizeof(text)), &layout);
+    buttons = rt_touch_layout(which, &count);
     sizeScale = fminf(fmaxf(rt_ios_env_float("P2_TOUCH_SIZE", 1, .5f), .5f), 2);
     discs = [NSMutableArray array]; handles = [NSMutableArray array];
     dragging = -1;
@@ -85,6 +86,16 @@ int rt_ios_backtap_dataset_on(void);
         }]]];
     }
     [self addSubview:bar];
+    // P2_EDITOR_TEST="<button>,<fx>,<fy>" (device checks, round 26): that button moved there, saved 3 s later.
+    const char *test = getenv("P2_EDITOR_TEST");
+    char name[32]; float fx, fy;
+    if (test && sscanf(test, "%31[^,],%f,%f", name, &fx, &fy) == 3)
+        for (int a = 0; a < RT_TOUCH_ACTION_COUNT; ++a)
+            if (!strcmp(rt_touch_action_name((rt_touch_action)a), name)) {
+                layout.b[a] = (rt_touch_custom){1, fx, fy, 1.3f};
+                fprintf(stderr, "[ios] essai éditeur (%s) : %s en %.2f,%.2f\n", rt_touch_layout_id(which), name, fx, fy);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [me finish:YES]; });
+            }
     return self;
 }
 - (CGRect)area { return UIEdgeInsetsInsetRect(self.bounds, self.safeAreaInsets); }
@@ -126,7 +137,7 @@ int rt_ios_backtap_dataset_on(void);
 - (void)drawRect:(CGRect)rect {
     (void)rect;
     double rests[2][2];
-    rt_touch_stick_rests(rt_ios_current_game()->layout, rests);
+    rt_touch_stick_rests(which, rests);
     CGRect a = self.area;
     CGContextRef g = UIGraphicsGetCurrentContext();
     CGContextSetStrokeColorWithColor(g, [UIColor colorWithWhite:1 alpha:.35].CGColor);
@@ -173,7 +184,7 @@ int rt_ios_backtap_dataset_on(void);
     double cx = resizing ? centre.x - CGRectGetMinX(a) : p.x - grab.x - CGRectGetMinX(a);
     double cy = resizing ? centre.y - CGRectGetMinY(a) : p.y - grab.y - CGRectGetMinY(a);
     double rests[2][2];
-    rt_touch_stick_rests(rt_ios_current_game()->layout, rests);
+    rt_touch_stick_rests(which, rests);
     rt_touch_custom_clamp(&cx, &cy, size, a.size.width, a.size.height, (const double (*)[2])rests, 2, self.stickRadius, 8);
     c->fx = (float)(cx / a.size.width); c->fy = (float)(cy / a.size.height);
     [self setNeedsLayout];
@@ -194,21 +205,22 @@ int rt_ios_backtap_dataset_on(void);
         int any = 0;
         // One layout for every game: this game's buttons change, another game's stay.
         rt_touch_custom_layout stored;
-        rt_touch_custom_parse(rt_ios_touch_layout_text(text, sizeof(text)), &stored);
-        rt_touch_custom_merge(&stored, &layout, rt_ios_current_game()->layout);
+        rt_touch_custom_parse(rt_ios_touch_layout_text_for(which, text, sizeof(text)), &stored);
+        rt_touch_custom_merge(&stored, &layout, which);
         layout = stored;
         for (int i = 0; i < RT_TOUCH_ACTION_COUNT; ++i) any |= layout.b[i].set;
         if (any && rt_touch_custom_format(&layout, text, sizeof(text)))
-            [NSUserDefaults.standardUserDefaults setObject:@(text) forKey:rt_ios_touch_layout_key()];
-        else [NSUserDefaults.standardUserDefaults removeObjectForKey:rt_ios_touch_layout_key()];
-        fprintf(stderr, "[ios] disposition des boutons : %s\n", any ? text : "par défaut");
+            [NSUserDefaults.standardUserDefaults setObject:@(text) forKey:rt_ios_touch_layout_key_for(which)];
+        // Reset: the game's own default ("v1" with nothing set, so the old shared places don't come back).
+        else [NSUserDefaults.standardUserDefaults setObject:@"v1" forKey:rt_ios_touch_layout_key_for(which)];
+        fprintf(stderr, "[ios] disposition des boutons (%s) : %s\n", rt_touch_layout_id(which), any ? text : "par défaut");
         [NSNotificationCenter.defaultCenter postNotificationName:@"P2SettingsChanged" object:@"P2TouchLayout"];
     }
     onClose(ctx);
 }
 @end
 
-void *rt_ios_touch_editor_create(void (*close)(void *), void *ctx) {
-    return (__bridge_retained void *)[[P2TouchEditor alloc] initWithClose:close ctx:ctx];
+void *rt_ios_touch_editor_create(void (*close)(void *), void *ctx, rt_ios_layout layout) {
+    return (__bridge_retained void *)[[P2TouchEditor alloc] initWithClose:close ctx:ctx layout:layout];
 }
 #endif

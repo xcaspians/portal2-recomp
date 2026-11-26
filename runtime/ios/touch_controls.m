@@ -159,18 +159,28 @@ static const float kStickLook = 90;      // comptes de souris par image, stick Ã
 static const float kTrackpadLook = 3.5f; // comptes de souris par point de glissement
 static NSString *const kTrackpadKey = @"P2TouchTrackpad";
 // Edit button layout (touch_editor_ios.m): the stored layout of this device
-// kind (phone or iPad) and game, or NULL.
-NSString *rt_ios_touch_layout_key(void) {
-    char own[160];
-    const char *base = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad ? "P2TouchLayout.pad"
-                                                                                           : "P2TouchLayout.phone";
-    return @(rt_ios_pref_key(base, own, sizeof(own)));
+// kind (phone or iPad) and game layout (round 26: each its own entry,
+// rt_touch_layout_store_key), or NULL.
+static BOOL is_ipad(void) { return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad; }
+NSString *rt_ios_touch_layout_key_for(rt_ios_layout layout) {
+    char key[96], own[160];
+    rt_touch_layout_store_key(layout, is_ipad(), key, sizeof(key), NULL, 0);
+    return @(rt_ios_pref_key(key, own, sizeof(own)));
 }
-const char *rt_ios_touch_layout_text(char *out, size_t size) {
-    NSString *v = [NSUserDefaults.standardUserDefaults stringForKey:rt_ios_touch_layout_key()];
+const char *rt_ios_touch_layout_text_for(rt_ios_layout layout, char *out, size_t size) {
+    char key[96], legacy[96], own[160];
+    rt_touch_layout_store_key(layout, is_ipad(), key, sizeof(key), legacy, sizeof(legacy));
+    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
+    NSString *v = [d stringForKey:@(rt_ios_pref_key(key, own, sizeof(own)))];
+    // Not edited on its own yet: the places every game shared before (round 19 imports too).
+    if (!v && legacy[0]) v = [d stringForKey:@(rt_ios_pref_key(legacy, own, sizeof(own)))];
     if (!v) return NULL;
     snprintf(out, size, "%s", v.UTF8String);
     return out;
+}
+NSString *rt_ios_touch_layout_key(void) { return rt_ios_touch_layout_key_for(rt_ios_current_game()->layout); }
+const char *rt_ios_touch_layout_text(char *out, size_t size) {
+    return rt_ios_touch_layout_text_for(rt_ios_current_game()->layout, out, size);
 }
 // The running game's preference key (game_ios.c: a hosted game's under "<game>.").
 static NSString *game_key(NSString *key) {
