@@ -26,6 +26,7 @@
 #include "game_ios.h"
 #include "game_picker_ios.h"
 #include "metal_ios.h"
+#include "nearby_ios.h"
 #include "settings.h"
 
 int p2_main(int argc, char **argv);
@@ -254,6 +255,12 @@ int main(int argc, char **argv) {
     if (getenv("P2_EXTRA_ARGS")) {
         char words[512];
         snprintf(words, sizeof(words), "%s", getenv("P2_EXTRA_ARGS"));
+        for (char *save = NULL, *w = strtok_r(words, " \t", &save); w; w = strtok_r(NULL, " \t", &save)) push(w);
+    }
+    // Play nearby picked in the launcher (round 25, nearby_ios.m): host the co-op lobby or connect to a host.
+    if (rt_ios_nearby_launch_args()) {
+        char words[160];
+        snprintf(words, sizeof(words), "%s", rt_ios_nearby_launch_args());
         for (char *save = NULL, *w = strtok_r(words, " \t", &save); w; w = strtok_r(NULL, " \t", &save)) push(w);
     }
     // Options du runtime absentes : dossiers de Documents (sur appareil, les

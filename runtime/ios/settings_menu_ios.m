@@ -18,6 +18,7 @@
 #import <UIKit/UIKit.h>
 #include "tv_output.h"
 #include "env_ios.h"
+#include "nearby_ios.h"
 UIView *rt_ios_phonepad_panel(void (^close)(void));   // phonepad_ios.m
 NSString *rt_ios_phonepad_url(void);
 void rt_ios_phonepad_stop_if_idle(void);
@@ -49,7 +50,7 @@ int rt_ios_settings_menu_captures_pad(void) { return menu_open || closing_hold; 
 int rt_ios_settings_menu_open(void) { return menu_open; }
 
 typedef enum { ROW_SETTING, ROW_PHONE, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED, ROW_SWITCH_GAME, ROW_CALIBRATE,
-               ROW_EDIT_LAYOUT } RowKind;
+               ROW_EDIT_LAYOUT, ROW_NEARBY } RowKind;
 
 @interface P2MenuRow : NSObject
 @property (nonatomic) RowKind kind;
@@ -95,6 +96,7 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     UILabel *icloudStatus;    // "Last synced ..." under the iCloud switch
     CFTimeInterval icloudShownAt;
     UIView *phoneShade;       // the phone controller's panel (round 24: open until closed, menu or not)
+    UIView *nearbyShade;      // Play nearby (round 25), the same way
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -160,6 +162,7 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     // Round 24: the phone panel outlives the menu (the game leaving its pause menu closes the
     // menu, e.g. the phone's own Start or A); it keeps its touches until it is closed.
     if (phoneShade) return [phoneShade hitTest:[self convertPoint:point toView:phoneShade] withEvent:event] ?: phoneShade;
+    if (nearbyShade) return [nearbyShade hitTest:[self convertPoint:point toView:nearbyShade] withEvent:event] ?: nearbyShade;
     if (menu_open || editor) return [super hitTest:point withEvent:event];   // the panel, or the layout editor
     if (!gear.hidden && CGRectContainsPoint(gear.frame, point))
         return [gear hitTest:[self convertPoint:point toView:gear] withEvent:event];
@@ -257,6 +260,7 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     [self addSection:@""];
     [self addResetRow];
     if (rt_ios_has_game_choice()) [self addSwitchGameRow];
+    if (portal2) [self addNearbyRow];   // round 25: co-op with another device
     [self addPhoneRow];   // round 23 item 9b
     [rows addObject:close];   // last in controller order, first on screen
     // "Sauce 0.4.0-fork.3 (abc1234) · Half-Life 2": the app, its version, the running game (round 19).
@@ -652,6 +656,50 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     fprintf(stderr, "[ios] manette téléphone : fenêtre fermée\n");
 }
 - (BOOL)phonePanelOpen { return phoneShade != nil; }
+// Play nearby (nearby_ios.m): Host or Join, then the panel and the menu close and the game goes on.
+- (void)addNearbyRow {
+    P2MenuRow *row = [P2MenuRow new];
+    row.kind = ROW_NEARBY;
+    __weak P2SettingsMenu *weakSelf = self;
+    UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
+    conf.title = @"Play nearby";
+    conf.subtitle = @"Co-op with a friend's device on the same Wi-Fi";
+    conf.image = [UIImage systemImageNamed:@"person.2.wave.2"];
+    conf.imagePadding = 6;
+    conf.baseForegroundColor = UIColor.whiteColor;
+    conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+        (void)a; [weakSelf showNearbyPanel];
+    }]];
+    row.view = row.button;
+    row.view.layer.cornerRadius = 12;
+    [row.button.heightAnchor constraintGreaterThanOrEqualToConstant:48].active = YES;
+    [stack addArrangedSubview:row.button];
+    [rows addObject:row];
+}
+- (void)showNearbyPanel {
+    if (nearbyShade) return;
+    UIView *shade = [[UIView alloc] initWithFrame:self.bounds];
+    shade.backgroundColor = [UIColor colorWithWhite:0 alpha:.55];
+    shade.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    __weak P2SettingsMenu *weakSelf = self;
+    UIView *p = rt_ios_nearby_panel(^{ [weakSelf closeNearbyPanel]; }, ^{
+        P2SettingsMenu *me = weakSelf;
+        [me closeNearbyPanel];
+        [me closeMenu];
+    });
+    p.translatesAutoresizingMaskIntoConstraints = NO;
+    [shade addSubview:p];
+    [NSLayoutConstraint activateConstraints:@[[p.centerXAnchor constraintEqualToAnchor:shade.centerXAnchor],
+                                              [p.centerYAnchor constraintEqualToAnchor:shade.centerYAnchor]]];
+    [self addSubview:shade];
+    nearbyShade = shade;
+}
+- (void)closeNearbyPanel {
+    if (!nearbyShade) return;
+    [nearbyShade removeFromSuperview];
+    nearbyShade = nil;
+}
 // Round 24 device check (P2_SETTINGS_MENU_OPEN=phone P2_PHONEPAD_PANEL_CHECK=1): the
 // menu closes under the panel, as when the game leaves its pause menu; the panel's
 // close button must still take the touch, and closing must leave a phone connected.
@@ -910,6 +958,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     case ROW_RECOMMENDED: [self useRecommended]; return;
     case ROW_SWITCH_GAME: [self switchGamePressed:nil]; return;
     case ROW_PHONE: [self showPhonePanel]; return;   // a controller's A on the row
+    case ROW_NEARBY: [self showNearbyPanel]; return;
     case ROW_CALIBRATE: [self openCalibration]; return;
     case ROW_EDIT_LAYOUT: [self openEditor]; return;
     case ROW_MAP: [self startMap:row]; return;
@@ -929,6 +978,11 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
 - (void)pollPad:(BOOL)paused {
     GCExtendedGamepad *g = [self pad].extendedGamepad;
     BOOL a = g.buttonA.isPressed, b = g.buttonB.isPressed, options = g.buttonOptions.isPressed;
+    if (nearbyShade) {   // Play nearby: B closes it (its buttons are for touch)
+        if (b && !prevB) [self closeNearbyPanel];
+        prevA = a; prevB = b; prevOptions = options;
+        return;
+    }
     if (phoneShade) {   // the phone panel first: A (Done) or B closes it, nothing reaches the menu below
         if ((a && !prevA) || (b && !prevB)) [self closePhonePanel];
         prevA = a; prevB = b; prevOptions = options;
@@ -967,6 +1021,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     if (dx) [self change:dx];
 }
 - (void)tick {
+    rt_ios_nearby_tick();   // Play nearby's waiting and connection messages (round 25)
     // The gear shows in the main menu and the pause menu (game UI up), never in gameplay.
     BOOL paused = rt_ios_game_menu_shown() != 0;
     // The game's own Community Test Chambers button (game_state.c): Community Maps instead.
@@ -985,7 +1040,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
         const char *e = getenv("P2_SETTINGS_MENU_OPEN");
         auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : !strcmp(e, "display") || !strcmp(e, "end") ? 3
                   : !strcmp(e, "main") || !strcmp(e, "main-end") ? 4 : !strcmp(e, "editor") ? 5
-                  : !strcmp(e, "phone") ? 6 : 0;
+                  : !strcmp(e, "phone") ? 6 : !strcmp(e, "nearby") ? 7 : 0;
     }
     // In a level's pause menu, as before; =main: on the main menu (no level).
     if (auto_open == 6 && !gear.hidden && !rt_ios_game_in_level()) {   // =phone: the phone controller's QR panel
@@ -993,6 +1048,11 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
         [self openMenu];
         [self showPhonePanel];
         if (getenv("P2_PHONEPAD_PANEL_CHECK")) [self checkPhonePanel];
+    }
+    if (auto_open == 7 && !gear.hidden && !rt_ios_game_in_level()) {   // =nearby: Play nearby, on the main menu
+        auto_open = 0;
+        [self openMenu];
+        [self showNearbyPanel];
     }
     if (auto_open == 5 && !gear.hidden && !rt_ios_game_in_level()) {   // =editor: the layout editor, on the main menu
         auto_open = 0;
