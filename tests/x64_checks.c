@@ -46,6 +46,22 @@ static uint64_t native_mix(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint6
     return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h + (uint64_t)(x * 10) + (uint64_t)(y * 100);
 }
 static double native_half(double x) { return x / 2; }
+// Round 27: more than eight integer arguments, and a structure returned through a hidden pointer.
+static uint64_t native_twelve(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f, uint64_t g,
+                              uint64_t h, uint64_t i, uint64_t j, uint64_t k, uint64_t l) {
+    return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h + 9 * i + 10 * j + 11 * k + 12 * l;
+}
+// Apple arm64 packs stack arguments by size: two 4-byte ones share a slot.
+static uint64_t native_mixed(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e, uint64_t f, uint64_t g,
+                             uint64_t h, uint32_t i, uint32_t j, uint64_t k) {
+    return a + b + c + d + e + f + g + h + 1000 * (uint64_t)i + 100000 * (uint64_t)j + 10000000 * k;
+}
+typedef struct { uint64_t v[5]; } native_big;   // 40 bytes: memory class on both ABIs
+static native_big native_make_big(uint64_t x, uint64_t y) {
+    native_big b = {{x, y, x + y, x * y, 77}};
+    return b;
+}
+typedef struct { uint64_t (*fn[3])(void); } native_vtable;
 
 static uint64_t out(int offset) { return R64(sym("x64_out") + offset); }
 static uint8_t out8(int offset) { return (uint8_t)R8(sym("x64_out") + offset); }
@@ -188,6 +204,40 @@ int main(void) {
     cpu.xmm[0].g[0] = 9.0;
     rt64_call(&cpu, (uint64_t)(uintptr_t)native_half);
     EXPECT(cpu.xmm[0].g[0] == 4.5);
+
+    // Round 27: twelve integer arguments, no signature registered: 8-byte stack values.
+    rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+    cpu.r[RDI] = 1; cpu.r[RSI] = 2; cpu.r[RDX] = 3; cpu.r[RCX] = 4; cpu.r[R8] = 5; cpu.r[R9] = 6;
+    for (int a = 12; a >= 7; --a) PUSH64(&cpu, (uint64_t)a);
+    PUSH64(&cpu, 0x1234);
+    rt64_native_call(&cpu, (uint64_t)(uintptr_t)native_twelve);
+    EXPECT(cpu.r[RAX] == 1 + 4 + 9 + 16 + 25 + 36 + 49 + 64 + 81 + 100 + 121 + 144);
+    // Mixed sizes past the eighth: registered, packed as Apple's ABI wants.
+    static const rt64_native_sig mixed = {0, 3, {4, 4, 8}};
+    EXPECT(rt64_native_set_sig((uint64_t)(uintptr_t)native_mixed, &mixed));
+    rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+    cpu.r[RDI] = 1; cpu.r[RSI] = 1; cpu.r[RDX] = 1; cpu.r[RCX] = 1; cpu.r[R8] = 1; cpu.r[R9] = 1;
+    PUSH64(&cpu, 3); PUSH64(&cpu, 0xffffffff00000005ull); PUSH64(&cpu, 4); PUSH64(&cpu, 1); PUSH64(&cpu, 1);   // i: high bits ignored
+    PUSH64(&cpu, 0x1234);
+    rt64_native_call(&cpu, (uint64_t)(uintptr_t)native_mixed);
+    EXPECT(cpu.r[RAX] == 8 + 1000 * 4 + 100000 * 5 + 10000000ull * 3);
+    // A 40-byte structure through the hidden pointer: rdi on x86-64 becomes x8, rax returns it.
+    static const rt64_native_sig big = {1, 0, {0}};
+    EXPECT(rt64_native_set_sig((uint64_t)(uintptr_t)native_make_big, &big) &&
+           rt64_native_sig_of((uint64_t)(uintptr_t)native_make_big)->hidden_return);
+    native_big result = {{0}};
+    rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+    cpu.r[RDI] = (uint64_t)(uintptr_t)&result; cpu.r[RSI] = 6; cpu.r[RDX] = 7;
+    PUSH64(&cpu, 0x1234);
+    rt64_native_call(&cpu, (uint64_t)(uintptr_t)native_make_big);
+    EXPECT(result.v[0] == 6 && result.v[1] == 7 && result.v[2] == 13 && result.v[3] == 42 && result.v[4] == 77);
+    EXPECT(cpu.r[RAX] == (uint64_t)(uintptr_t)&result);
+    // A C++ interface's method by its vtable slot (steamclient.dylib has no method names).
+    native_vtable vt = {{0, 0, (uint64_t (*)(void))(uintptr_t)native_twelve}};
+    native_vtable *object = &vt;
+    static const rt64_native_sig four = {0, 4, {8, 8, 8, 8}};
+    EXPECT(rt64_native_set_vtable_sig((uint64_t)(uintptr_t)&object, 2, &four) &&
+           rt64_native_sig_of((uint64_t)(uintptr_t)native_twelve)->stack_args == 4);
 
     // --wrap'd file functions of Steam runtime builds resolve to the plain shims.
     EXPECT(rt64_find_shim("__wrap_access") == rt64_find_shim("access") && rt64_find_shim("access"));
