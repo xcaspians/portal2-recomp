@@ -131,3 +131,36 @@ likely exceed MoltenVK's, and its shader compiler would run as lifted code.
    ship, but they'd be the first third-party graphics libraries built by
    `setup.sh` rather than downloaded prebuilt. OK to add them as sources
    fetched by `setup.sh`, like `mtld3d`?
+
+## Round 28: route (a2) approved, stopped at a MoltenVK gap
+
+Caspian approved (a2). Before writing any bridge, I built MoltenVK v1.4.2 from source for macOS (Apple M6,
+Vulkan 1.3.357) and asked it directly which of DXVK's required features it has. DXVK is now v3.2: Vulkan 1.3
+and about 55 required features. MoltenVK has all of them except these:
+
+| Missing in MoltenVK 1.4.2 | DXVK 3.2 | Effect |
+|---|---|---|
+| `nullDescriptor` (VK_EXT_robustness2) | required | **Blocking.** DXVK 3.x writes an unbound slot as a null descriptor, and D3D11 games unbind resources all the time. DXVK marks it "effectively required for correctness". |
+| `robustBufferAccess2` (same extension) | required | Relaxable on its own: out-of-range reads aren't zeroed. Comes with the line above. |
+| `geometryShader` | required | Small: made optional the way the macOS fork does; geometry-shader effects go missing. |
+| `shaderCullDistance` | required | Small: optional, same patch. |
+| `depthClipEnable` (VK_EXT_depth_clip_enable) | required | Small: depth clipping stays on, so only states that turn it off draw wrong. |
+| `transformFeedback` | optional with the fork's patch | Small: stream output effects go missing. |
+
+The macOS fork (Gcenx/DXVK-macOS) is DXVK **1.10.3**. Its macOS changes are small: geometry shaders,
+tessellation, cull distance and transform feedback become optional. It works on MoltenVK because DXVK 1.10
+still bound dummy resources where 3.x uses null descriptors.
+
+**Ways past the block (Caspian's call):**
+1. **DXVK 1.10.3 with the macOS fork's patches, built natively.** 1.10 predates DXVK's own native build, so
+   the native window-system and build changes (dxvk-native's 1.x branch) have to be carried over. About 1
+   round; an old DXVK, but the one Macs already run under Wine.
+2. **DXVK 3.2 with a dummy-resource fallback** written back into its descriptor code wherever
+   `nullDescriptor` is assumed. Deep changes to current DXVK, to maintain on every update.
+3. **Wait for MoltenVK** to add robustness2 null descriptors.
+4. **DXMT** (native build: D3D11 straight to Metal, no Vulkan step). It has a native `libdxmt-native.dylib`
+   with the D3D11/DXGI entry points, but its native build has no stable release I could confirm.
+
+**Another prerequisite, whichever route:** P2CE hands DXVK an SDL window. Today SDL is P2CE's lifted Linux
+SDL, which can't open a Mac window. The plan's round E (bridge SDL to the Mac's native SDL) comes before the
+first clear.

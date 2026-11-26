@@ -249,7 +249,7 @@ P2CE_SYSTEMS ?= bin/linux64/shaderapiempty.so bin/linux64/inputsystem.so bin/lin
 	bin/linux64/localize.so bin/linux64/scenefilecache.so bin/linux64/vgui2.so \
 	bin/linux64/video_services.so bin/linux64/richpresence.so bin/linux64/toolframework.so bin/linux64/vguimatsurface.so \
 	bin/linux64/workshop.so bin/linux64/panorama.so bin/linux64/panoramauiclient.so \
-	bin/linux64/libfreetype.so.6 bin/linux64/libfontconfig.so.1
+	bin/linux64/libfreetype.so.6 bin/linux64/libfontconfig.so.1 bin/linux64/devui.so
 P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/libtier0.so \
 	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/launcher.so \
 	bin/linux64/filesystem_stdio.so bin/linux64/engine.so $(P2CE_SYSTEMS)
@@ -260,6 +260,15 @@ P2CE_CONTENT ?= $(subst depot_440005,depot_440002,$(P2CE_ROOT))
 P2CE_TIMEOUT ?= 120
 # -O0 by default: engine.so is 170 C files; -O1 takes about 2 GB and minutes per file.
 P2CE_OPT ?= 0
+# Round 28: which Vulkan features DXVK needs and MoltenVK lacks (MoltenVK built in
+# deps/moltenvk-src, DXVK's headers in deps/dxvk-src; never part of make check).
+MOLTENVK_LIB ?= deps/moltenvk-src/Package/Release/MoltenVK/dynamic/dylib/macOS
+.PHONY: p2ce-moltenvk-features
+p2ce-moltenvk-features: tools/moltenvk_features.c
+	@mkdir -p build/p2ce
+	$(CC) -Ideps/dxvk-src/include/vulkan/include tools/moltenvk_features.c $(MOLTENVK_LIB)/libMoltenVK.dylib \
+		"-Wl,-rpath,$(CURDIR)/$(MOLTENVK_LIB)" -o build/p2ce/moltenvk-features
+	./build/p2ce/moltenvk-features 2>/dev/null
 .PHONY: p2ce-launch
 p2ce-launch: $(X64_RUNTIME) runtime/x64/rt64.h src/main64.c tools/run64.py
 	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-launch: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
