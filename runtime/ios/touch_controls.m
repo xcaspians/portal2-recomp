@@ -689,7 +689,11 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
     case RT_TOUCH_WEAPON_PREV: if (down) [self wheel:1]; break;
     case RT_TOUCH_WEAPON_NEXT: if (down) [self wheel:-1]; break;
     case RT_TOUCH_ZOOM: [self zoomTap]; break;   // pressed and released: a tap each (the game's zoom toggles)
-    case RT_TOUCH_EMOTE: [self key:SDL_SCANCODE_Q down:down]; break;   // +mouse_menu_taunt; the finger aims (RT_TOUCH_AIM)
+    // +mouse_menu_taunt as a command (Q held didn't open the menu in split-screen, iPad Pro);
+    // the finger aims (RT_TOUCH_AIM). Q if the engine takes no command.
+    case RT_TOUCH_EMOTE:
+        if (!rt_ios_game_command(down ? "+mouse_menu_taunt" : "-mouse_menu_taunt")) [self key:SDL_SCANCODE_Q down:down];
+        break;
     default: break;
     }
 }
