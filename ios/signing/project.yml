@@ -14,6 +14,9 @@ options:
 settings:
   base:
     CODE_SIGN_STYLE: Automatic
+    # The team (setup.sh passes P2_TEAM_ID): without it in the project, Xcode's
+    # Signing & Capabilities tab can't show or add iCloud (round 25).
+    DEVELOPMENT_TEAM: "${P2_TEAM_ID}"
     GENERATE_INFOPLIST_FILE: YES
     CURRENT_PROJECT_VERSION: 1
     MARKETING_VERSION: "0.1"

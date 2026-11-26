@@ -5,6 +5,7 @@ work itself is tools/ios_device.sh (install, data push, mel data push,
 workshop push); this only plans it, so there is one implementation.
 
     devices.py list                                 JSON: [{udid, name, model, kind, link, ready, problem}]
+    devices.py pick                                 the UDID setup.sh installs to (exit 1 if none)
     devices.py status --device UDID                 JSON: apps on it, free space, each game's data
     devices.py plan --device UDID --game portal2|mel|portal1|hl2|l4d2|workshop
                                                     JSON: {steps: [{label, command}], need_bytes, problem}
@@ -75,6 +76,17 @@ def parse_devices(report):
                     'ready': problem is None, 'problem': problem})
     out.sort(key=lambda x: (not x['ready'], x['name'] or ''))
     return out
+
+
+def pick(found):
+    """The device setup.sh signs for and installs to when P2_DEVICE isn't set: a
+    ready iPhone first, then a ready iPad, cable before Wi-Fi; never an Apple
+    TV or a Mac (parse_devices lists only iPhones and iPads). None if no
+    iPhone or iPad is ready. Before this, setup.sh took the first paired
+    device in devicectl's list, which can be an Apple TV."""
+    ready = [d for d in found if d['ready']]
+    ready.sort(key=lambda d: (d['kind'] != 'iPhone', d['link'] != 'USB'))
+    return ready[0]['udid'] if ready else None
 
 
 def devicectl_json(*args):
@@ -226,6 +238,7 @@ def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     sub = ap.add_subparsers(dest='cmd', required=True)
     sub.add_parser('list')
+    sub.add_parser('pick')
     st = sub.add_parser('status')
     st.add_argument('--device', required=True)
     pl = sub.add_parser('plan')
@@ -236,6 +249,12 @@ def main(argv):
         report, result = devicectl_json('list', 'devices')
         print(json.dumps(parse_devices(report) if report else [], indent=1))
         return 0
+    if a.cmd == 'pick':
+        report, result = devicectl_json('list', 'devices')
+        udid = pick(parse_devices(report) if report else [])
+        if udid:
+            print(udid)
+        return 0 if udid else 1
     if a.cmd == 'status':
         print(json.dumps(status(a.device), indent=1))
         return 0

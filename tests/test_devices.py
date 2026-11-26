@@ -29,6 +29,16 @@ class DevicesTest(unittest.TestCase):
         self.assertIn('Developer Mode', found['E']['problem'])
         self.assertEqual([d['ready'] for d in devices.parse_devices(report)][:2], [True, True])   # ready ones first
 
+    def test_pick_for_setup(self):
+        # devicectl lists an Apple TV first on the maintainer's Mac: setup.sh picked it.
+        tv = dev('Bedroom', 'TV', kind='appleTV')
+        report = {'result': {'devices': [tv, dev('Pad', 'P', kind='iPad', link='wired'), dev('Phone', 'W'),
+                                         dev('Phone cable', 'U', link='wired'), dev('Locked', 'L', tunnel='unavailable', boot=None)]}}
+        self.assertEqual(devices.pick(devices.parse_devices(report)), 'U')   # an iPhone, on the cable
+        report['result']['devices'] = [tv, dev('Pad', 'P', kind='iPad'), dev('Locked phone', 'L', tunnel='unavailable', boot=None)]
+        self.assertEqual(devices.pick(devices.parse_devices(report)), 'P')   # a ready iPad before a phone that isn't
+        self.assertIsNone(devices.pick(devices.parse_devices({'result': {'devices': [tv]}})))
+
     def test_plain_errors(self):
         self.assertIn('locked', devices.plain_error('ERROR: The device is passcode locked'))
         self.assertIn('Trust', devices.plain_error('device is not paired'))

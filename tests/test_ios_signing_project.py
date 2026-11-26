@@ -57,7 +57,7 @@ class GeneratedProject(unittest.TestCase):
             work = Path(tmp) / 'signing'
             shutil.copytree(ROOT / 'ios/signing', work, ignore=shutil.ignore_patterns('P2Signing.xcodeproj', '*.entitlements'))
             subprocess.run(['xcodegen', '-q', '--spec', 'project-icloud.yml'], cwd=work, check=True,
-                           env={**os.environ, 'P2_BUNDLE_ID': bundle})
+                           env={**os.environ, 'P2_BUNDLE_ID': bundle, 'P2_TEAM_ID': 'TEAM123456'})
             pbxproj = work / 'P2Signing.xcodeproj/project.pbxproj'
             data = json.loads(subprocess.run(['plutil', '-convert', 'json', '-o', '-', str(pbxproj)],
                                              check=True, capture_output=True, text=True).stdout)
@@ -69,6 +69,11 @@ class GeneratedProject(unittest.TestCase):
             self.assertIsInstance(caps, dict)
             self.assertEqual(caps['com.apple.iCloud'], {'enabled': '1'})   # OpenStep plists keep numbers as text
             self.assertNotIn('SystemCapabilities', attributes['Probe'])
+            # The team is in the project (setup.sh's P2_TEAM_ID): without it Xcode's Signing &
+            # Capabilities tab showed no iCloud and + Capability > iCloud did nothing.
+            configs = [o for o in objects.values() if o.get('isa') == 'XCBuildConfiguration']
+            self.assertTrue(configs and all(c['buildSettings'].get('DEVELOPMENT_TEAM', 'TEAM123456') == 'TEAM123456' for c in configs))
+            self.assertTrue(any(c['buildSettings'].get('DEVELOPMENT_TEAM') == 'TEAM123456' for c in configs))
             # One container, the existing one: iCloud.<the app's identifier>.
             entitlements = subprocess.run(['plutil', '-convert', 'json', '-o', '-', str(work / 'Portal2-icloud.entitlements')],
                                           check=True, capture_output=True, text=True).stdout

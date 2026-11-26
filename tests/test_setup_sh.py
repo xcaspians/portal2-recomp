@@ -369,22 +369,35 @@ class SetupDeviceTests(unittest.TestCase):
 
     def pick(self, p2_device=None):
         text = (ROOT / 'setup.sh').read_text()
-        block = re.search(r'^    DEVICE=.*?\}\'\)$', text, re.M | re.S).group(0)
+        block = re.search(r'^    DEVICE=\$\{P2_DEVICE:-\}\n.*?devices\.py pick.*?$', text, re.M | re.S).group(0)
+        # devicectl's JSON listing, an Apple TV first (as on the maintainer's Mac, round 25).
+        listing = {'result': {'devices': [
+            self.device('Bedroom', '00008110-001965C60C20201E', 'appleTV'),
+            self.device('Larus', '00008130-000C25812613803A', 'iPhone'),
+            self.device('Other', '00008110-00112233445566AA', 'iPhone')]}}
         with tempfile.TemporaryDirectory() as tmp:
             xcrun = Path(tmp) / 'xcrun'
             xcrun.write_text('#!/bin/sh\n'
-                             'echo "Larus  a.coredevice.local  00008130-000C25812613803A  available (paired)  iPhone 15 Pro Max (physical)"\n'
-                             'echo "Other  b.coredevice.local  00008110-00112233445566AA  available (paired)  iPhone 13 (physical)"\n')
+                             'while [ $# -gt 0 ]; do [ "$1" = --json-output ] && out=$2; shift; done\n'
+                             f"cat > \"$out\" <<'JSON'\n{json.dumps(listing)}\nJSON\n")
             xcrun.chmod(0o755)
             env = {k: v for k, v in os.environ.items() if not k.startswith('P2_')}
             env['PATH'] = f"{tmp}:{env['PATH']}"
             if p2_device:
                 env['P2_DEVICE'] = p2_device
-            result = subprocess.run(['bash', '-c', block + '\necho "$DEVICE"'], capture_output=True, text=True, env=env)
+            result = subprocess.run(['bash', '-c', 'set -euo pipefail\n' + block + '\necho "$DEVICE"'],
+                                    capture_output=True, text=True, env=env, cwd=ROOT)
             self.assertEqual(result.returncode, 0, result.stderr)
             return result.stdout.strip()
 
+    @staticmethod
+    def device(name, udid, kind):
+        return {'hardwareProperties': {'reality': 'physical', 'deviceType': kind, 'udid': udid, 'marketingName': name},
+                'connectionProperties': {'pairingState': 'paired', 'tunnelState': 'connected', 'transportType': 'wired'},
+                'deviceProperties': {'name': name, 'bootState': 'booted', 'developerModeStatus': 'enabled'}}
+
     def test_first_iphone_by_default(self):
+        # Never the Apple TV listed first: setup.sh signed for it and installed to it.
         self.assertEqual(self.pick(), '00008130-000C25812613803A')
 
     def test_p2_device_picks_the_iphone(self):
