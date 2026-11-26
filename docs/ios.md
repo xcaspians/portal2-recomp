@@ -350,7 +350,12 @@ capability, which only a provisioning profile can grant:
    a container). `ios/signing/sign.py` then narrows the profile's iCloud
    entries to that container (`narrow_entitlements`, checked by
    `tests/test_ios_sign.py`).
-3. If that step fails with a capability error (on 24 November 2026 it turned
+   Since round 25 the signing step targets the connected iPhone by its UDID
+   (`tools/devices.py pick`, never an Apple TV) and puts your team in the
+   generated project: that is what got the existing container into the
+   profile without any Xcode click. If it fails, the error lines are shown and
+   the full log is `build/ios-profile.log`.
+3. If that step still fails with a capability error (on 24 November 2026 it turned
    iCloud on for the identifier but attached no container: the profile had
    iCloud with an empty container list, and the build stopped with
    "doesn't match the entitlements file's values for ...

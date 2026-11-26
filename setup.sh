@@ -732,10 +732,11 @@ if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
         step "Building SDL2, FreeType and gl4es for iOS (a few minutes)"
         P2_IOS_DEPS="$IOS_DEPS" ios/deps/build.sh device
     fi
-    # P2_DEVICE picks the iPhone when several are connected; else the first one.
+    # P2_DEVICE picks the device; else a ready iPhone, then a ready iPad
+    # (tools/devices.py pick). The first paired device in devicectl's list
+    # could be an Apple TV, which got the profile step and the install.
     DEVICE=${P2_DEVICE:-}
-    [ -n "$DEVICE" ] || DEVICE=$(xcrun devicectl list devices 2>/dev/null |
-        awk '/physical/ && / connected|available \(paired\)/ {for (i = 1; i <= NF; ++i) if ($i ~ /^[0-9A-F]{8}-[0-9A-F]{16}$/) {print $i; exit}}')
+    [ -n "$DEVICE" ] || DEVICE=$(python3 tools/devices.py pick 2>/dev/null || true)
     [ -n "$DEVICE" ] || warn "no iPhone connected: a free account needs one registered for its first profile"
     # One identifier per game, or installing one app replaces the other (and
     # its data marker would skip the second copy): P2_BUNDLE_ID applies to all.
@@ -772,11 +773,19 @@ if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
         # iCloud Documents on this identifier (ios/signing/project-icloud.yml).
         SPEC=project.yml
         case "$id:$(config_get ios_icloud)" in portal2:True|portal2:true|portal2:1) SPEC=project-icloud.yml ;; esac
-        (cd ios/signing && P2_BUNDLE_ID="$BUNDLE_ID" xcodegen -q --spec "$SPEC" &&
-            xcodebuild -quiet -project P2Signing.xcodeproj -scheme Portal2 -destination generic/platform=iOS \
-                -allowProvisioningUpdates DEVELOPMENT_TEAM="$TEAM" build >/dev/null) \
-            || die "Xcode could not create a profile. Connect and unlock the iPhone, enable Developer Mode
-  (Settings > Privacy & Security), trust this Mac, then re-run."
+        # For the connected device by UDID: a generic iOS destination left the
+        # iCloud container out of the profile (round 25: "doesn't match the
+        # entitlements file's values for ... icloud-container-identifiers").
+        DEST=generic/platform=iOS; REG=()
+        [ -n "$DEVICE" ] && DEST="platform=iOS,id=$DEVICE" && REG=(-allowProvisioningDeviceRegistration)
+        PROFILE_LOG="$REPO/build/ios-profile.log"; mkdir -p "$REPO/build"
+        if ! (cd ios/signing && P2_BUNDLE_ID="$BUNDLE_ID" P2_TEAM_ID="$TEAM" xcodegen -q --spec "$SPEC" &&
+            xcodebuild -project P2Signing.xcodeproj -scheme Portal2 -destination "$DEST" \
+                -allowProvisioningUpdates ${REG[@]+"${REG[@]}"} DEVELOPMENT_TEAM="$TEAM" build >"$PROFILE_LOG" 2>&1); then
+            grep -E ' error: |^error: ' "$PROFILE_LOG" | sed 's/^/  /' | head -5
+            die "Xcode could not create a profile (the lines above; full log: $PROFILE_LOG). Connect and unlock
+  the iPhone, enable Developer Mode (Settings > Privacy & Security), trust this Mac, then re-run."
+        fi
         fi
         step "Building the $TITLE iPhone app (about 10 minutes the first time)"
         python3 tools/build_ios.py --game "$id" --target device --release --deps "$IOS_DEPS/device"
