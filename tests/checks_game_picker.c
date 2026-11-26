@@ -85,3 +85,12 @@ RT_CHECK(game_picker_series) {
     assert(!strcmp(rt_picker_badge("ep1"), "EP1") && !strcmp(rt_picker_badge("ep2"), "EP2"));
     assert(!strcmp(rt_picker_badge("lostcoast"), "LC") && !rt_picker_badge("hl2") && !rt_picker_badge(NULL));
 }
+
+// Round 26: "Remember my game" turned itself on (iPad mini): a drag that began on
+// the pill counted as a tap. Only a tap, lifted inside, with little movement, fires a card.
+RT_CHECK(game_picker_card_fires_only_for_a_tap) {
+    assert(rt_picker_is_tap(0, 0, 1) && rt_picker_is_tap(8, -8, 1));
+    assert(!rt_picker_is_tap(0, 40, 1));    // a scroll that started on the card
+    assert(!rt_picker_is_tap(0, 0, 0));     // lifted outside it (UIKit's touch-up-inside allows ~70 points)
+    assert(!rt_picker_is_tap(RT_PICKER_TAP_SLOP + 1, 0, 1));
+}

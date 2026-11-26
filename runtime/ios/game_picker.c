@@ -1,5 +1,6 @@
 // Game picker rules (see game_picker.h).
 #include "game_picker.h"
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -79,4 +80,8 @@ void rt_picker_size(long long bytes, char *out, size_t size) {
     else if (bytes >= 1000LL * 1000 * 1000) snprintf(out, size, "%.1f GB", (double)bytes / 1e9);
     else if (bytes >= 1000 * 1000) snprintf(out, size, "%.0f MB", (double)bytes / 1e6);
     else snprintf(out, size, "%lld KB", bytes / 1000);
+}
+
+int rt_picker_is_tap(double moved_x, double moved_y, int lifted_inside) {
+    return lifted_inside && hypot(moved_x, moved_y) <= RT_PICKER_TAP_SLOP;
 }
