@@ -118,6 +118,26 @@ int rt_touch_player2_wanted(const char *game, const char *map, int controllers);
 int rt_touch_pad_button(rt_touch_action action);
 int rt_touch_pad_trigger(rt_touch_action action);
 
+// ---- Left 4 Dead 2's buttons through the controller (round 26) ----
+// Left 4 Dead 2's config.cfg may hold controller binds only (seen on both
+// iPads: `unbindall` then A_BUTTON... and ESCAPE, no key or mouse button), so
+// buttons sent as keys and clicks do nothing while the stick (the virtual
+// controller) works. In that game the touch buttons press the virtual
+// controller's buttons and triggers instead, which its controller binds read:
+// A +jump, B +reload, X +use, left shoulder toggle_duck, d-pad up impulse 100,
+// d-pad left/right/down slot3/4/5, triggers +attack2 (shove) and +attack.
+typedef struct {
+    int button;             // SDL_GameControllerButton, -1: none
+    int trigger;            // SDL_GameControllerAxis of a trigger (4 left, 5 right), -1: none
+    int tap;                // a press on each change (pressed, released): the bind toggles (toggle_duck)
+    const char *command;    // no controller bind: a console command when pressed ("slot1"), else NULL
+} rt_touch_pad_route;
+// Does this layout send its buttons through the virtual controller?
+int rt_touch_buttons_on_pad(rt_ios_layout layout);
+// Where an action goes in that case; all -1/0/NULL: the usual key or click
+// (pause, camera mode, the dataset flag stay as they are).
+rt_touch_pad_route rt_touch_pad_route_for(rt_ios_layout layout, rt_touch_action action);
+
 // Overlay hidden for a controller or a keyboard (touch_controls.m draws it,
 // tests/checks_touch_layout.c checks these rules). mode is P2_TOUCH_CONTROLS:
 // NULL or "auto" hides it while a controller or keyboard is connected, until a

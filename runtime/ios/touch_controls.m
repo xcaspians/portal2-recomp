@@ -78,18 +78,27 @@ typedef struct { Action action; NSString *symbol; UIColor *color; CGPoint at; CG
 enum { MAX_BUTTONS = 16 };
 
 // Manette virtuelle : deux axes seulement (stick gauche), aucun bouton, pour
-// qu'elle ne porte aucune autre commande que le déplacement.
-static SDL_Joystick *virtual_pad(void) {
+// qu'elle ne porte aucune autre commande que le déplacement. Round 26: with
+// `buttons` (Left 4 Dead 2, rt_touch_buttons_on_pad), also the buttons and
+// triggers the touch buttons press, in SDL_GameController's numbering.
+static SDL_Joystick *virtual_pad(BOOL buttons) {
     SDL_VirtualJoystickDesc desc = {0};
     desc.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
     desc.type = SDL_JOYSTICK_TYPE_GAMECONTROLLER;
     desc.naxes = 2;
     desc.axis_mask = (1u << SDL_CONTROLLER_AXIS_LEFTX) | (1u << SDL_CONTROLLER_AXIS_LEFTY);
+    if (buttons) {
+        desc.naxes = SDL_CONTROLLER_AXIS_MAX;
+        desc.axis_mask = (1u << SDL_CONTROLLER_AXIS_MAX) - 1;
+        desc.nbuttons = SDL_CONTROLLER_BUTTON_DPAD_RIGHT + 1;
+        desc.button_mask = (1u << (SDL_CONTROLLER_BUTTON_DPAD_RIGHT + 1)) - 1;
+    }
     desc.name = "Commandes tactiles";
     int index = SDL_JoystickAttachVirtualEx(&desc);
     SDL_Joystick *pad = index < 0 ? NULL : SDL_JoystickOpen(index);
     if (index >= 0 && !pad) SDL_JoystickDetachVirtual(index);
-    fprintf(stderr, "[ios] manette virtuelle : %s\n", pad ? "créée" : SDL_GetError());
+    fprintf(stderr, "[ios] manette virtuelle : %s%s\n", pad ? "créée" : SDL_GetError(),
+            pad && buttons ? " (avec boutons et gâchettes : les boutons tactiles passent par elle)" : "");
     return pad;
 }
 // Round 23: a full controller (both sticks, triggers, A/B/X/Y, Start...) for
@@ -304,6 +313,8 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, h
     SDL_Joystick *coopPad;    // touch as player 2 (round 23): the full virtual controller, also `pad` meanwhile
     Sint16 coopLook[2];       // its right stick (look)
     BOOL padRefused;          // création refusée : ne pas réessayer à chaque image
+    BOOL padButtons;          // round 26: the pad has buttons, the touch buttons press them (Left 4 Dead 2)
+    BOOL padLog;              // P2_TOUCH_LOG=1: each touch button sent through the pad is logged
     Sint16 padAxes[2];        // dernières valeurs envoyées
     int padResponse;          // courbe du jeu pour ces valeurs (joy_response_move)
     CGFloat testMove;         // essai (touch_test.m) : inclinaison avant imposée
@@ -335,6 +346,7 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, h
         windowID = SDL_GetWindowID(window);
         self.multipleTouchEnabled = YES; self.backgroundColor = UIColor.clearColor; self.opaque = NO;
         fingers = [NSMapTable strongToStrongObjectsMapTable];
+        padLog = rt_ios_env_flag("P2_TOUCH_LOG", 0) != 0;
         trackpad = [NSUserDefaults.standardUserDefaults boolForKey:game_key(kTrackpadKey)];
         NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
         for (NSNotificationName name in @[GCControllerDidConnectNotification, GCControllerDidDisconnectNotification,
@@ -626,6 +638,22 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
         if (trigger >= 0) { SDL_JoystickSetVirtualAxis(coopPad, trigger, (Sint16)rt_pad_trigger_axis(down)); if (down) haptic_fire(); }   // round 24: 0 was half pressed
         return;
     }
+    // Round 26: Left 4 Dead 2's buttons press the virtual controller (its config may bind nothing else).
+    if (pad && padButtons) {
+        rt_touch_pad_route r = rt_touch_pad_route_for(rt_ios_current_game()->layout, (rt_touch_action)action);
+        if (r.button >= 0 || r.trigger >= 0 || r.command) {
+            if (padLog) fprintf(stderr, "[ios] bouton tactile %s %s : %s\n", rt_touch_action_name((rt_touch_action)action),
+                                down ? "enfoncé" : "relâché", r.command ? r.command : r.trigger >= 0 ? "gâchette" : "bouton de manette");
+            if (r.tap) [self padTap:r.button];
+            else if (r.button >= 0) SDL_JoystickSetVirtualButton(pad, r.button, down ? SDL_PRESSED : SDL_RELEASED);
+            else if (r.trigger >= 0) {
+                SDL_JoystickSetVirtualAxis(pad, r.trigger, (Sint16)rt_pad_trigger_axis(down));
+                if (down) haptic_fire();
+            } else if (down && !rt_ios_game_command(r.command))
+                fprintf(stderr, "[ios] bouton tactile %s : commande %s refusée\n", rt_touch_action_name((rt_touch_action)action), r.command);
+            return;
+        }
+    }
     CGPoint centre = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
     switch (action) {
     case RT_TOUCH_JUMP: [self key:SDL_SCANCODE_SPACE down:down]; break;
@@ -650,6 +678,18 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
     case RT_TOUCH_ZOOM: [self zoomTap]; break;   // pressed and released: a tap each (the game's zoom toggles)
     default: break;
     }
+}
+// A button down now and up 80 ms later (its own frames): a bind that toggles
+// (Left 4 Dead 2's toggle_duck) gets one press per change of the touch button.
+- (void)padTap:(int)button {
+    SDL_Joystick *p = pad;
+    if (!p) return;
+    SDL_JoystickSetVirtualButton(p, button, SDL_PRESSED);
+    __weak typeof(self) weak = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 80 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        typeof(self) me = weak;
+        if (me && me->pad == p) SDL_JoystickSetVirtualButton(p, button, SDL_RELEASED);
+    });
 }
 // Round 25: Portal 2's zoom is a toggle (+zoom flips it: middle mouse button, a
 // controller's right bumper; measured on the iPad Pro, the game then shows
@@ -941,7 +981,8 @@ static int controller_count(void) {
     // A phone controller (phonepad_ios.m) takes the first slot when no real controller holds it.
     BOOL wanted = !physicalPad && !padRefused && !rt_ios_phonepad_active() && SDL_WasInit(SDL_INIT_GAMECONTROLLER);
     if (wanted && !pad) {
-        if (!(pad = virtual_pad())) padRefused = YES;
+        padButtons = rt_touch_buttons_on_pad(rt_ios_current_game()->layout) != 0;
+        if (!(pad = virtual_pad(padButtons))) padRefused = YES;
         padID = pad ? SDL_JoystickInstanceID(pad) : -1;
         rt_ios_move_response_linear(pad != NULL);
         padAxes[0] = padAxes[1] = 0;
