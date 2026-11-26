@@ -813,6 +813,9 @@ if [ $IOS = 1 ] && [ ${#IOS_SELECTED[@]} -gt 0 ]; then
         else
             step "Copying the $TITLE data to the iPhone ($SIZE; long, once)"
             P2_STANDALONE=$STANDALONE P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" data
+            # What was copied, so the installer can offer an Update later (tools/device_updates.py).
+            P2_STANDALONE=$STANDALONE P2_DEVICE="$DEVICE" tools/ios_device.sh --game "$id" manifest ||
+                warn "couldn't leave the update manifest on the device: the installer will copy $TITLE again to update it"
         fi
     done
 fi

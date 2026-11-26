@@ -328,13 +328,17 @@ Maintainer steps; users never need them.
    creates it) and a notarytool profile with an app-specific password from
    account.apple.com:
    `xcrun notarytool store-credentials p2-notary --apple-id <Apple ID> --team-id <team ID>`.
-3. **Installer**: tag the release, run `tools/build_installer.sh` (the app
-   embeds `git archive HEAD`, so commit first) and upload
-   `build/installer/Natif-Installer-<tag>.zip` (the name is
-   `INSTALLER_NAME` in the script). With the certificate and
-   the profile, the script signs with the hardened runtime, notarizes, staples
-   and checks the result with `spctl`; it prints which of these it did.
-   Signed without notarization (no profile, or Apple has not answered yet),
-   or ad hoc signed without the certificate, users go through System Settings
-   > Privacy & Security > Open Anyway once. `P2_SIGN_IDENTITY` picks another
-   certificate (`-` forces ad hoc), `P2_NOTARY_PROFILE` another profile.
+3. **Installer**: tag the release, run `make installer-dmg` (or
+   `tools/build_installer.sh --dmg`; the app embeds `git archive HEAD`, so
+   commit first) and upload `build/installer/Natif-Installer-<tag>.dmg` to
+   the GitHub release (the name is `INSTALLER_NAME` in the script; the
+   installer looks for a newer release there). The app is universal (Apple
+   silicon and Intel). With the certificate and the profile, the script signs
+   the app with the hardened runtime, notarizes and staples it, then signs,
+   notarizes and staples the DMG, and checks both with `spctl`; it prints
+   which of these it did. Signed without notarization (no profile, or Apple
+   has not answered yet), or ad hoc signed without the certificate, users go
+   through System Settings > Privacy & Security > Open Anyway once.
+   `P2_SIGN_IDENTITY` picks another certificate (`-` forces ad hoc),
+   `P2_NOTARY_PROFILE` another profile. Without `--dmg` it makes the zip, as
+   before.

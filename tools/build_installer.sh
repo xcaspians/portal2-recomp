@@ -6,7 +6,9 @@
 #   build/installer/Natif-Installer-<version>.zip
 # The name is set once here (INSTALLER_NAME); the bundle identifier stays the
 # first release's.
-# usage: tools/build_installer.sh [version]   (default: git describe)
+#   build/installer/Natif-Installer-<version>.dmg   (with --dmg: open it, drag
+#   the app to Applications; `make installer-dmg`)
+# usage: tools/build_installer.sh [--dmg] [version]   (default: git describe)
 # Needs only the Xcode command line tools. The snapshot is `git archive HEAD`:
 # uncommitted changes are not in it.
 #
@@ -20,6 +22,8 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"
+DMG=0
+[ "${1:-}" = --dmg ] && { DMG=1; shift; }
 VERSION="${1:-$(git describe --tags --always --dirty)}"
 # Bundle versions must be numbers (0.2.0); the full description goes in P2SourceVersion.
 NUMERIC=$(printf '%s' "${VERSION#v}" | sed -E 's/^([0-9]+(\.[0-9]+){0,2}).*/\1/')
@@ -34,8 +38,17 @@ APP="$OUT/$INSTALLER_NAME.app"
 git diff --quiet HEAD -- || echo "warning: uncommitted changes are not in the installer's snapshot" >&2
 
 rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-swiftc -O -parse-as-library -swift-version 5 -target arm64-apple-macos13.0 \
-    installer/Installer.swift -o "$APP/Contents/MacOS/installer"
+# Universal (Apple silicon and Intel): the installer opens on any Mac with
+# macOS 13. The Mac games themselves need Apple silicon (arm64 programs and
+# Valve's arm64 libsteam_api.dylib); the window says so on an Intel Mac.
+SLICES=()
+for arch in arm64 x86_64; do
+    swiftc -O -parse-as-library -swift-version 5 -target $arch-apple-macos13.0 \
+        installer/Installer.swift installer/Devices.swift -o "$OUT/installer-$arch"
+    SLICES+=("$OUT/installer-$arch")
+done
+lipo -create "${SLICES[@]}" -output "$APP/Contents/MacOS/installer"
+rm -f "${SLICES[@]}"
 git archive --format=tar.gz -o "$APP/Contents/Resources/source.tar.gz" HEAD
 cat >"$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -51,13 +64,26 @@ cat >"$APP/Contents/Info.plist" <<EOF
   <key>CFBundleVersion</key><string>$NUMERIC</string>
   <key>P2SourceVersion</key><string>$VERSION</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
-  <key>LSArchitecturePriority</key><array><string>arm64</string></array>
+  <key>LSArchitecturePriority</key><array><string>arm64</string><string>x86_64</string></array>
   <key>NSHighResolutionCapable</key><true/>
 </dict>
 </plist>
 EOF
 ZIP="$OUT/${INSTALLER_NAME// /-}-$VERSION.zip"
-pack() { rm -f "$ZIP" && (cd "$OUT" && ditto -c -k --keepParent "$INSTALLER_NAME.app" "$ZIP"); }
+DMG_FILE="$OUT/${INSTALLER_NAME// /-}-$VERSION.dmg"
+# The DMG: the app and a link to /Applications, to drag it onto.
+make_dmg() {
+    local stage="$OUT/dmg-stage"
+    rm -rf "$stage" "$DMG_FILE" && mkdir -p "$stage"
+    ditto "$APP" "$stage/$INSTALLER_NAME.app"
+    ln -s /Applications "$stage/Applications"
+    hdiutil create -quiet -volname "$INSTALLER_NAME" -srcfolder "$stage" -fs HFS+ -format UDZO -ov "$DMG_FILE"
+    rm -rf "$stage"
+}
+pack() {
+    if [ $DMG = 1 ]; then make_dmg; else rm -f "$ZIP" && (cd "$OUT" && ditto -c -k --keepParent "$INSTALLER_NAME.app" "$ZIP"); fi
+}
+PACKAGE() { [ $DMG = 1 ] && echo "$DMG_FILE" || echo "$ZIP"; }
 if [ "$IDENTITY" = - ]; then
     echo "signing: ad hoc (no Developer ID Application certificate): users will need Open Anyway"
     codesign --force -s - "$APP"
@@ -67,16 +93,27 @@ else
     codesign --force --options runtime --timestamp -s "$IDENTITY" "$APP"
     codesign --verify --strict --verbose=1 "$APP"
     pack
+    [ $DMG = 1 ] && codesign --force --timestamp -s "$IDENTITY" "$DMG_FILE"
     if xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1; then
         echo "notarizing with profile $PROFILE (a few minutes)"
-        xcrun notarytool submit "$ZIP" --keychain-profile "$PROFILE" --wait
+        xcrun notarytool submit "$(PACKAGE)" --keychain-profile "$PROFILE" --wait
         xcrun stapler staple "$APP"
-        pack   # again, with the ticket inside
+        pack   # again, with the ticket inside the app
+        if [ $DMG = 1 ]; then
+            codesign --force --timestamp -s "$IDENTITY" "$DMG_FILE"
+            xcrun notarytool submit "$DMG_FILE" --keychain-profile "$PROFILE" --wait
+            xcrun stapler staple "$DMG_FILE"
+            spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_FILE"
+        fi
         spctl --assess --type execute --verbose=2 "$APP"
     else
         echo "warning: no notarytool profile $PROFILE: signed but not notarized, Gatekeeper will still warn.
-  Make it once: xcrun notarytool store-credentials $PROFILE --apple-id <Apple ID> --team-id <team ID>" >&2
+  Make it once (docs/usage.md#releases): xcrun notarytool store-credentials $PROFILE --apple-id <Apple ID> --team-id <team ID>" >&2
     fi
 fi
-shasum -a 256 "$ZIP"
-du -h "$ZIP"
+if [ "$IDENTITY" = - ]; then
+    echo "warning: no Developer ID Application certificate: this package is not signed for distribution,
+  Gatekeeper will block it on other Macs (docs/usage.md#releases)." >&2
+fi
+shasum -a 256 "$(PACKAGE)"
+du -h "$(PACKAGE)"

@@ -105,7 +105,12 @@ check: build/abi-smoke build/x64-check
 clean:
 	rm -rf build
 
-.PHONY: progress sanitize game
+# The Natif Installer as a DMG (docs/usage.md#releases): signed and notarized
+# when this Mac has a Developer ID certificate and the p2-notary profile.
+installer-dmg:
+	tools/build_installer.sh --dmg
+
+.PHONY: progress sanitize game installer-dmg
 # Whole game: every known function, C split and compiled in parallel with an
 # object cache (build/game/obj; build/hl2/obj for GAME=hl2). GAME_OPT=0 for a
 # diagnostic binary. GAME=portal2|hl2|portal1 (default: P2_GAME, then "game" of

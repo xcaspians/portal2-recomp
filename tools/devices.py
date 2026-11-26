@@ -7,8 +7,11 @@ workshop push); this only plans it, so there is one implementation.
     devices.py list                                 JSON: [{udid, name, model, kind, link, ready, problem}]
     devices.py pick                                 the UDID setup.sh installs to (exit 1 if none)
     devices.py status --device UDID                 JSON: apps on it, free space, each game's data
-    devices.py plan --device UDID --game portal2|mel|portal1|hl2|l4d2|workshop
+    devices.py status --device UDID --updates       ... plus updates: {game: [folders to copy again] or null}
+    devices.py plan --device UDID --game portal2|mel|portal1|hl2|l4d2|workshop [--update] [--backup DIR]
                                                     JSON: {steps: [{label, command}], need_bytes, problem}
+                                                    (--update: only the folders that changed on the Mac;
+                                                    --backup: the device's saves into DIR first)
 
 Every problem is a plain sentence for the window (device locked, not trusted,
 not paired, Developer Mode off, not enough space, game not built on this Mac).
@@ -34,6 +37,12 @@ TITLES = {'portal2': 'Portal 2', 'mel': 'Portal Stories: Mel', 'portal1': 'Porta
 # the one app); the others live in the Portal app.
 OWN_APP = tuple(g for g, p in games.GAMES.items() if p.get('ios') and g != 'portal2' and not p.get('ios_host'))
 SIZES = {'portal1': 'about 4.4 GB', 'hl2': 'about 10 GB', 'l4d2': 'about 14 GB'}
+
+
+# The games whose data lives in the one app (round 19): status asks each. Before
+# round 28 only Portal 2, Mel and Portal were asked, so Half-Life 2 and Left 4
+# Dead 2 always showed as missing from the device.
+IN_APP = tuple(g for g in DOWNLOADS if g != 'workshop' and g not in OWN_APP)
 
 
 def app_game(game):
@@ -89,6 +98,14 @@ def pick(found):
     return ready[0]['udid'] if ready else None
 
 
+def device_env(udid):
+    """The environment for tools/ios_device.sh on one device: the user's own
+    (devicectl and the config need HOME; without it every game read as
+    missing from the device), the device pinned, a plain PATH."""
+    import os
+    return dict(os.environ, P2_DEVICE=udid, PATH='/usr/bin:/bin:/usr/sbin:/sbin')
+
+
 def devicectl_json(*args):
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / 'out.json'
@@ -106,7 +123,7 @@ def plain_error(text):
         return 'The device doesn\'t trust this Mac yet: plug it in, unlock it and tap Trust.'
     if 'developer mode' in t:
         return 'Developer Mode is off on the device (Settings > Privacy & Security).'
-    if 'unavailable' in t or 'not connected' in t or 'timed out' in t:
+    if 'unavailable' in t or 'not connected' in t or 'timed out' in t or 'no longer valid' in t:
         return 'The device stopped answering: plug it in or bring it near the Mac, unlocked.'
     return 'The device didn\'t answer as expected. Plug it in, unlock it, and try again.'
 
@@ -154,10 +171,13 @@ def mac_builds(config=None):
     return out
 
 
-def plan(game, status, built, need_bytes):
+def plan(game, status, built, need_bytes, only=None, backup=None):
     """What Download does for `game` on a device in `status`
     ({app_installed, free_bytes or None, data: {game: bool}}): [(label, ios_device.sh words)]
-    and a problem sentence (None when it can go)."""
+    and a problem sentence (None when it can go). only: the destinations an
+    Update copies again (device_updates.changed); backup: a folder on the Mac
+    that gets the device's saves first, whenever the app or data on it is
+    going to be replaced. Every game copy ends by leaving its manifest."""
     if game not in DOWNLOADS:
         return [], f'unknown download {game!r}'
     if built.get(game):
@@ -165,22 +185,31 @@ def plan(game, status, built, need_bytes):
     steps = []
     owner = app_game(game)
     installed = (status.get('apps') or {}).get(owner, status.get('app_installed') if owner == 'portal2' else False)
+    if backup and installed and (status.get('data') or {}).get(game):
+        steps.append(('Back up the saves on the device', ['saves-backup', str(backup)]))
     if not installed:
         steps.append((f'Install the {games.app_name(localconfig.load())} app', ['install']) if owner == 'portal2' else
                      (f'Install the {TITLES[game]} app', ['--game', game, 'install']))
+    limit = ['--only', ' '.join(only)] if only else []
+    verb = 'Update' if only else 'Copy'
     if game == 'portal2':
-        steps.append(('Copy Portal 2 (about 11.5 GB)', ['data']))
+        steps.append((f'{verb} Portal 2 (about 11.5 GB)' if not only else f'{verb} Portal 2 ({len(only)} folders changed)',
+                      ['data', *limit]))
     elif game in SIZES:   # its own data, no other game's needed
-        steps.append((f'Copy {TITLES[game]} ({SIZES[game]})', ['--game', game, 'data']))
+        steps.append((f'{verb} {TITLES[game]} ({SIZES[game] if not only else f"{len(only)} folders changed"})',
+                      ['--game', game, 'data', *limit]))
     elif game == 'mel':
         # The slim pack (tools/mel_slim.py) reads Portal 2's archives: Portal 2 first.
         if not status.get('data', {}).get('portal2'):
             return [], 'Download Portal 2 first: Mel uses its files.'
-        steps.append(('Copy Portal Stories: Mel (about 6.8 GB)', ['mel', 'data', 'push']))
+        steps.append((f'{verb} Portal Stories: Mel ({"about 6.8 GB" if not only else f"{len(only)} folders changed"})',
+                      ['mel', 'data', 'push', *limit]))
     else:
         if not status.get('data', {}).get('portal2'):
             return [], 'Download Portal 2 first: the Workshop maps play in it.'
         steps.append(("Copy the Mac's Workshop maps", ['workshop', 'push']))
+    if game != 'workshop':
+        steps.append(('Remember what was copied (for updates)', ['--game', game, 'manifest']))
     free = status.get('free_bytes')
     if free is not None and need_bytes and free < need_bytes + MARGIN:
         return [], (f'Not enough space on the device: this needs {need_bytes / 1e9:.1f} GB plus 1 GB to spare, '
@@ -197,7 +226,7 @@ def status(udid):
     on = {g: bundle_id(game=g) in ids for g in ('portal2', *OWN_APP)}
     installed = on['portal2']
     out = {'app_installed': installed, 'apps': on, 'free_bytes': None, 'data': {}, 'problem': None}
-    env = {'P2_DEVICE': udid, 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin'}
+    env = device_env(udid)
     for game in OWN_APP:
         if on[game]:
             has = subprocess.run([str(ROOT / 'tools/ios_device.sh'), '--game', game, 'has-data'], env=env,
@@ -208,11 +237,30 @@ def status(udid):
         for line in space.stdout.splitlines():
             if line.startswith('free_bytes='):
                 out['free_bytes'] = int(line.split('=', 1)[1])
-        for game in ('portal2', 'mel', 'portal1'):
+        for game in IN_APP:
             has = subprocess.run([str(ROOT / 'tools/ios_device.sh'), '--game', game, 'has-data'], env=env,
                                  capture_output=True)
             out['data'][game] = has.returncode == 0
     return out
+
+
+def data_rows(game, config=None):
+    """ios_data_plan's rows [(source, destination, bytes)] of what a copy of `game` sends."""
+    config = localconfig.load() if config is None else config
+    cfg = localconfig.game_config(config, game)
+    profile = games.profile(cfg)
+    import ios_data_plan
+    root = Path(cfg.get('game_root', ''))
+    shared, overlay, dest_root = (), None, 'Documents'
+    if game == 'mel':   # the slim pack: Mel's own VPKs in portal2 stay on the Mac (tools/mel_slim.py)
+        import mel_slim
+        shared, dest_root = mel_slim.SHARED, 'Documents/mel'
+        slim = ROOT / 'build/mel/slim'
+        overlay = slim if slim.is_dir() else None
+    elif game != 'portal2' and game not in OWN_APP:
+        dest_root = f'Documents/{game}'
+    return ios_data_plan.plan(root, Path(cfg.get('linux_root', '')), Path(profile['build_dir']) / 'prep',
+                              profile['ios_data'], dest_root=dest_root, shared=shared, overlay=overlay)
 
 
 def need_bytes(game, config=None):
@@ -221,17 +269,26 @@ def need_bytes(game, config=None):
     if game == 'workshop':
         import workshop_push
         return sum(m['size'] for m in workshop_push.scan(workshop_push.mac_workshop_dir()))
-    cfg = localconfig.game_config(config, game)
-    profile = games.profile(cfg)
-    import ios_data_plan
-    root = Path(cfg.get('game_root', ''))
-    shared = ()
-    if game == 'mel':   # the slim pack: Mel's own VPKs in portal2 stay on the Mac (tools/mel_slim.py)
-        import mel_slim
-        shared = mel_slim.SHARED
-    rows = ios_data_plan.plan(root, Path(cfg.get('linux_root', '')), Path(profile['build_dir']) / 'prep',
-                              profile['ios_data'], shared=shared)
-    return sum(n for _, _, n in rows) + (30_000_000 if shared else 0)   # + the slim directory
+    rows = data_rows(game, config)
+    return sum(n for _, _, n in rows) + (30_000_000 if game == 'mel' else 0)   # + the slim directory
+
+
+def updates(udid, game, config=None):
+    """Destinations of `game` to copy again ([] when up to date), or None when
+    the device has no manifest for it (copied before round 28) or it isn't there."""
+    import device_updates
+    env = device_env(udid)
+    with tempfile.TemporaryDirectory() as tmp:
+        target = Path(tmp) / 'manifest.json'
+        got = subprocess.run([str(ROOT / 'tools/ios_device.sh'), '--game', game, 'manifest-get', str(target)],
+                             env=env, capture_output=True)
+        if got.returncode != 0:
+            return None
+        try:
+            device = json.loads(target.read_text())
+        except (OSError, ValueError):
+            return None
+    return device_updates.changed(device_updates.signature(data_rows(game, config)), device)
 
 
 def main(argv):
@@ -241,9 +298,12 @@ def main(argv):
     sub.add_parser('pick')
     st = sub.add_parser('status')
     st.add_argument('--device', required=True)
+    st.add_argument('--updates', action='store_true')
     pl = sub.add_parser('plan')
     pl.add_argument('--device', required=True)
     pl.add_argument('--game', required=True, choices=DOWNLOADS)
+    pl.add_argument('--update', action='store_true')
+    pl.add_argument('--backup')
     a = ap.parse_args(argv)
     if a.cmd == 'list':
         report, result = devicectl_json('list', 'devices')
@@ -256,14 +316,28 @@ def main(argv):
             print(udid)
         return 0 if udid else 1
     if a.cmd == 'status':
-        print(json.dumps(status(a.device), indent=1))
+        st = status(a.device)
+        if a.updates and not st.get('problem'):
+            built = mac_builds()
+            st['updates'] = {g: updates(a.device, g) for g, on in (st.get('data') or {}).items()
+                             if on and not built.get(g)}
+        print(json.dumps(st, indent=1))
         return 0
     st = status(a.device)
     if st.get('problem'):
         print(json.dumps({'steps': [], 'need_bytes': 0, 'problem': st['problem']}))
         return 0
-    need = need_bytes(a.game)
-    steps, problem = plan(a.game, st, mac_builds(), need)
+    only = None
+    if a.update:
+        only = updates(a.device, a.game)
+        if only == []:
+            print(json.dumps({'steps': [], 'need_bytes': 0, 'problem': f'{TITLES[a.game]} is up to date on the device.'}))
+            return 0
+    if only:
+        need = sum(n for _, dest, n in data_rows(a.game) if dest in only)
+    else:
+        need = need_bytes(a.game)
+    steps, problem = plan(a.game, st, mac_builds(), need, only=only, backup=a.backup)
     print(json.dumps({'steps': [{'label': l, 'command': c} for l, c in steps], 'need_bytes': need, 'problem': problem},
                      indent=1))
     return 0
