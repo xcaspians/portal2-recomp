@@ -219,12 +219,18 @@ p2ce-modules-check: $(X64_RUNTIME) runtime/x64/rt64.h tests/x64_modules_live.c t
 # (tools/run64.py; the depot is never written). P2CE_ARGS are the game's.
 # libsteam_api.so is not lifted: its functions go to Valve's macOS
 # libsteam_api.dylib (runtime/x64/steam64.c, round 23), with Steam running.
+# Round 27: the engine's systems, with the empty renderer (-shaderapi shaderapiempty)
+# until the renderer is decided (docs/fork/P2CE_RENDERER_DECISION.md).
+P2CE_SYSTEMS ?= bin/linux64/shaderapiempty.so bin/linux64/inputsystem.so bin/linux64/materialsystem.so \
+	bin/linux64/datacache.so bin/linux64/studiorender.so bin/linux64/vphysics.so bin/linux64/vphysics_jolt.so \
+	bin/linux64/engineaudio.so bin/linux64/soundemittersystem.so bin/linux64/scriptsystem.so bin/linux64/vscript.so \
+	bin/linux64/localize.so bin/linux64/scenefilecache.so bin/linux64/vgui2.so
 P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/libtier0.so \
 	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/launcher.so \
-	bin/linux64/filesystem_stdio.so bin/linux64/engine.so
+	bin/linux64/filesystem_stdio.so bin/linux64/engine.so $(P2CE_SYSTEMS)
 P2CE_STEAM_API ?= $(CURDIR)/deps/steamworks-2024.8.0/steam_api.bundle/Contents/MacOS/libsteam_api.dylib
 P2CE_APPID ?= 440000
-P2CE_ARGS ?= -game p2ce -textmode -novid -nosound
+P2CE_ARGS ?= -game p2ce -textmode -novid -nosound -shaderapi shaderapiempty
 P2CE_CONTENT ?= $(subst depot_440005,depot_440002,$(P2CE_ROOT))
 P2CE_TIMEOUT ?= 120
 # -O0 by default: engine.so is 170 C files; -O1 takes about 2 GB and minutes per file.
