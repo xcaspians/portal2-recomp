@@ -92,6 +92,8 @@ int main(void) {
     EXPECT((uint32_t)CALL("x64_switch", 4) == 0xffffffffu);
     // Round 23: a pthread_once inside another's routine runs (it deadlocked: P2CE's engine.so).
     EXPECT(CALL0("x64_once_nested") == 7 && CALL0("x64_once_nested") == 7);   // once each
+    // Round 23: an unoptimised switch (P2CE's engine.so).
+    EXPECT(CALL("x64_switch_o0", 0) == 30 && CALL("x64_switch_o0", 2) == 32 && (uint32_t)CALL("x64_switch_o0", 9) == 0xfffffffdu);
     // Round 23: instructions between the add and the jmp (P2CE's launcher.so).
     EXPECT(CALL("x64_switch_gap", 0) == 20 && CALL("x64_switch_gap", 1) == 21 && CALL("x64_switch_gap", 2) == 22);
     EXPECT((uint32_t)CALL("x64_switch_gap", 3) == 0xfffffffeu);

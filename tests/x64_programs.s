@@ -237,6 +237,30 @@ x64_once_inner:
     add dword ptr [rip + x64_once_flag], 7
     ret
 
+# An unoptimised switch (P2CE's engine.so, round 23): index*4 and the table
+# summed in the load, sign-extended with cdqe, the table loaded again for the add.
+.globl x64_switch_o0
+.type x64_switch_o0, @function
+x64_switch_o0:
+    cmp edi, 2
+    ja 7f
+    mov eax, edi
+    lea rdx, [4*rax]
+    lea rax, [rip + .Ltable3]
+    mov eax, dword ptr [rdx + rax]
+    cdqe
+    lea rdx, [rip + .Ltable3]
+    add rax, rdx
+    jmp rax
+.Lo0a: mov eax, 30
+    ret
+.Lo0b: mov eax, 31
+    ret
+.Lo0c: mov eax, 32
+    ret
+7:  mov eax, -3
+    ret
+
 .globl x64_callptr
 .type x64_callptr, @function
 x64_callptr:
@@ -514,6 +538,10 @@ x64_i32: .long -5, 7, 100000, -2
 x64_i16: .short 1, 2, 3, 4, 5, 6, 7, 8
 x64_f4: .float 1.5, -2.5, 3.0, 4.0
 x64_f4b: .float 2.0, -3.0, 3.0, 1.0
+.Ltable3:
+    .long .Lo0a - .Ltable3
+    .long .Lo0b - .Ltable3
+    .long .Lo0c - .Ltable3
 .Ltable2:
     .long .Lgap0 - .Ltable2
     .long .Lgap1 - .Ltable2

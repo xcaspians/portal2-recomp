@@ -303,7 +303,23 @@ class Module:
         if at is None:
             return None
         table = load = index = base_reg = None
-        for p, (nxt, op, args) in before[at + 1:]:
+        added = [x.strip() for x in before[at][1][2].split(',')][1]
+        # Unoptimised form (P2CE's engine.so, round 23): `lea rdx, [4*rax]; lea rax,
+        # [rip + T]; mov eax, dword ptr [rdx + rax]; cdqe; lea rdx, [rip + T];
+        # add rax, rdx; jmp rax`: the table is the rip-relative lea of the added
+        # register, the load a 32-bit read of a sum of two registers.
+        o0 = None
+        for p, (nxt, op, args) in before[at + 1:at + 8]:
+            m = re.fullmatch(r'(\w+), \[rip ([+-]) (0x[0-9a-f]+)\]', args)
+            if op == 'lea' and m and o0 is None and m[1] == added:
+                o0 = nxt + (1 if m[2] == '+' else -1) * int(m[3], 16)
+                continue
+            if o0 is not None and op == 'mov' and re.fullmatch(r'\w+, dword ptr \[\w+ \+ \w+\]', args):
+                table, load = o0, p
+                break
+            if op in ('ret', 'jmp', 'call'):
+                break
+        for p, (nxt, op, args) in ([] if table is not None else before[at + 1:]):
             if op in ('ret', 'jmp', 'call') and load is None:
                 return None
             m = re.fullmatch(r'(\w+), dword ptr \[(\w+) \+ 4\*(\w+)\]', args)
