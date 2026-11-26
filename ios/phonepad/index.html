@@ -25,13 +25,13 @@
     color: #fff; background: rgba(22,22,26,.62); border: 2px solid rgba(255,255,255,.7); font-weight: 700;
     transition: transform .06s, filter .06s; }
   .btn svg { width: 46%; height: 46%; fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-  .btn .t { font-size: 40%; }
+  .btn .t { font-weight: 800; }
   .btn.blue { background: var(--blue); border-color: rgba(255,255,255,.85); }
   .btn.orange { background: var(--orange); border-color: rgba(255,255,255,.85); }
   .btn.red { background: rgba(224,68,58,.85); }
   .btn.down, .btn.on { filter: brightness(1.55); transform: scale(.93); }
   .btn.on { box-shadow: 0 0 0 3px rgba(255,255,255,.55); }
-  #status { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 6px); transform: translateX(-50%);
+  #status { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 18px); transform: translateX(-50%);
     font-size: 12px; color: var(--dim); white-space: nowrap; pointer-events: none; }
   #hint { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 2px); text-align: center;
     font-size: 11px; color: var(--dim); pointer-events: none; }
@@ -166,7 +166,7 @@ function drawButtons() {
     cx = Math.min(Math.max(cx, a.x + r), a.x + a.w - r); cy = Math.min(Math.max(cy, a.y + r), a.y + a.h - r);
     const b = document.createElement('div');
     b.className = `btn ${COLORS[+color] || ''}`; b.dataset.b = name; b.dataset.flags = flags;
-    b.style.cssText = `left:${cx - r}px;top:${cy - r}px;width:${d}px;height:${d}px`;
+    b.style.cssText = `left:${cx - r}px;top:${cy - r}px;width:${d}px;height:${d}px;font-size:${Math.round(d * .42)}px`;
     b.innerHTML = ICONS[symbol] ? `<svg viewBox="0 0 24 24">${ICONS[symbol]}</svg>` : `<span class="t">${TEXT[symbol] || ''}</span>`;
     pad.appendChild(b);
   }

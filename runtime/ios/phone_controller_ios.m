@@ -45,6 +45,7 @@ static void got_address(DNSServiceRef ref, DNSServiceFlags flags, uint32_t iface
                         const struct sockaddr *sa, uint32_t ttl, void *ctx) {
     (void)ref; (void)flags; (void)iface; (void)host; (void)ttl;
     pad_host *h = ctx;
+    if (e) fprintf(stderr, "[ios] manette : adresse de « %s », erreur %d\n", h->name, e);
     if (e || !h->used || !sa || sa->sa_family != AF_INET) return;
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &((const struct sockaddr_in *)sa)->sin_addr, ip, sizeof(ip));
@@ -56,8 +57,10 @@ static void resolved(DNSServiceRef ref, DNSServiceFlags flags, uint32_t iface, D
                      const char *target, uint16_t port, uint16_t txt_len, const unsigned char *txt, void *ctx) {
     (void)ref; (void)flags; (void)fullname;
     pad_host *h = ctx;
+    if (e) fprintf(stderr, "[ios] manette : résolution de « %s », erreur %d\n", h->name, e);
     if (e || !h->used) return;
     h->port = ntohs(port);
+    fprintf(stderr, "[ios] manette : « %s » résolu en %s:%u\n", h->name, target, ntohs(port));
     txt_value(txt, txt_len, "code", h->code, sizeof(h->code));
     txt_value(txt, txt_len, "game", h->game, sizeof(h->game));
     if (h->addr) DNSServiceRefDeallocate(h->addr);
@@ -86,6 +89,7 @@ static void browsed(DNSServiceRef ref, DNSServiceFlags flags, uint32_t iface, DN
     h->used = 1;
     h->iface = iface;
     snprintf(h->name, sizeof(h->name), "%s", name);
+    fprintf(stderr, "[ios] manette : trouvé « %s » (interface %u)\n", name, iface);
     if (!DNSServiceResolve(&h->resolve, 0, iface, name, type, domain, resolved, h)) DNSServiceSetDispatchQueue(h->resolve, queue);
     else h->resolve = NULL;
     changed();
@@ -202,6 +206,16 @@ static UIButton *pill(NSString *title, NSString *subtitle, NSString *symbol, UIC
                                                            usingBlock:^(NSNotification *n) { (void)n; [weak refresh]; }];
     browse(1);
     [self refresh];
+    // P2_PAD_TEST_ADDRESS="<ip:port>,<code>" (simulator checks: its Bonjour finds nothing):
+    // what a tap on a found iPad does, without the search.
+    const char *test = getenv("P2_PAD_TEST_ADDRESS");
+    char address[64], code[8];
+    if (test && sscanf(test, "%63[^,],%7s", address, code) == 2) {
+        NSString *a = @(address), *c = @(code);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [weak connect:a code:c name:@"test"];
+        });
+    }
     return self;
 }
 - (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:observer]; }

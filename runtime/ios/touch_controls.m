@@ -65,6 +65,7 @@ int rt_ios_phonepad_active(void);   // phonepad_ios.m
 #include "live_settings.h"
 #include "settings_menu_ios.h"
 #include "layout_sync_ios.h"
+#include "phone_controller_ios.h"
 
 int rt_ios_game_ui_visible(void);   // game_state.c
 extern _Atomic unsigned long rt_ios_frames;  // gl_ios.m : images présentées
@@ -1383,5 +1384,13 @@ void rt_ios_touch_controls_attach(SDL_Window *window) {
     controls.frame = host.bounds;
     [host addSubview:controls];
     [host addGestureRecognizer:[P2TouchWatcher new]];
+    // P2_PAD_PANEL_TEST_INGAME=1 (simulator checks, round 26): "Use as controller" over the
+    // game's window, for builds without the launcher (one game, no picker).
+    if (getenv("P2_PAD_PANEL_TEST_INGAME")) {
+        UIView *panel = rt_ios_phone_controller_panel(^{});
+        panel.frame = controls.bounds;
+        panel.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [controls addSubview:panel];   // the overlay is kept in front of SDL's views
+    }
 }
 #endif
