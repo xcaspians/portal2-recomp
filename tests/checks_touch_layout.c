@@ -124,7 +124,8 @@ RT_CHECK(ios_touch_layout_portal2_unchanged) {
         {RT_TOUCH_JUMP, x + w * .94, y + h * .50, k, 0}, {RT_TOUCH_CROUCH, x + w * .80, y + h * .40, k, 0},
         {RT_TOUCH_USE, x + w * .94, y + h * .80, k, 0}, {RT_TOUCH_PAUSE, x + w - k * .45, y + k * .45, k * .75, 0},
         {RT_TOUCH_FLAG_ERROR, x + w - k * 1.35, y + k * .45, k * .75, RT_TOUCH_DATASET},
-        {RT_TOUCH_LOOK_MODE, x + k * .45, y + h - k * .45, k * .75, 0}};
+        {RT_TOUCH_LOOK_MODE, x + k * .45, y + h - k * .45, k * .75, 0},
+        {RT_TOUCH_ZOOM, x + w * .06, y + h * .50, 46, 0}};   // round 25: added, the rest unchanged
     assert(n == (int)(sizeof(old) / sizeof(*old)));
     for (int i = 0; i < n; ++i) {
         double cx, cy;
@@ -411,4 +412,28 @@ RT_CHECK(touch_player2_in_coop) {
     assert(rt_touch_pad_button(RT_TOUCH_USE) == 2 && rt_touch_pad_button(RT_TOUCH_PAUSE) == 6);
     assert(rt_touch_pad_trigger(RT_TOUCH_FIRE) == 5 && rt_touch_pad_trigger(RT_TOUCH_ALT_FIRE) == 4);
     assert(rt_touch_pad_button(RT_TOUCH_FIRE) == -1 && rt_touch_pad_trigger(RT_TOUCH_JUMP) == -1);
+}
+
+// Round 25: Portal 2's zoom button, held like the game's own zoom: the middle
+// mouse button (+zoom) on the touch controls, the right bumper for touch as
+// player 2; stored by name like the others, so the editor moves and resizes it.
+RT_CHECK(touch_layout_portal2_zoom_button) {
+    int n, zoom = 0;
+    const rt_touch_button *b = rt_touch_layout(RT_IOS_LAYOUT_PORTAL2, &n);
+    for (int i = 0; i < n; ++i)
+        if (b[i].action == RT_TOUCH_ZOOM) { ++zoom; assert(b[i].symbol && !b[i].flags); }   // always shown, held (no toggle)
+    assert(zoom == 1);
+    assert(rt_touch_pad_button(RT_TOUCH_ZOOM) == 10 && rt_touch_pad_trigger(RT_TOUCH_ZOOM) == -1);
+    assert(!strcmp(rt_touch_action_name(RT_TOUCH_ZOOM), "zoom"));
+    rt_touch_custom_layout l, back;
+    memset(&l, 0, sizeof(l));
+    l.b[RT_TOUCH_ZOOM] = (rt_touch_custom){1, .25f, .40f, 1.30f};
+    char text[256];
+    assert(rt_touch_custom_format(&l, text, sizeof(text)) && strstr(text, "zoom=0.250,0.400,1.30"));
+    assert(rt_touch_custom_parse(text, &back) && back.b[RT_TOUCH_ZOOM].set && fabs(back.b[RT_TOUCH_ZOOM].scale - 1.3) < .01);
+    // Not in Half-Life 2's or Left 4 Dead 2's layouts (their games zoom otherwise).
+    for (int layout = RT_IOS_LAYOUT_HL2; layout < RT_IOS_LAYOUT_COUNT; ++layout) {
+        b = rt_touch_layout((rt_ios_layout)layout, &n);
+        for (int i = 0; i < n; ++i) assert(b[i].action != RT_TOUCH_ZOOM);
+    }
 }

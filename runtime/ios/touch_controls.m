@@ -428,6 +428,7 @@ static BOOL pad_input_active(void) {
     }
     [self updateFPS:now];
     rt_ios_settings_menu_tick((__bridge void *)settingsMenu);
+    [self testHold:now];
     if ((rt_ios_settings_menu_open() != 0) != preview) { preview = !preview; [self setNeedsRender]; }
     [self syncPad];
     // Overlay shown by a touch: the next controller input hides it again.
@@ -609,6 +610,7 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
     if ((before > 0) == (held[action] > 0)) return;
     if (coopPad) {   // player 2: the full controller's buttons and triggers, never keys or the mouse
         int button = rt_touch_pad_button(action), trigger = rt_touch_pad_trigger(action);
+        if (action == RT_TOUCH_ZOOM) { [self zoomTap]; return; }
         if (button >= 0) SDL_JoystickSetVirtualButton(coopPad, button, down ? SDL_PRESSED : SDL_RELEASED);
         if (trigger >= 0) { SDL_JoystickSetVirtualAxis(coopPad, trigger, (Sint16)rt_pad_trigger_axis(down)); if (down) haptic_fire(); }   // round 24: 0 was half pressed
         return;
@@ -634,7 +636,50 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
     case RT_TOUCH_SLOT5: [self key:SDL_SCANCODE_5 down:down]; break;
     case RT_TOUCH_WEAPON_PREV: if (down) [self wheel:1]; break;
     case RT_TOUCH_WEAPON_NEXT: if (down) [self wheel:-1]; break;
+    case RT_TOUCH_ZOOM: [self zoomTap]; break;   // pressed and released: a tap each (the game's zoom toggles)
     default: break;
+    }
+}
+// Round 25: Portal 2's zoom is a toggle (+zoom flips it: middle mouse button, a
+// controller's right bumper; measured on the iPad Pro, the game then shows
+// "Unzoom"). The button is held instead: a tap when pressed zooms in, a tap when
+// released zooms back out. Each tap is down now, up 80 ms later (its own frames).
+- (void)zoomTap {
+    SDL_Joystick *p2pad = coopPad;
+    CGPoint centre = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
+    if (p2pad) SDL_JoystickSetVirtualButton(p2pad, rt_touch_pad_button(RT_TOUCH_ZOOM), SDL_PRESSED);
+    else [self mouseButton:SDL_BUTTON_MIDDLE down:YES at:centre];
+    __weak typeof(self) weak = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 80 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        if (p2pad) SDL_JoystickSetVirtualButton(p2pad, rt_touch_pad_button(RT_TOUCH_ZOOM), SDL_RELEASED);
+        else [weak mouseButton:SDL_BUTTON_MIDDLE down:NO at:centre];
+    });
+}
+// P2_TOUCH_TEST_HOLD="zoom,<after>,<for>" (device checks, round 25): holds a
+// button by its stored name, <after> seconds into a level, for <for> seconds.
+- (void)testHold:(CFTimeInterval)now {
+    static int state = -1;   // -1 unread, 0 off/done, 1 waiting, 2 held
+    static Action action;
+    static double after, hold, start;
+    if (state == 0) return;
+    if (state < 0) {
+        const char *e = getenv("P2_TOUCH_TEST_HOLD");
+        char name[32] = "";
+        state = 0;
+        if (!e || sscanf(e, "%31[^,],%lf,%lf", name, &after, &hold) != 3) return;
+        for (int a = 0; a < ACTION_COUNT; ++a) if (!strcmp(rt_touch_action_name((rt_touch_action)a), name)) { action = (Action)a; state = 1; }
+        return;
+    }
+    if (state == 1 && !rt_ios_game_in_level()) return;
+    if (!start) start = now;
+    if (state == 1 && now - start >= after) {
+        state = 2;
+        fprintf(stderr, "[ios] essai tactile : %s enfoncé\n", rt_touch_action_name((rt_touch_action)action));
+        [self action:action down:YES];
+    } else if (state == 2 && now - start >= after + hold) {
+        state = 0;
+        fprintf(stderr, "[ios] essai tactile : %s relâché\n", rt_touch_action_name((rt_touch_action)action));
+        [self action:action down:NO];
     }
 }
 - (void)untoggle:(Action)action {
