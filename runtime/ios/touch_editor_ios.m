@@ -13,6 +13,7 @@
 #include "env_ios.h"
 #include "game_ios.h"
 #include "touch_editor_ios.h"
+#include "layout_sync_ios.h"
 #include "touch_layout.h"
 
 NSString *rt_ios_touch_layout_key_for(rt_ios_layout layout);                          // touch_controls.m
@@ -69,7 +70,10 @@ int rt_ios_backtap_dataset_on(void);
         [handles addObject:h];
     }
     hint = [UILabel new];
-    hint.text = @"Drag a button to move it, its white dot to resize it.";
+    // Round 26: where the layout goes (iCloud, or this device only and why).
+    hint.text = [NSString stringWithFormat:@"Drag a button to move it, its white dot to resize it.\n%s",
+                 rt_ios_layouts_sync_status()];
+    hint.numberOfLines = 2;
     hint.textColor = UIColor.whiteColor; hint.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
     hint.textAlignment = NSTextAlignmentCenter;
     [self addSubview:hint];
@@ -127,10 +131,10 @@ int rt_ios_backtap_dataset_on(void);
         d.layer.borderColor = (i == dragging ? UIColor.yellowColor : [UIColor colorWithWhite:1 alpha:.9]).CGColor;
     }
     CGRect a = self.area;
-    hint.frame = CGRectMake(CGRectGetMinX(a), CGRectGetMinY(a) + 8, a.size.width, 20);
+    hint.frame = CGRectMake(CGRectGetMinX(a) + 120, CGRectGetMinY(a) + 4, a.size.width - 240, 36);
     UIView *bar = [self viewWithTag:77];
     CGSize s = [bar systemLayoutSizeFittingSize:UILayoutFittingCompressedSize];
-    bar.frame = CGRectMake(CGRectGetMidX(a) - s.width / 2, CGRectGetMinY(a) + 34, s.width, s.height);
+    bar.frame = CGRectMake(CGRectGetMidX(a) - s.width / 2, CGRectGetMinY(a) + 44, s.width, s.height);
     [self setNeedsDisplay];
 }
 // The sticks' resting areas, as guides.
@@ -215,6 +219,7 @@ int rt_ios_backtap_dataset_on(void);
         else [NSUserDefaults.standardUserDefaults setObject:@"v1" forKey:rt_ios_touch_layout_key_for(which)];
         fprintf(stderr, "[ios] disposition des boutons (%s) : %s\n", rt_touch_layout_id(which), any ? text : "par défaut");
         [NSNotificationCenter.defaultCenter postNotificationName:@"P2SettingsChanged" object:@"P2TouchLayout"];
+        rt_ios_layouts_saved(which);   // round 26: stamped, then to iCloud (per device kind)
     }
     onClose(ctx);
 }

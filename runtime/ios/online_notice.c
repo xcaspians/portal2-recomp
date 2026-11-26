@@ -7,7 +7,7 @@ void rt_online_asked(rt_online_wait *w, double now) {
 int rt_online_due(rt_online_wait *w, double now, double timeout, int in_level) {
     if (w->asked_at <= 0) return 0;
     if (in_level) { w->asked_at = 0; return 0; }
-    if (now - w->asked_at < timeout) return 0;
+    if (timeout > 0 && now - w->asked_at < timeout) return 0;
     w->asked_at = 0;
     return 1;
 }
@@ -15,6 +15,9 @@ const char *rt_online_title(void) { return "Online co-op needs Steam"; }
 const char *rt_online_message(void) {
     return "Standard and Challenge Mode co-op find friends through Steam, which doesn't run on iPad or iPhone, "
            "so no one can be found from here.\n\n"
-           "To play co-op on this device: go Back and choose Local Splitscreen. Player 2 can use a controller, "
+           "To play co-op locally:\n"
+           "• With another iPad, iPhone or Mac running Sauce on the same Wi-Fi: Play nearby (button below), "
+           "one device hosts, the other joins.\n"
+           "• On this device alone: go Back and choose Local Splitscreen. Player 2 can use a controller, "
            "the touch controls, or a phone (gear menu > Phone controller).";
 }

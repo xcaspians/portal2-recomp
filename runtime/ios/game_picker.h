@@ -61,3 +61,12 @@ const rt_picker_series *rt_picker_series_at(int i);
 const rt_picker_series *rt_picker_series_of(const char *game);
 // A short label over a cover that other games share ("EP1", "EP2", "LC"), or NULL.
 const char *rt_picker_badge(const char *game);
+
+// Round 26 ("Remember my game" turning itself on, seen on the iPad mini): the
+// launcher's cards are UIKit controls in a scroll view, which by default lets
+// a control keep a touch that turns into a drag, and a control fires when the
+// finger lifts up to ~70 points outside it. A slow scroll started on the
+// Remember pill flipped the setting. A card now fires only for a tap: the
+// finger lifted inside the card, having moved at most RT_PICKER_TAP_SLOP points.
+#define RT_PICKER_TAP_SLOP 12.0
+int rt_picker_is_tap(double moved_x, double moved_y, int lifted_inside);

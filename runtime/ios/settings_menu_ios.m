@@ -117,6 +117,15 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
             P2SettingsMenu *menu = weakSelf;
             if (menu) [menu refreshRows];
         }];
+        // Round 26: Play Online's notice sends the player to Play nearby (online_notice_ios.m).
+        [NSNotificationCenter.defaultCenter addObserverForName:@"P2ShowNearby" object:nil
+                                                         queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
+            (void)n;
+            P2SettingsMenu *menu = weakSelf;
+            if (!menu) return;
+            [menu openMenu];
+            [menu showNearbyPanel];
+        }];
     }
     return self;
 }

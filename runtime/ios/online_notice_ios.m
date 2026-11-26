@@ -4,6 +4,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "env_ios.h"
 #include "online_notice.h"
 #include "settings_menu_ios.h"
@@ -39,8 +40,23 @@ static void show_notice(void) {
     [alert addAction:[UIAlertAction actionWithTitle:@"Back" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
         (void)a; go_back();
     }]];
+    // Round 26: straight to Play nearby (the gear menu's panel, settings_menu_ios.m).
+    [alert addAction:[UIAlertAction actionWithTitle:@"Play nearby" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
+        (void)a; go_back();
+        fprintf(stderr, "[ios] jeu en ligne : vers Play nearby\n");
+        [NSNotificationCenter.defaultCenter postNotificationName:@"P2ShowNearby" object:nil];
+    }]];
+    alert.preferredAction = alert.actions.lastObject;
     [vc presentViewController:alert animated:YES completion:nil];
     double ok = rt_ios_env_float("P2_ONLINE_NOTICE_TEST_OK", 0, 0);   // tests: press Back after this many seconds
+    double nearby = rt_ios_env_float("P2_ONLINE_NOTICE_TEST_NEARBY", 0, 0);   // tests: press Play nearby after this many
+    if (nearby > 0)
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(nearby * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [alert dismissViewControllerAnimated:YES completion:^{
+                go_back();
+                [NSNotificationCenter.defaultCenter postNotificationName:@"P2ShowNearby" object:nil];
+            }];
+        });
     if (ok > 0)
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(ok * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [alert dismissViewControllerAnimated:YES completion:^{ go_back(); }];
@@ -52,11 +68,21 @@ static void show_notice(void) {
 void steam_stub_online_requested(const char *what) {
     fprintf(stderr, "[ios] jeu en ligne : %s demandé, Steam absent sur iOS\n", what);
     dispatch_async(dispatch_get_main_queue(), ^{
-        double timeout = rt_ios_env_float("P2_ONLINE_TIMEOUT", 8, 1);
+        double timeout = rt_ios_env_float("P2_ONLINE_TIMEOUT", RT_ONLINE_DEFAULT_TIMEOUT, 0);
         rt_online_asked(&wait_state, CACurrentMediaTime());
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((timeout + .1) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((timeout + .3) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             if (rt_online_due(&wait_state, CACurrentMediaTime(), timeout, rt_ios_game_in_level())) show_notice();
         });
+    });
+}
+// P2_ONLINE_NOTICE_TEST_ASK=<s> (device checks, round 26): the game's lobby request,
+// as Play Online makes it, that many seconds after the launch.
+__attribute__((constructor)) static void online_test_ask(void) {
+    const char *e = getenv("P2_ONLINE_NOTICE_TEST_ASK");
+    if (!e) return;
+    double after = atof(e);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(after * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        steam_stub_online_requested("essai : salon");
     });
 }
 #endif

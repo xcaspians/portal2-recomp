@@ -64,6 +64,7 @@ int rt_ios_phonepad_active(void);   // phonepad_ios.m
 #include "icloud_saves.h"
 #include "live_settings.h"
 #include "settings_menu_ios.h"
+#include "layout_sync_ios.h"
 
 int rt_ios_game_ui_visible(void);   // game_state.c
 extern _Atomic unsigned long rt_ios_frames;  // gl_ios.m : images présentées
@@ -1359,6 +1360,7 @@ void rt_ios_phonepad_start(void);   // phonepad_ios.m
 void rt_ios_touch_controls_attach(SDL_Window *window) {
     rt_ios_settings_watch();   // réglages changés en jeu ou dans l'app Réglages (live_settings_ios.m)
     rt_ios_icloud_start();     // sauvegardes iCloud (Portal 2 ; icloud_saves_ios.m)
+    rt_ios_layouts_sync("lancement");   // round 26: custom layouts through iCloud (layout_sync_ios.m)
     if (controls || !window || !rt_ios_env_flag("P2_TOUCH_CONTROLS", 1)) return;
     SDL_SysWMinfo info;
     SDL_VERSION(&info.version);

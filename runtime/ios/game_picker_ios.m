@@ -19,6 +19,7 @@
 #include <string.h>
 #include "game_ios.h"
 #include "game_picker.h"
+#include "layout_sync_ios.h"
 #include "game_picker_ios.h"
 #include "nearby_ios.h"
 #include "settings_menu_ios.h"
@@ -135,6 +136,13 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
 @property (nonatomic, copy) void (^action)(void);
 @property (nonatomic) BOOL lit;   // the controller focus is here
 @property (nonatomic, strong) UILabel *detail;
+@property (nonatomic) CGPoint downAt;   // where the finger touched down
+@end
+// Round 26: a drag that starts on a card scrolls (UIScrollView keeps it from a control otherwise).
+@interface P2PickerScroll : UIScrollView
+@end
+@implementation P2PickerScroll
+- (BOOL)touchesShouldCancelInContentView:(UIView *)view { (void)view; return YES; }
 @end
 @implementation P2Card
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -145,9 +153,19 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
         self.layer.borderColor = UIColor.clearColor.CGColor;
         self.layer.shadowColor = UIColor.blackColor.CGColor;
         self.layer.shadowOpacity = .45; self.layer.shadowRadius = 14; self.layer.shadowOffset = CGSizeMake(0, 8);
-        [self addTarget:self action:@selector(fire) forControlEvents:UIControlEventTouchUpInside];
+        // Round 26: fired by -endTrackingWithTouch: only for a tap (rt_picker_is_tap), not by
+        // UIKit's touch-up-inside, which also counts a drag lifted up to ~70 points outside.
     }
     return self;
+}
+- (BOOL)beginTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
+    _downAt = [touch locationInView:self];
+    return [super beginTrackingWithTouch:touch withEvent:event];
+}
+- (void)endTrackingWithTouch:(UITouch *)touch withEvent:(UIEvent *)event {
+    [super endTrackingWithTouch:touch withEvent:event];
+    CGPoint p = [touch locationInView:self];
+    if (touch && rt_picker_is_tap(p.x - _downAt.x, p.y - _downAt.y, CGRectContainsPoint(self.bounds, p))) [self fire];
 }
 - (void)fire { if (self.action) self.action(); }
 - (void)setLit:(BOOL)focused {
@@ -206,7 +224,7 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     sizes = [NSMutableDictionary dictionary];
     remember = [NSUserDefaults.standardUserDefaults boolForKey:kRemember];
     focus = GCController.controllers.count ? 0 : -1;
-    scroll = [UIScrollView new];
+    scroll = [P2PickerScroll new];
     [self.view addSubview:scroll];
     [self watchControllers];
     [self measure];
@@ -218,6 +236,7 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     if (lit) { focus = atoi(lit); [self applyFocus]; }
     if (getenv("P2_NEARBY_OPEN")) [self showNearby];   // device checks: Play nearby open in the launcher
     if (getenv("P2_CONTROLS_OPEN")) [self showControls];   // device checks: the controls settings open in the launcher
+    rt_ios_layouts_sync("lanceur");   // round 26: custom layouts through iCloud, before the editor can open
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
@@ -366,6 +385,8 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
         if (!me) return;
         me->remember = !me->remember;
         [NSUserDefaults.standardUserDefaults setBool:me->remember forKey:kRemember];
+        fprintf(stderr, "[ios] jeux : « Remember my game » %s (%s)\n", me->remember ? "activé" : "désactivé",
+                me->focus >= 0 ? "manette ou toucher, focus visible" : "toucher");
         wrl.text = [me rememberText];
     };
     P2Card *man = [[P2Card alloc] initWithFrame:CGRectMake(bx + bw + 16, y, bw, bh)];
