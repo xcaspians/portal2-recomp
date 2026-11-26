@@ -156,6 +156,14 @@ for (const b of document.querySelectorAll('.btn')) {
   b.addEventListener('touchend', up, { passive: false });
   b.addEventListener('touchcancel', up, { passive: false });
 }
+// Round 24: the page hidden (another app, the lock button): let go of everything, here and in the game.
+function releaseAll() {
+  for (const b of document.querySelectorAll('.btn.down')) b.classList.remove('down');
+  for (const s of document.querySelectorAll('.stick')) s.style.display = 'none';
+  send('x');
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
+window.addEventListener('pagehide', releaseAll);
 if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) document.getElementById('hint').style.display = 'none';
 hopToLocal().then(hopped => { if (!hopped) connect(); });
 </script>

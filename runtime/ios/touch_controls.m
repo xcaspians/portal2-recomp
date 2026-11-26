@@ -58,6 +58,7 @@
 #include "touch_layout.h"
 #include "tv_output.h"
 int rt_ios_phonepad_active(void);   // phonepad_ios.m
+#include "phonepad.h"
 #include "touch_test.h"
 #include "lifecycle_ios.h"
 #include "icloud_saves.h"
@@ -609,7 +610,7 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
     if (coopPad) {   // player 2: the full controller's buttons and triggers, never keys or the mouse
         int button = rt_touch_pad_button(action), trigger = rt_touch_pad_trigger(action);
         if (button >= 0) SDL_JoystickSetVirtualButton(coopPad, button, down ? SDL_PRESSED : SDL_RELEASED);
-        if (trigger >= 0) { SDL_JoystickSetVirtualAxis(coopPad, trigger, down ? 32767 : 0); if (down) haptic_fire(); }
+        if (trigger >= 0) { SDL_JoystickSetVirtualAxis(coopPad, trigger, (Sint16)rt_pad_trigger_axis(down)); if (down) haptic_fire(); }   // round 24: 0 was half pressed
         return;
     }
     CGPoint centre = CGPointMake(CGRectGetMidX(self.bounds), CGRectGetMidY(self.bounds));
