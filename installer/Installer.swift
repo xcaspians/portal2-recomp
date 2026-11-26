@@ -833,6 +833,13 @@ enum Main {
                 print("\(game.id): game \(g?.path ?? "-"), linux \(l?.path ?? "-")\(g != nil && l != nil && issue == nil ? " (ticked)" : "")")
                 if let issue { print(issue) }
             }
+            let libs = steamLibraries()   // the iPad and iPhone tab's scan
+            print("steam libraries:", libs.map(\.path).joined(separator: ", "))
+            for game in sauceGames {
+                let e = scanLibrary(game, libraries: libs)
+                print("sauce \(game.id): \(e.folder?.path ?? "not installed"), linux \(e.linux != nil ? "yes" : "no")\(e.extras.isEmpty ? "" : ", with " + e.extras.joined(separator: ", "))")
+            }
+            print("apple silicon:", isAppleSilicon, "· Sauce profile expires:", sauceProfileExpiry().map { "\($0)" } ?? "-")
             return
         }
         InstallerApp.main()
