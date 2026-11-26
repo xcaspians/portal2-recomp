@@ -61,20 +61,38 @@ and documents it, and I decide what gets built and test it on my own devices.
 
 You must own each game on Steam. Left 4 Dead 2 builds never connect to Valve's online servers.
 
-## Install (this fork)
+## Quick start
 
-The easiest way is the **Natif Installer**, a Mac app that builds everything from your own Steam games and
-copies them to your iPad or iPhone:
+1. Install your games in **Steam** on your Mac, as usual.
+2. Download the **Natif Installer** `.dmg` from the [latest release](https://github.com/xcaspians/portal2-recomp/releases/latest),
+   open it and drag the app to **Applications**.
+3. Open it: it lists the Sauce games it found in Steam. Tick the ones you want. A game that needs one more
+   download (its Linux files) shows a line to paste into Steam's console, with a button that opens it.
+4. Plug in your iPad or iPhone and unlock it.
+5. Press **Install**. The first time takes a while: building Sauce on your Mac (half an hour or more), then
+   copying 5–14 GB per game. Your saves are backed up to the Mac before anything on the device is replaced.
+
+**Getting the Sauce app itself** happens in one of two ways:
+- **Your own Apple ID** (a free one works): the installer builds Sauce on your Mac and signs it through
+  Xcode. This needs Xcode and an Apple silicon Mac, and a free ID's copy must be refreshed every 7 days,
+  which takes one click ([what a free Apple ID can do](docs/fork/FREE_APPLE_ID.md)).
+- **TestFlight**: invite only, and not open yet ([proposal](docs/fork/TESTFLIGHT_PROPOSAL.md)).
+
+The same installer builds the Mac apps too (its **Mac** tab, Apple silicon only).
+
+## Building it yourself
+
+From Terminal instead of the DMG:
 
 ```sh
 git clone https://github.com/xcaspians/portal2-recomp.git
 cd portal2-recomp
-./tools/build_installer.sh      # builds "Natif Installer.app"
+make installer-dmg              # or tools/build_installer.sh: the app without a DMG
+./setup.sh                      # the Mac apps
+./setup.sh --ios                # the iPhone and iPad app, signed with your Xcode account
 ```
 
-Open the installer, tick your games, press Install, then plug in (or pair) your iPad or iPhone and use
-**Devices > Download**. From Terminal instead: `./setup.sh` for the Mac apps, `./setup.sh --ios` for the
-iPhone and iPad apps (details below).
+Release signing and notarization: [docs/usage.md](docs/usage.md#releases).
 
 ---
 
