@@ -12,50 +12,47 @@
 <link rel="apple-touch-icon" href="/icon.png">
 <title>Sauce Pad</title>
 <style>
-  :root { --blue: #3a8bff; --orange: #ff8a1f; --ink: rgba(255,255,255,.85); --dim: rgba(255,255,255,.45); }
+  :root { --blue: #3a8bff; --orange: #ff8a1f; --red: #e0443a; --ink: rgba(255,255,255,.9); --dim: rgba(255,255,255,.45); }
   * { box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   html, body { margin: 0; height: 100%; background: #0b0b0f; color: var(--ink); overflow: hidden;
     font: 15px -apple-system, system-ui, Roboto, sans-serif; touch-action: none; overscroll-behavior: none; }
   #pad { position: fixed; inset: 0; }
-  .zone { position: absolute; top: 0; bottom: 0; }
-  #left { left: 0; width: 45%; } #right { right: 0; width: 55%; }
-  .stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
-    border: 2px solid rgba(255,255,255,.25); display: none; pointer-events: none; }
-  .knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.35); }
+  /* Round 26: the in-game touch controls' look (touch_controls.m): a ring under the thumb, a filled knob. */
+  .stick { position: absolute; border-radius: 50%; display: none; pointer-events: none;
+    border: 3px solid rgba(255,255,255,.55); background: rgba(255,255,255,.06); }
+  .knob { position: absolute; left: 50%; top: 50%; border-radius: 50%; background: rgba(255,255,255,.75); }
   .btn { position: absolute; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    font-weight: 700; color: #fff; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.18); }
-  .btn.down { filter: brightness(1.6); transform: scale(.94); }
-  #blue { right: calc(env(safe-area-inset-right) + 22px); bottom: 26%; width: 84px; height: 84px; background: var(--blue); }
-  #orange { right: calc(env(safe-area-inset-right) + 120px); bottom: 40%; width: 84px; height: 84px; background: var(--orange); }
-  #jump { right: calc(env(safe-area-inset-right) + 30px); bottom: 7%; width: 66px; height: 66px; }
-  #crouch { right: calc(env(safe-area-inset-right) + 112px); bottom: 7%; width: 56px; height: 56px; font-size: 13px; }
-  #use { right: calc(env(safe-area-inset-right) + 196px); bottom: 12%; width: 56px; height: 56px; }
-  #pause { left: 50%; top: calc(env(safe-area-inset-top) + 10px); width: 44px; height: 44px; margin-left: -22px; font-size: 13px; }
-  #status { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 62px); transform: translateX(-50%);
-    font-size: 13px; color: var(--dim); white-space: nowrap; pointer-events: none; }
-  #hint { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 4px); text-align: center;
-    font-size: 12px; color: var(--dim); pointer-events: none; }
+    color: #fff; background: rgba(22,22,26,.62); border: 2px solid rgba(255,255,255,.7); font-weight: 700;
+    transition: transform .06s, filter .06s; }
+  .btn svg { width: 46%; height: 46%; fill: none; stroke: #fff; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .btn .t { font-size: 40%; }
+  .btn.blue { background: var(--blue); border-color: rgba(255,255,255,.85); }
+  .btn.orange { background: var(--orange); border-color: rgba(255,255,255,.85); }
+  .btn.red { background: rgba(224,68,58,.85); }
+  .btn.down, .btn.on { filter: brightness(1.55); transform: scale(.93); }
+  .btn.on { box-shadow: 0 0 0 3px rgba(255,255,255,.55); }
+  #status { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 6px); transform: translateX(-50%);
+    font-size: 12px; color: var(--dim); white-space: nowrap; pointer-events: none; }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 2px); text-align: center;
+    font-size: 11px; color: var(--dim); pointer-events: none; }
+  #close { position: fixed; left: calc(env(safe-area-inset-left) + 10px); top: calc(env(safe-area-inset-top) + 8px);
+    width: 36px; height: 36px; border-radius: 50%; border: 0; background: rgba(255,255,255,.14); color: #fff; font-size: 16px; display: none; z-index: 1; }
   #pair { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
     gap: 14px; background: #0b0b0f; z-index: 2; }
   #pair input { font: 32px ui-monospace, monospace; width: 5.2em; text-align: center; letter-spacing: .25em; border-radius: 12px;
     border: 2px solid #333; background: #16161c; color: #fff; padding: 8px; -webkit-user-select: text; user-select: text; }
   #pair button { font: 600 17px system-ui; padding: 10px 26px; border-radius: 22px; border: 0; background: var(--orange); color: #000; }
   #rotate { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #0b0b0f; z-index: 3; font-size: 18px; }
+  #haptic { position: fixed; left: -100px; opacity: 0; }
   @media (orientation: portrait) { #rotate { display: flex; } }
 </style>
 </head>
 <body>
 <div id="pad">
-  <div class="zone" id="left"></div><div class="zone" id="right"></div>
   <div class="stick" id="moveStick"><div class="knob"></div></div>
   <div class="stick" id="lookStick"><div class="knob"></div></div>
-  <div class="btn" id="orange" data-b="orange"></div>
-  <div class="btn" id="blue" data-b="blue"></div>
-  <div class="btn" id="jump" data-b="jump">JUMP</div>
-  <div class="btn" id="crouch" data-b="crouch">DUCK</div>
-  <div class="btn" id="use" data-b="use">USE</div>
-  <div class="btn" id="pause" data-b="pause">II</div>
 </div>
+<button id="close">✕</button>
 <div id="status">Connecting…</div>
 <div id="hint">Tip: Share ▸ Add to Home Screen for full screen (Android: ⋮ ▸ Install app or Add to Home screen).</div>
 <div id="pair">
@@ -64,6 +61,7 @@
   <button id="go">Connect</button>
 </div>
 <div id="rotate">Turn your phone sideways</div>
+<label id="haptic"><input type="checkbox" switch id="hapticSwitch"></label>
 <script>
 'use strict';
 // The pairing code: from the QR code's link, else the last one used (a saved home-screen app).
@@ -106,6 +104,7 @@ function connect() {
     if (t.startsWith('q ')) { const rtt = performance.now() - parseFloat(t.slice(2)); say(`Connected · ${rtt.toFixed(0)} ms`); send(`r ${rtt.toFixed(1)}`); }
     else if (t === 'kicked') { open = false; code = ''; localStorage.removeItem('sauceCode'); askCode('Disconnected by the iPad: enter the new code'); }
     else if (t === 'busy') say('Another phone is already the controller');
+    else if (t.startsWith('g ')) setLayout(t);
   };
   ws.onclose = () => {
     const was = open; open = false;
@@ -117,49 +116,138 @@ function connect() {
 const send = t => { if (open && ws.readyState === 1) ws.send(t); };
 function ping() { if (!open) return; send(`p ${performance.now().toFixed(1)}`); setTimeout(ping, 1000); }
 
-// Sticks: one under each thumb, centred where it lands.
-const R = 60;
-function stick(zone, el, kind) {
-  let id = null, x0 = 0, y0 = 0, last = '';
-  const knob = el.firstElementChild;
-  const put = (x, y) => {
-    let dx = x - x0, dy = y - y0; const d = Math.hypot(dx, dy);
-    if (d > R) { dx *= R / d; dy *= R / d; }
-    knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    const m = `${kind} ${(dx / R).toFixed(3)} ${(-dy / R).toFixed(3)}`;
-    if (m !== last) { last = m; send(m); }
-  };
-  zone.addEventListener('touchstart', e => {
-    if (id !== null) return;
-    const t = e.changedTouches[0]; id = t.identifier; x0 = t.clientX; y0 = t.clientY;
-    el.style.left = x0 + 'px'; el.style.top = y0 + 'px'; el.style.display = 'block'; put(x0, y0);
-    e.preventDefault();
-  }, { passive: false });
-  zone.addEventListener('touchmove', e => {
-    for (const t of e.changedTouches) if (t.identifier === id) put(t.clientX, t.clientY);
-    e.preventDefault();
-  }, { passive: false });
-  const end = e => {
-    for (const t of e.changedTouches) if (t.identifier === id) {
-      id = null; el.style.display = 'none'; knob.style.transform = ''; last = ''; send(`${kind} 0 0`);
-    }
-  };
-  zone.addEventListener('touchend', end); zone.addEventListener('touchcancel', end);
+// ---- Round 26: the running game's buttons, as the in-game touch controls draw them ----
+// Sauce sends "g <game> <coop> name,symbol,color,ax,ay,ox,oy,size,flags;..." on connect and when the
+// game or co-op changes (rt_phonepad_layout_message); the anchors are touch_layout.c's.
+const inApp = !!(window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.sauce);
+const P = 'M', ICONS = {
+  'arrow.up': `<path d="${P}12 19V5M5 12l7-7 7 7"/>`, 'arrow.down': `<path d="${P}12 5v14M5 12l7 7 7-7"/>`,
+  'hand.point.up.left.fill': `<path d="${P}9 11V4.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V12m0-1a1.5 1.5 0 0 1 3 0v4a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4 15a1.5 1.5 0 0 1 2.5-1.7L9 16"/>`,
+  'pause.fill': `<path d="${P}9 5v14M15 5v14"/>`, 'scope': `<circle cx="12" cy="12" r="7"/><path d="${P}12 2v5M12 17v5M2 12h5M17 12h5"/>`,
+  'burst.fill': `<path d="${P}12 3l2 6 6-2-4 5 4 5-6-2-2 6-2-6-6 2 4-5-4-5 6 2z"/>`,
+  'arrow.clockwise': `<path d="${P}19 12a7 7 0 1 1-2-5M19 4v4h-4"/>`, 'hand.raised.fill': `<path d="${P}7 12V6.5a1.5 1.5 0 0 1 3 0V11V4.5a1.5 1.5 0 0 1 3 0V11V5.5a1.5 1.5 0 0 1 3 0V12v-2.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4 14a1.5 1.5 0 0 1 2.5-1.7z"/>`,
+  'flashlight.on.fill': `<path d="${P}8 3h8l-1 6H9zM9 9h6v12H9zM12 13v2"/>`, 'flame.fill': `<path d="${P}12 21a6 6 0 0 0 6-6c0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-3-2 2-3 4-3 7a6 6 0 0 0 6 6z"/>`,
+  'cross.case.fill': `<rect x="3" y="7" width="18" height="13" rx="2"/><path d="${P}9 7V4h6v3M12 10v7M8.5 13.5h7"/>`,
+  'pills.fill': `<rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-35 12 12)"/><path d="${P}10 9l4 6"/>`,
+  'plus.magnifyingglass': `<circle cx="10" cy="10" r="6"/><path d="${P}15 15l5 5M10 7.5v5M7.5 10h5"/>`,
+  'hand.wave.fill': `<path d="${P}8 13V6.5a1.5 1.5 0 0 1 3 0V11V4.5a1.5 1.5 0 0 1 3 0V11V6a1.5 1.5 0 0 1 3 0v6.5l1-1.5a1.5 1.5 0 0 1 2.5 1.6L17 18a6 6 0 0 1-5 3h-1a5 5 0 0 1-5-4zM3 6a5 5 0 0 1 2-3M2 10a8 8 0 0 1 1-3"/>`,
+  'figure.run': `<circle cx="14" cy="4.5" r="1.8"/><path d="${P}9 21l3-6 3 2v5M6 11l3-3h5l2 4 3 1M12 8l-2 7"/>`,
+};
+const TEXT = { '1.circle.fill': '1', '2.circle.fill': '2', 'chevron.left': '‹', 'chevron.right': '›' };
+const COLORS = ['', 'blue', 'orange', 'red', 'red'];
+const FLAG_TOGGLE = 4, FLAG_PORTAL = 1;
+// Portal 2's layout until Sauce sends the running game's (an old Sauce never does).
+let layout = 'jump,arrow.up,0,0.94,0.5,0,0,54,0;crouch,arrow.down,0,0.8,0.4,0,0,54,0;use,hand.point.up.left.fill,0,0.94,0.8,0,0,54,0;'
+  + 'pause,pause.fill,0,1,0,-24.3,24.3,40.5,0;fire,,1,0.06,0.19,0,0,60,1;alt_fire,,2,0.06,0.19,69,0,60,1';
+let game = '';
+function haptic(kind) {
+  if (inApp) { window.webkit.messageHandlers.sauce.postMessage(kind); return; }
+  if (navigator.vibrate) { navigator.vibrate(kind === 'fire' ? 18 : 10); return; }
+  // Safari on iOS 18+: a switch's toggle gives a tap of the Taptic Engine (user gesture only).
+  const sw = document.getElementById('hapticSwitch'); if (sw) document.getElementById('haptic').click();
 }
-stick(document.getElementById('left'), document.getElementById('moveStick'), 'm');
-stick(document.getElementById('right'), document.getElementById('lookStick'), 'l');
-for (const b of document.querySelectorAll('.btn')) {
-  const name = b.dataset.b;
-  const down = e => { b.classList.add('down'); send(`b ${name} 1`); if (navigator.vibrate) navigator.vibrate(12); e.preventDefault(); e.stopPropagation(); };
-  const up = e => { b.classList.remove('down'); send(`b ${name} 0`); e.preventDefault(); e.stopPropagation(); };
-  b.addEventListener('touchstart', down, { passive: false });
-  b.addEventListener('touchend', up, { passive: false });
-  b.addEventListener('touchcancel', up, { passive: false });
+function area() {   // the safe area, as the touch controls' (points: CSS pixels on iOS)
+  const cs = getComputedStyle(document.documentElement);
+  const inset = n => parseFloat(cs.getPropertyValue(`--sa-${n}`)) || 0;
+  return { x: inset('l'), y: inset('t'), w: innerWidth - inset('l') - inset('r'), h: innerHeight - inset('t') - inset('b') };
+}
+document.documentElement.style.cssText += '--sa-l: env(safe-area-inset-left); --sa-r: env(safe-area-inset-right); --sa-t: env(safe-area-inset-top); --sa-b: env(safe-area-inset-bottom);';
+const held = new Map();   // touch identifier -> button element
+function drawButtons() {
+  for (const b of document.querySelectorAll('.btn')) b.remove();
+  const a = area(), pad = document.getElementById('pad');
+  // Small phones: everything a little smaller so it fits, as the iPhone SE's touch layout.
+  const k = Math.min(1, a.h / 380);
+  for (const spec of layout.split(';')) {
+    const [name, symbol, color, ax, ay, ox, oy, size, flags] = spec.split(',');
+    if (!name) continue;
+    const d = parseFloat(size) * k, r = d / 2;
+    let cx = a.x + a.w * parseFloat(ax) + parseFloat(ox) * k, cy = a.y + a.h * parseFloat(ay) + parseFloat(oy) * k;
+    cx = Math.min(Math.max(cx, a.x + r), a.x + a.w - r); cy = Math.min(Math.max(cy, a.y + r), a.y + a.h - r);
+    const b = document.createElement('div');
+    b.className = `btn ${COLORS[+color] || ''}`; b.dataset.b = name; b.dataset.flags = flags;
+    b.style.cssText = `left:${cx - r}px;top:${cy - r}px;width:${d}px;height:${d}px`;
+    b.innerHTML = ICONS[symbol] ? `<svg viewBox="0 0 24 24">${ICONS[symbol]}</svg>` : `<span class="t">${TEXT[symbol] || ''}</span>`;
+    pad.appendChild(b);
+  }
+}
+function setLayout(text) {   // "g portal2 1 jump,..."
+  const m = /^g (\S+) (\d) ?(.*)$/.exec(text);
+  if (!m) return;
+  game = m[1];
+  if (m[3]) layout = m[3];
+  for (const b of document.querySelectorAll('.btn.down, .btn.on')) b.classList.remove('down', 'on');
+  drawButtons();
+}
+addEventListener('resize', drawButtons);
+drawButtons();
+
+// Sticks: one under each thumb, centred where it lands, the touch stick's size.
+const sticks = {};
+function stickRadius() { const a = area(); return Math.min(66, a.h * .15); }
+function stickStart(kind, t) {
+  const el = document.getElementById(kind === 'm' ? 'moveStick' : 'lookStick'), R = stickRadius();
+  sticks[kind] = { id: t.identifier, x0: t.clientX, y0: t.clientY, last: '', el, R };
+  el.style.cssText = `display:block;left:${t.clientX - R}px;top:${t.clientY - R}px;width:${2 * R}px;height:${2 * R}px`;
+  const knob = el.firstElementChild, kd = R * .9;
+  knob.style.cssText = `width:${kd}px;height:${kd}px;margin:${-kd / 2}px 0 0 ${-kd / 2}px`;
+  stickMove(kind, t);
+}
+function stickMove(kind, t) {
+  const s = sticks[kind]; if (!s) return;
+  let dx = t.clientX - s.x0, dy = t.clientY - s.y0; const dist = Math.hypot(dx, dy);
+  if (dist > s.R) { dx *= s.R / dist; dy *= s.R / dist; }
+  s.el.firstElementChild.style.transform = `translate(${dx}px, ${dy}px)`;
+  const m = `${kind} ${(dx / s.R).toFixed(3)} ${(-dy / s.R).toFixed(3)}`;
+  if (m !== s.last) { s.last = m; send(m); }
+}
+function stickEnd(kind) {
+  const s = sticks[kind]; if (!s) return;
+  s.el.style.display = 'none'; delete sticks[kind]; send(`${kind} 0 0`);
+}
+function press(b, down) {
+  const name = b.dataset.b, toggle = (+b.dataset.flags & FLAG_TOGGLE) !== 0;
+  if (toggle) {   // crouch and sprint: a tap turns it on, the next one off (as in the game)
+    if (!down) return;
+    const on = !b.classList.contains('on');
+    b.classList.toggle('on', on); send(`b ${name} ${on ? 1 : 0}`); haptic('tap'); return;
+  }
+  b.classList.toggle('down', down); send(`b ${name} ${down ? 1 : 0}`);
+  if (down) haptic(name === 'fire' || name === 'alt_fire' ? 'fire' : 'tap');
+}
+const pad = document.getElementById('pad');
+pad.addEventListener('touchstart', e => {
+  for (const t of e.changedTouches) {
+    const b = document.elementFromPoint(t.clientX, t.clientY)?.closest('.btn');
+    if (b) { held.set(t.identifier, b); press(b, true); continue; }
+    const kind = t.clientX < innerWidth * .45 ? 'm' : 'l';
+    if (!sticks[kind]) stickStart(kind, t);
+  }
+  e.preventDefault();
+}, { passive: false });
+pad.addEventListener('touchmove', e => {
+  for (const t of e.changedTouches) for (const k of ['m', 'l']) if (sticks[k] && sticks[k].id === t.identifier) stickMove(k, t);
+  e.preventDefault();
+}, { passive: false });
+const touchEnd = e => {
+  for (const t of e.changedTouches) {
+    const b = held.get(t.identifier);
+    if (b) { held.delete(t.identifier); press(b, false); continue; }
+    for (const k of ['m', 'l']) if (sticks[k] && sticks[k].id === t.identifier) stickEnd(k);
+  }
+};
+pad.addEventListener('touchend', touchEnd); pad.addEventListener('touchcancel', touchEnd);
+if (inApp) {
+  const c = document.getElementById('close'); c.style.display = 'block';
+  c.onclick = () => { releaseAll(); window.webkit.messageHandlers.sauce.postMessage('close'); };
+  document.getElementById('hint').style.display = 'none';
 }
 // Round 24: the page hidden (another app, the lock button): let go of everything, here and in the game.
 function releaseAll() {
-  for (const b of document.querySelectorAll('.btn.down')) b.classList.remove('down');
+  for (const b of document.querySelectorAll('.btn.down, .btn.on')) b.classList.remove('down', 'on');
   for (const s of document.querySelectorAll('.stick')) s.style.display = 'none';
+  for (const k of Object.keys(sticks)) delete sticks[k];
+  held.clear();
   send('x');
 }
 document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });

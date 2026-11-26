@@ -53,8 +53,29 @@ typedef struct {
     int button, trigger;  // SDL button (-1) or trigger axis (-1)
     int down;
     char ping[24];
+    int action;           // round 26: the touch action named (rt_touch_action), -1 for none
+    int tap;              // round 26: the bind toggles (toggle_duck): one press per change
+    const char *command;  // round 26: no controller bind (Left 4 Dead 2's slots 1 and 2): a console command
 } rt_phone_message;
-int rt_phonepad_parse(const char *text, rt_phone_message *out);
+int rt_phonepad_parse(const char *text, rt_phone_message *out);   // Portal 2's controller binds
+// Round 26: buttons are named like the touch actions ("jump", "fire", "slot3",
+// "emote"; "blue"/"orange" still mean fire/alt_fire) and go where the running
+// game's controller binds read them (rt_phonepad_route).
+#include "game_ios.h"
+int rt_phonepad_parse_for(const char *text, rt_ios_layout layout, rt_phone_message *out);
+// The controller input for a touch action in this game: button, trigger, tap,
+// command as rt_touch_pad_route; 0 if the phone shouldn't offer that action.
+int rt_phonepad_route(rt_ios_layout layout, int action, int *button, int *trigger, int *tap, const char **command);
+// Round 26 (items 5 and 6): the page draws the running game's buttons. One
+// message, sent on connect and whenever the game or co-op changes:
+// "g <layout id> <coop 0|1> <name>,<symbol>,<color>,<ax>,<ay>,<ox>,<oy>,<size>,<flags>;..."
+// with the touch layout's anchors (touch_layout.c), only the actions the phone
+// can send, the emote one only in co-op.
+int rt_phonepad_layout_message(rt_ios_layout layout, int coop, char *out, size_t size);
+// The move stick as the touch stick feels (touch_controls.m padX:): any push
+// past a small dead zone walks at least slowly, full push runs; x, y in -1..1
+// (y up), out in SDL's axis values.
+void rt_phonepad_move_axes(double x, double y, int16_t out[2]);
 // A stick value (-1..1, y up) as an SDL axis (-32767..32767, y down for LEFTY/RIGHTY).
 int16_t rt_phonepad_axis(double value, int is_y);
 

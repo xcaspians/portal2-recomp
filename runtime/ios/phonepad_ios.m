@@ -29,6 +29,10 @@
 #include <string.h>
 #include "env_ios.h"
 #include "phonepad.h"
+#include "settings_menu_ios.h"
+#include "touch_layout.h"
+#include "game_ios.h"
+#include <math.h>
 
 void rt_ios_touch_sync_pads(void);   // touch_controls.m: hand the first slot over (or take it back)
 
@@ -120,9 +124,58 @@ static void trace_triggers(const char *why) {
 }
 static void apply(const rt_phone_message *m) {
     if (!phone_pad) return;
+    if (m->kind == RT_PHONE_BUTTON && m->command) {   // round 26: no controller bind (L4D2's slots 1 and 2)
+        if (m->down) rt_ios_game_command(m->command);
+        return;
+    }
+    if (m->kind == RT_PHONE_BUTTON && m->tap && m->button >= 0) {   // round 26: a toggling bind, one press per change
+        rt_phone_message press = *m;
+        press.down = 1;
+        rt_phonepad_pad_apply(&want, &press);
+        sync_pad();
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 80 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            rt_phone_message lift = press;
+            lift.down = 0;
+            rt_phonepad_pad_apply(&want, &lift);
+            sync_pad();
+        });
+        return;
+    }
+    if (m->kind == RT_PHONE_MOVE) {   // round 26: the touch stick's feel (rt_phonepad_move_axes)
+        rt_phonepad_move_axes(m->x, m->y, &want.axes[0]);
+        sync_pad();
+        return;
+    }
+    if (m->kind == RT_PHONE_LOOK) {   // fine aim near the centre, full speed at the edge, as the touch look stick
+        rt_phone_message look = *m;
+        look.x = m->x * fabs(m->x); look.y = m->y * fabs(m->y);
+        rt_phonepad_pad_apply(&want, &look);
+        sync_pad();
+        return;
+    }
     rt_phonepad_pad_apply(&want, m);
     sync_pad();
     if (m->trigger >= 0) trace_triggers(m->down ? "appui" : "relâché");
+}
+// ---- round 26: the running game's buttons on the phone ----
+static void send_text(nw_connection_t c, const char *text);
+static char layout_sent[2048];   // the last layout message the phone got (queue)
+static void layout_message(char *out, size_t size) {
+    const rt_ios_game *g = rt_ios_current_game();
+    int coop = rt_touch_coop_shown(rt_ios_game_kind(g), rt_ios_level_map());
+    if (!rt_phonepad_layout_message(g->layout, coop, out, size)) snprintf(out, size, "g %s 0 ", rt_touch_layout_id(g->layout));
+}
+static void send_layout(nw_connection_t c, int force) {
+    char text[2048];
+    layout_message(text, sizeof(text));   // main thread (the level's map)
+    NSString *t = @(text);
+    dispatch_async(queue, ^{
+        if (c != phone || (!force && !strcmp(layout_sent, t.UTF8String))) return;
+        snprintf(layout_sent, sizeof(layout_sent), "%s", t.UTF8String);
+        send_text(c, t.UTF8String);
+        fprintf(stderr, "[ios] manette téléphone : boutons de %s envoyés%s\n", rt_touch_layout_id(rt_ios_current_game()->layout),
+                strstr(t.UTF8String, "emote,") ? " (coop : geste)" : "");
+    });
 }
 // Round 24 safety net: let go of everything the phone holds (quiet phone, the
 // iPad's app going inactive, the page hidden).
@@ -140,6 +193,7 @@ static void start_watchdog(void) {
     dispatch_source_set_timer(watchdog, DISPATCH_TIME_NOW, NSEC_PER_SEC / 4, NSEC_PER_SEC / 20);
     dispatch_source_set_event_handler(watchdog, ^{
         if (phone_pad && CACurrentMediaTime() - last_heard > quiet) release_all("plus de nouvelles du téléphone");
+        if (phone) send_layout(phone, 0);   // round 26: co-op started or ended (the emote button)
     });
     dispatch_resume(watchdog);
     [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil
@@ -150,7 +204,7 @@ static void start_watchdog(void) {
 
 // ---- the network ----
 static void send_text(nw_connection_t c, const char *text) {
-    uint8_t frame[256];
+    uint8_t frame[4096];   // round 26: the layout message (rt_phonepad_layout_message) is ~1 KB
     size_t n = rt_phonepad_ws_text(text, frame, sizeof(frame));
     if (!n) return;
     dispatch_data_t d = dispatch_data_create(frame, n, queue, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
@@ -198,7 +252,7 @@ static void ws_loop(nw_connection_t c, NSMutableData *buffer) {
                 continue;
             }
             rt_phone_message m;
-            if (!rt_phonepad_parse(text, &m)) continue;
+            if (!rt_phonepad_parse_for(text, rt_ios_current_game()->layout, &m)) continue;
             if (m.kind == RT_PHONE_PING) {
                 char reply[32];
                 snprintf(reply, sizeof(reply), "q %s", m.ping);
@@ -254,7 +308,7 @@ static void handle(nw_connection_t c, NSMutableData *buffer) {
             set_status("Phone connected");
             fprintf(stderr, "[ios] manette téléphone : connectée\n");
             last_heard = CACurrentMediaTime();
-            dispatch_async(dispatch_get_main_queue(), ^{ pad_on(); start_watchdog(); });
+            dispatch_async(dispatch_get_main_queue(), ^{ pad_on(); start_watchdog(); send_layout(c, 1); });
             ws_loop(c, [NSMutableData data]);
             return;
         }
@@ -332,6 +386,30 @@ static void register_name(struct in_addr address) {
     } else fprintf(stderr, "[ios] manette téléphone : nom %s publié (Bonjour)\n", local_name);
 }
 
+// Round 26 (item 4): the Sauce app on an iPhone finds this one with Bonjour
+// (_sauce-pad._tcp, as Play nearby's _sauce-coop._tcp) while the panel is open,
+// the code in the TXT record (the panel shows it on screen anyway), and
+// connects with one tap (game_picker_ios.m, "Use as controller").
+static DNSServiceRef service;
+static void advertise(void) {   // queue
+    if (service) { DNSServiceRefDeallocate(service); service = NULL; }
+    TXTRecordRef txt;
+    TXTRecordCreate(&txt, 0, NULL);
+    TXTRecordSetValue(&txt, "code", 4, code);
+    const char *game = rt_ios_current_game()->title;
+    TXTRecordSetValue(&txt, "game", (uint8_t)strlen(game), game);
+    DNSServiceErrorType e = DNSServiceRegister(&service, 0, kDNSServiceInterfaceIndexAny, NULL, "_sauce-pad._tcp", NULL, NULL,
+                                               htons((uint16_t)port), TXTRecordGetLength(&txt), TXTRecordGetBytesPtr(&txt),
+                                               NULL, NULL);
+    TXTRecordDeallocate(&txt);
+    if (!e) e = DNSServiceSetDispatchQueue(service, queue);
+    if (e) { if (service) DNSServiceRefDeallocate(service); service = NULL; }
+    fprintf(stderr, "[ios] manette téléphone : annoncée aux iPhone avec Sauce (%s)\n", e ? "échec" : "_sauce-pad._tcp");
+}
+static void unadvertise(void) {   // queue
+    if (service) { DNSServiceRefDeallocate(service); service = NULL; }
+}
+
 void rt_ios_phonepad_start(void) {
     if (listener) return;
     if (!queue) queue = dispatch_queue_create("phonepad", DISPATCH_QUEUE_SERIAL);
@@ -348,7 +426,7 @@ void rt_ios_phonepad_start(void) {
     nw_listener_set_queue(listener, queue);
     nw_listener_set_new_connection_handler(listener, ^(nw_connection_t c) { accept_connection(c); });
     nw_listener_set_state_changed_handler(listener, ^(nw_listener_state_t state, nw_error_t e) {
-        if (state == nw_listener_state_ready) set_status("Waiting for a phone");
+        if (state == nw_listener_state_ready) { set_status("Waiting for a phone"); advertise(); }
         if (state == nw_listener_state_failed) {
             set_status("Couldn't start (port in use?)");
             fprintf(stderr, "[ios] manette téléphone : serveur en échec (%d)\n", e ? nw_error_get_error_code(e) : 0);
@@ -365,6 +443,7 @@ void rt_ios_phonepad_stop_if_idle(void) {
         if (phone || !listener) return;
         nw_listener_cancel(listener);
         listener = nil;
+        unadvertise();
         if (dns) { DNSServiceRefDeallocate(dns); dns = NULL; }
         snprintf(last_status, sizeof(last_status), "Not running");
         fprintf(stderr, "[ios] manette téléphone : appairage annulé (fenêtre fermée sans téléphone)\n");
@@ -375,6 +454,7 @@ void rt_ios_phonepad_kick(void) {
     dispatch_async(queue, ^{
         if (phone) { send_text(phone, "kicked"); nw_connection_cancel(phone); }
         rt_phonepad_code(arc4random_uniform(10000), code);   // the old code stops working
+        if (service) advertise();                            // round 26: with the new code
         set_status("Kicked: new code");
         fprintf(stderr, "[ios] manette téléphone : expulsée, nouveau code\n");
     });
