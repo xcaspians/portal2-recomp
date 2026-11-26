@@ -200,6 +200,19 @@ void rt_ios_tv_poll(void) {
     if (pad_note && tv_window) pad_note.hidden = !note_wanted();
 }
 
+// A view over the TV picture (the phone controller's QR code), or nil to remove it.
+static __weak UIView *tv_overlay;
+void rt_ios_tv_overlay(void *view) {
+    [tv_overlay removeFromSuperview];
+    UIView *v = (__bridge UIView *)view;
+    UIView *root = tv_window.rootViewController.view;
+    if (!v || !root) return;
+    CGFloat side = MIN(root.bounds.size.height * .45, 360);
+    v.frame = CGRectMake(root.bounds.size.width - side - 40, 40, side, side);
+    [root addSubview:v];
+    tv_overlay = v;
+}
+
 void rt_ios_tv_watch(void) {
     static int done;
     if (done++) return;

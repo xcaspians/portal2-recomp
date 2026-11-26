@@ -57,6 +57,7 @@
 #include "gyro_ios.h"
 #include "touch_layout.h"
 #include "tv_output.h"
+int rt_ios_phonepad_active(void);   // phonepad_ios.m
 #include "touch_test.h"
 #include "lifecycle_ios.h"
 #include "icloud_saves.h"
@@ -807,7 +808,7 @@ static int controller_count(void) {
 // Portal 2 co-op split-screen with one controller: touch drives player 2
 // (rt_touch_player2_wanted). P2_TOUCH_PLAYER2=1 forces it (tests without a controller).
 - (BOOL)syncCoop {
-    BOOL want = SDL_WasInit(SDL_INIT_GAMECONTROLLER) && !padRefused &&
+    BOOL want = SDL_WasInit(SDL_INIT_GAMECONTROLLER) && !padRefused && !rt_ios_phonepad_active() &&
         (rt_ios_env_flag("P2_TOUCH_PLAYER2", 0) ||
          rt_touch_player2_wanted(rt_ios_game_kind(rt_ios_current_game()), rt_ios_level_map(), controller_count()));
     if (want && !coopPad) {
@@ -833,7 +834,8 @@ static int controller_count(void) {
 - (void)syncPad {
     if ([self syncCoop]) return;
     if (rt_ios_touch_test_wasd()) padRefused = YES;   // essai témoin : touches W/A/S/D
-    BOOL wanted = !physicalPad && !padRefused && SDL_WasInit(SDL_INIT_GAMECONTROLLER);
+    // A phone controller (phonepad_ios.m) takes the first slot when no real controller holds it.
+    BOOL wanted = !physicalPad && !padRefused && !rt_ios_phonepad_active() && SDL_WasInit(SDL_INIT_GAMECONTROLLER);
     if (wanted && !pad) {
         if (!(pad = virtual_pad())) padRefused = YES;
         rt_ios_move_response_linear(pad != NULL);
@@ -1192,6 +1194,11 @@ static void watched(NSSet<UITouch *> *touches) { for (UITouch *t in touches) rt_
 - (void)touchesCancelled:(NSSet<UITouch *> *)t withEvent:(UIEvent *)e { [self touchesEnded:t withEvent:e]; }
 @end
 
+// Round 23 item 9b: a phone connected or gone (phonepad_ios.m): the virtual
+// pads change slots now, before the phone's own controller is plugged in.
+void rt_ios_touch_sync_pads(void) { [controls syncPad]; }
+void rt_ios_phonepad_start(void);   // phonepad_ios.m
+
 // Appelé à la création de la fenêtre du jeu (sdl_ios.m), sur le thread principal.
 void rt_ios_touch_controls_attach(SDL_Window *window) {
     rt_ios_settings_watch();   // réglages changés en jeu ou dans l'app Réglages (live_settings_ios.m)
@@ -1207,6 +1214,7 @@ void rt_ios_touch_controls_attach(SDL_Window *window) {
     // OpenGL à la création du contexte, ce qui retirerait une sous-vue posée là.
     UIView *host = info.info.uikit.window;
     if (!host) return;
+    if (rt_ios_env_flag("P2_PHONEPAD", 0)) rt_ios_phonepad_start();   // tests: the phone server from launch
     controls = [[P2TouchControls alloc] initWithWindow:window];
     controls.frame = host.bounds;
     [host addSubview:controls];

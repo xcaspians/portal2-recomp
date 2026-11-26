@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sauce Pad">
+<meta name="theme-color" content="#0b0b0f">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon.png">
+<title>Sauce Pad</title>
+<style>
+  :root { --blue: #3a8bff; --orange: #ff8a1f; --ink: rgba(255,255,255,.85); --dim: rgba(255,255,255,.45); }
+  * { box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  html, body { margin: 0; height: 100%; background: #0b0b0f; color: var(--ink); overflow: hidden;
+    font: 15px -apple-system, system-ui, Roboto, sans-serif; touch-action: none; overscroll-behavior: none; }
+  #pad { position: fixed; inset: 0; }
+  .zone { position: absolute; top: 0; bottom: 0; }
+  #left { left: 0; width: 45%; } #right { right: 0; width: 55%; }
+  .stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.25); display: none; pointer-events: none; }
+  .knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.35); }
+  .btn { position: absolute; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: #fff; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.18); }
+  .btn.down { filter: brightness(1.6); transform: scale(.94); }
+  #blue { right: calc(env(safe-area-inset-right) + 22px); bottom: 26%; width: 84px; height: 84px; background: var(--blue); }
+  #orange { right: calc(env(safe-area-inset-right) + 120px); bottom: 40%; width: 84px; height: 84px; background: var(--orange); }
+  #jump { right: calc(env(safe-area-inset-right) + 30px); bottom: 7%; width: 66px; height: 66px; }
+  #crouch { right: calc(env(safe-area-inset-right) + 112px); bottom: 7%; width: 56px; height: 56px; font-size: 13px; }
+  #use { right: calc(env(safe-area-inset-right) + 196px); bottom: 12%; width: 56px; height: 56px; }
+  #pause { left: 50%; top: calc(env(safe-area-inset-top) + 10px); width: 44px; height: 44px; margin-left: -22px; font-size: 13px; }
+  #status { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 62px); transform: translateX(-50%);
+    font-size: 13px; color: var(--dim); white-space: nowrap; pointer-events: none; }
+  #hint { position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 4px); text-align: center;
+    font-size: 12px; color: var(--dim); pointer-events: none; }
+  #pair { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column;
+    gap: 14px; background: #0b0b0f; z-index: 2; }
+  #pair input { font: 32px ui-monospace, monospace; width: 5.2em; text-align: center; letter-spacing: .25em; border-radius: 12px;
+    border: 2px solid #333; background: #16161c; color: #fff; padding: 8px; -webkit-user-select: text; user-select: text; }
+  #pair button { font: 600 17px system-ui; padding: 10px 26px; border-radius: 22px; border: 0; background: var(--orange); color: #000; }
+  #rotate { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #0b0b0f; z-index: 3; font-size: 18px; }
+  @media (orientation: portrait) { #rotate { display: flex; } }
+</style>
+</head>
+<body>
+<div id="pad">
+  <div class="zone" id="left"></div><div class="zone" id="right"></div>
+  <div class="stick" id="moveStick"><div class="knob"></div></div>
+  <div class="stick" id="lookStick"><div class="knob"></div></div>
+  <div class="btn" id="orange" data-b="orange"></div>
+  <div class="btn" id="blue" data-b="blue"></div>
+  <div class="btn" id="jump" data-b="jump">JUMP</div>
+  <div class="btn" id="crouch" data-b="crouch">DUCK</div>
+  <div class="btn" id="use" data-b="use">USE</div>
+  <div class="btn" id="pause" data-b="pause">II</div>
+</div>
+<div id="status">Connecting…</div>
+<div id="hint">Tip: Share ▸ Add to Home Screen for full screen (Android: ⋮ ▸ Install app or Add to Home screen).</div>
+<div id="pair">
+  <div>Enter the code shown in Sauce (gear menu ▸ Phone controller)</div>
+  <input id="code" inputmode="numeric" maxlength="4" autocomplete="off">
+  <button id="go">Connect</button>
+</div>
+<div id="rotate">Turn your phone sideways</div>
+<script>
+'use strict';
+// The pairing code: from the QR code's link, else the last one used (a saved home-screen app).
+const params = new URLSearchParams(location.search);
+let code = params.get('code') || localStorage.getItem('sauceCode') || '';
+const LOCAL = '%%LOCAL%%';   // the iPad's .local name and port, filled in by Sauce
+const status = document.getElementById('status');
+let ws = null, open = false, timer = null;
+const say = t => { status.textContent = t; };
+
+// From the QR code's IP address to the .local name when this phone can resolve it
+// (iPhone, most Android): a saved home-screen app then survives the iPad's IP changing.
+async function hopToLocal() {
+  if (!LOCAL || LOCAL.startsWith('%%') || location.host === LOCAL || !/^\d+\.\d+\.\d+\.\d+/.test(location.hostname)) return false;
+  try {
+    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 1500);
+    await fetch(`http://${LOCAL}/ping`, { mode: 'no-cors', signal: ctl.signal });
+    location.replace(`http://${LOCAL}/?code=${encodeURIComponent(code)}`);
+    return true;
+  } catch (e) { return false; }
+}
+function askCode(why) {
+  say(why || 'Enter the code');
+  document.getElementById('pair').style.display = 'flex';
+  const input = document.getElementById('code'); input.value = ''; input.focus();
+}
+document.getElementById('go').onclick = () => {
+  code = document.getElementById('code').value.trim();
+  document.getElementById('pair').style.display = 'none';
+  connect();
+};
+function connect() {
+  if (!code) { askCode(); return; }
+  localStorage.setItem('sauceCode', code);
+  say('Connecting…');
+  ws = new WebSocket(`ws://${location.host}/ws?code=${encodeURIComponent(code)}`);
+  ws.onopen = () => { open = true; say('Connected: you are a controller'); ping(); };
+  ws.onmessage = e => {
+    const t = String(e.data);
+    if (t.startsWith('q ')) { const rtt = performance.now() - parseFloat(t.slice(2)); say(`Connected · ${rtt.toFixed(0)} ms`); send(`r ${rtt.toFixed(1)}`); }
+    else if (t === 'kicked') { open = false; code = ''; localStorage.removeItem('sauceCode'); askCode('Disconnected by the iPad: enter the new code'); }
+    else if (t === 'busy') say('Another phone is already the controller');
+  };
+  ws.onclose = () => {
+    const was = open; open = false;
+    if (document.getElementById('pair').style.display === 'flex') return;
+    if (!was) { askCode('Wrong or old code: enter the one shown in Sauce'); return; }
+    say('Reconnecting…'); clearTimeout(timer); timer = setTimeout(connect, 1500);
+  };
+}
+const send = t => { if (open && ws.readyState === 1) ws.send(t); };
+function ping() { if (!open) return; send(`p ${performance.now().toFixed(1)}`); setTimeout(ping, 1000); }
+
+// Sticks: one under each thumb, centred where it lands.
+const R = 60;
+function stick(zone, el, kind) {
+  let id = null, x0 = 0, y0 = 0, last = '';
+  const knob = el.firstElementChild;
+  const put = (x, y) => {
+    let dx = x - x0, dy = y - y0; const d = Math.hypot(dx, dy);
+    if (d > R) { dx *= R / d; dy *= R / d; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    const m = `${kind} ${(dx / R).toFixed(3)} ${(-dy / R).toFixed(3)}`;
+    if (m !== last) { last = m; send(m); }
+  };
+  zone.addEventListener('touchstart', e => {
+    if (id !== null) return;
+    const t = e.changedTouches[0]; id = t.identifier; x0 = t.clientX; y0 = t.clientY;
+    el.style.left = x0 + 'px'; el.style.top = y0 + 'px'; el.style.display = 'block'; put(x0, y0);
+    e.preventDefault();
+  }, { passive: false });
+  zone.addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) if (t.identifier === id) put(t.clientX, t.clientY);
+    e.preventDefault();
+  }, { passive: false });
+  const end = e => {
+    for (const t of e.changedTouches) if (t.identifier === id) {
+      id = null; el.style.display = 'none'; knob.style.transform = ''; last = ''; send(`${kind} 0 0`);
+    }
+  };
+  zone.addEventListener('touchend', end); zone.addEventListener('touchcancel', end);
+}
+stick(document.getElementById('left'), document.getElementById('moveStick'), 'm');
+stick(document.getElementById('right'), document.getElementById('lookStick'), 'l');
+for (const b of document.querySelectorAll('.btn')) {
+  const name = b.dataset.b;
+  const down = e => { b.classList.add('down'); send(`b ${name} 1`); if (navigator.vibrate) navigator.vibrate(12); e.preventDefault(); e.stopPropagation(); };
+  const up = e => { b.classList.remove('down'); send(`b ${name} 0`); e.preventDefault(); e.stopPropagation(); };
+  b.addEventListener('touchstart', down, { passive: false });
+  b.addEventListener('touchend', up, { passive: false });
+  b.addEventListener('touchcancel', up, { passive: false });
+}
+if (navigator.standalone || matchMedia('(display-mode: standalone)').matches) document.getElementById('hint').style.display = 'none';
+hopToLocal().then(hopped => { if (!hopped) connect(); });
+</script>
+</body>
+</html>
