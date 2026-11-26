@@ -1,5 +1,6 @@
 // A phone as a controller: the plain-C rules (see phonepad.h).
 #include "phonepad.h"
+#include "touch_layout.h"
 #include <CommonCrypto/CommonDigest.h>
 #include <ctype.h>
 #include <math.h>
@@ -125,9 +126,10 @@ size_t rt_phonepad_ws_text(const char *text, uint8_t *out, size_t cap) {
     return head + n;
 }
 
-int rt_phonepad_parse(const char *text, rt_phone_message *m) {
+int rt_phonepad_parse(const char *text, rt_phone_message *m) { return rt_phonepad_parse_for(text, RT_IOS_LAYOUT_PORTAL2, m); }
+int rt_phonepad_parse_for(const char *text, rt_ios_layout layout, rt_phone_message *m) {
     memset(m, 0, sizeof(*m));
-    m->button = m->trigger = -1;
+    m->button = m->trigger = m->action = -1;
     if (text && !strcmp(text, "x")) { m->kind = RT_PHONE_RELEASE; return 1; }
     if (!text || !text[0] || text[1] != ' ') return 0;
     if (text[0] == 'm' || text[0] == 'l') {
@@ -140,13 +142,12 @@ int rt_phonepad_parse(const char *text, rt_phone_message *m) {
     if (text[0] == 'b') {
         char name[16]; int down;
         if (sscanf(text + 2, "%15s %d", name, &down) != 2) return 0;
-        static const struct { const char *name; int button, trigger; } map[] = {
-            {"jump", 0, -1}, {"crouch", 1, -1}, {"use", 2, -1}, {"pause", 6, -1},
-            {"blue", -1, 5}, {"orange", -1, 4},   // right trigger +attack, left trigger +attack2
-        };
-        for (size_t i = 0; i < sizeof(map) / sizeof(*map); ++i)
-            if (!strcmp(name, map[i].name)) {
-                m->kind = RT_PHONE_BUTTON; m->button = map[i].button; m->trigger = map[i].trigger; m->down = down != 0;
+        if (!strcmp(name, "blue")) snprintf(name, sizeof(name), "fire");          // round 23's page
+        else if (!strcmp(name, "orange")) snprintf(name, sizeof(name), "alt_fire");
+        for (int a = 0; a < RT_TOUCH_ACTION_COUNT; ++a)
+            if (!strcmp(name, rt_touch_action_name((rt_touch_action)a))) {
+                if (!rt_phonepad_route(layout, a, &m->button, &m->trigger, &m->tap, &m->command)) return 0;
+                m->kind = RT_PHONE_BUTTON; m->action = a; m->down = down != 0;
                 return 1;
             }
         return 0;
@@ -189,4 +190,63 @@ int rt_phonepad_pad_held(const rt_phone_pad *p) {
     rt_phone_pad rest;
     rt_phonepad_pad_rest(&rest);
     return memcmp(p, &rest, sizeof(rest)) != 0;
+}
+
+// ---- Round 26: the running game's buttons on the phone ----
+int rt_phonepad_route(rt_ios_layout layout, int action, int *button, int *trigger, int *tap, const char **command) {
+    *button = *trigger = -1; *tap = 0; *command = NULL;
+    rt_touch_action a = (rt_touch_action)action;
+    if (a == RT_TOUCH_PAUSE) { *button = 6; return 1; }   // Start: gameui_activate, pause
+    if (rt_touch_buttons_on_pad(layout)) {                 // Left 4 Dead 2 (touch_layout.c)
+        rt_touch_pad_route r = rt_touch_pad_route_for(layout, a);
+        *button = r.button; *trigger = r.trigger; *tap = r.tap; *command = r.command;
+        return r.button >= 0 || r.trigger >= 0 || r.command;
+    }
+    if (layout == RT_IOS_LAYOUT_HL2) {   // Half-Life 2's controller binds: A +jump, B toggle_duck, X +use
+        switch (a) {
+        case RT_TOUCH_JUMP: *button = 0; return 1;
+        case RT_TOUCH_CROUCH: *button = 1; *tap = 1; return 1;
+        case RT_TOUCH_USE: *button = 2; return 1;
+        case RT_TOUCH_FIRE: *trigger = 5; return 1;
+        case RT_TOUCH_ALT_FIRE: *trigger = 4; return 1;
+        default: return 0;
+        }
+    }
+    *button = rt_touch_pad_button(a);    // Portal 2 and Mel: touch as player 2's mapping
+    *trigger = rt_touch_pad_trigger(a);
+    return *button >= 0 || *trigger >= 0;
+}
+
+int rt_phonepad_layout_message(rt_ios_layout layout, int coop, char *out, size_t size) {
+    size_t used = (size_t)snprintf(out, size, "g %s %d ", rt_touch_layout_id(layout), coop ? 1 : 0);
+    int n, sent = 0, b, t, tap;
+    const char *cmd;
+    const rt_touch_button *buttons = rt_touch_layout(layout, &n);
+    for (int i = 0; i < n && used < size; ++i) {
+        const rt_touch_button *k = &buttons[i];
+        if ((k->flags & RT_TOUCH_DATASET) || ((k->flags & RT_TOUCH_COOP) && !coop)) continue;
+        if (!rt_phonepad_route(layout, k->action, &b, &t, &tap, &cmd)) continue;
+        // Portal 2's portal buttons: once each (the touch layout mirrors them on both sides).
+        int dup = 0;
+        for (int j = 0; j < i; ++j) dup |= buttons[j].action == k->action;
+        if (dup) continue;
+        used += (size_t)snprintf(out + used, size - used, "%s%s,%s,%d,%.3f,%.3f,%.1f,%.1f,%.1f,%u", sent ? ";" : "",
+                                 rt_touch_action_name(k->action), k->symbol ? k->symbol : "", (int)k->color, k->ax, k->ay,
+                                 k->ox, k->oy, k->size, k->flags);
+        ++sent;
+    }
+    return used < size && sent > 0;
+}
+
+void rt_phonepad_move_axes(double x, double y, int16_t out[2]) {
+    // touch_controls.m: speed from kMinWalk (40 of 175 units/s) to full, past the game's 0.15 threshold.
+    const double min_walk = 40.0 / 175, threshold = .15, dead = .08;
+    double d = fmin(1, hypot(x, y));
+    double v[2] = {x, y};
+    for (int i = 0; i < 2; ++i) {
+        double c = d > dead ? v[i] / hypot(x, y) * (min_walk + (1 - min_walk) * (d - dead) / (1 - dead)) : 0;
+        double s = fmin(1, fabs(c));
+        double axis = s < 1e-3 ? 0 : copysign(threshold + (1 - threshold) * s, c);
+        out[i] = rt_phonepad_axis(axis, i == 1);
+    }
 }

@@ -24,6 +24,9 @@ typedef enum {
     // medkit, pills. Added at the end: stored layouts name actions, not numbers.
     RT_TOUCH_SLOT1, RT_TOUCH_SLOT2, RT_TOUCH_SLOT3, RT_TOUCH_SLOT4, RT_TOUCH_SLOT5,
     RT_TOUCH_ZOOM,          // Portal 2's hold-to-zoom (+zoom: middle mouse button, a controller's right bumper)
+    // Round 26: Portal 2's co-op gestures (+mouse_menu_taunt: Q held, a controller's
+    // d-pad up). Held: the menu opens, the finger slides to a gesture, lifting picks it.
+    RT_TOUCH_EMOTE,
     RT_TOUCH_ACTION_COUNT
 } rt_touch_action;
 
@@ -34,7 +37,10 @@ enum {
     RT_TOUCH_DATASET = 2,   // seulement avec le jeu de données des tapes au dos
     RT_TOUCH_TOGGLE = 4,    // un appui enfonce, le suivant relâche (allumé tant qu'enfoncé)
     RT_TOUCH_AIM = 8,       // le doigt qui le tient tourne aussi la caméra en glissant
+    RT_TOUCH_COOP = 16,     // round 26: only in co-op (rt_touch_coop_shown)
 };
+// Round 26: a co-op map of Portal 2 is loaded (the emote button shows).
+int rt_touch_coop_shown(const char *game, const char *map);
 
 // Centre : coin de la zone sûre + fraction (ax, ay) de sa taille + décalage
 // (ox, oy) en points ; size : diamètre en points.

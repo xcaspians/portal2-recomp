@@ -20,6 +20,7 @@
 #include "game_ios.h"
 #include "game_picker.h"
 #include "layout_sync_ios.h"
+#include "phone_controller_ios.h"
 #include "game_picker_ios.h"
 #include "nearby_ios.h"
 #include "settings_menu_ios.h"
@@ -198,6 +199,7 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     UIStackView *manage;
     UIScrollView *manageScroll;
     UIView *nearbyShade;               // Play nearby's panel (round 25), over the launcher
+    UIView *padShade;                  // round 26: Use as controller, over the launcher
     UIView *controls;                  // the touch and controls settings (round 25), over the launcher
     BOOL remember;
     NSMutableDictionary<NSString *, UILabel *> *sizeLabels;
@@ -235,6 +237,7 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
         if (!strcmp(rt_picker_series_at(i)->id, open)) [self show:rt_picker_series_at(i) animated:NO];
     if (lit) { focus = atoi(lit); [self applyFocus]; }
     if (getenv("P2_NEARBY_OPEN")) [self showNearby];   // device checks: Play nearby open in the launcher
+    if (getenv("P2_PAD_PANEL_OPEN")) [self showPadHosts];   // device checks: Use as controller open
     if (getenv("P2_CONTROLS_OPEN")) [self showControls];   // device checks: the controls settings open in the launcher
     rt_ios_layouts_sync("lanceur");   // round 26: custom layouts through iCloud, before the editor can open
 }
@@ -357,6 +360,28 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
         nearby.action = ^{ [weakNearby showNearby]; };
         [page addSubview:nearby];
         [cards addObject:nearby];
+        y += nh + 8;
+    }
+    // Round 26 (item 4): on an iPhone, this app as the controller of Sauce on an iPad nearby
+    // (P2_PAD_PANEL=1 shows it on an iPad too, for device checks).
+    if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPhone || getenv("P2_PAD_PANEL")) {
+        y += 8;
+        CGFloat nw = MIN(w - 64, 616 * k), nh = 86 * k;
+        P2Card *pad = [[P2Card alloc] initWithFrame:CGRectMake((w - nw) / 2, y, nw, nh)];
+        UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"gamecontroller.fill"]];
+        icon.tintColor = accent(); icon.contentMode = UIViewContentModeScaleAspectFit;
+        icon.frame = CGRectMake(22 * k, 20 * k, 56 * k, nh - 40 * k);
+        UILabel *pt = one_line(@"Use as controller", 22 * k, UIFontWeightBold, 1);
+        pt.textAlignment = NSTextAlignmentNatural;
+        pt.frame = CGRectMake(96 * k, 16 * k, nw - 120 * k, 28 * k);
+        UILabel *ps = one_line(@"This iPhone controls Sauce on an iPad nearby · one tap to connect", 14 * k, UIFontWeightRegular, .6);
+        ps.textAlignment = NSTextAlignmentNatural;
+        ps.frame = CGRectMake(96 * k, 48 * k, nw - 120 * k, 20 * k);
+        for (UIView *v in @[icon, pt, ps]) { v.userInteractionEnabled = NO; [pad addSubview:v]; }
+        __weak P2GamePicker *weakPad = self;
+        pad.action = ^{ [weakPad showPadHosts]; };
+        [page addSubview:pad];
+        [cards addObject:pad];
         y += nh + 8;
     }
     // Controls, Remember my choice and Manage games: focusable too.
@@ -526,6 +551,18 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     return c;
 }
 // ---- Play nearby (nearby_ios.m) ----
+- (void)showPadHosts {
+    if (padShade) return;
+    __weak P2GamePicker *weak = self;
+    padShade = rt_ios_phone_controller_panel(^{
+        P2GamePicker *me = weak;
+        [me->padShade removeFromSuperview];
+        me->padShade = nil;
+    });
+    padShade.frame = self.view.bounds;
+    padShade.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:padShade];
+}
 - (void)showNearby {
     if (nearbyShade) return;
     UIView *shade = [[UIView alloc] initWithFrame:self.view.bounds];
@@ -817,7 +854,7 @@ const char *rt_ios_choose_game(void) {
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     NSString *last = [d stringForKey:kLast];
     // P2_NEARBY_OPEN (device checks): the launcher shows even when a game is remembered.
-    const char *pick = getenv("P2_NEARBY_OPEN") || getenv("P2_CONTROLS_OPEN") ? NULL
+    const char *pick = getenv("P2_NEARBY_OPEN") || getenv("P2_CONTROLS_OPEN") || getenv("P2_PAD_PANEL_OPEN") ? NULL
                      : rt_picker_autostart(names, here, n, getenv("P2_GAME_CHOICE"), last.UTF8String, [d boolForKey:kRemember]);
     if (!pick) {
         // Picker window over everything; SDL's comes after it.

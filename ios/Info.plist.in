@@ -34,7 +34,8 @@
     <!-- LAN co-op: iOS asks once before the game reaches another device on the network.
          Play nearby (round 25) advertises and browses this Bonjour service. -->
     <key>NSLocalNetworkUsageDescription</key><string>@NAME@ uses your Wi-Fi to find friends' devices for co-op (Play nearby) and to connect a phone as a controller. Nothing leaves your network.</string>
-    <key>NSBonjourServices</key><array><string>_sauce-coop._tcp</string></array>
+    <key>NSBonjourServices</key><array><string>_sauce-coop._tcp</string><string>_sauce-pad._tcp</string></array>
+    <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
     <key>UIFileSharingEnabled</key><true/>
     <key>LSSupportsOpeningDocumentsInPlace</key><true/>
 </dict>

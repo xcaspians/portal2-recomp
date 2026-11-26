@@ -86,3 +86,45 @@ RT_CHECK(phonepad_trigger_release_player2) {
     assert(rt_phonepad_parse("x", &m) && m.kind == RT_PHONE_RELEASE); rt_phonepad_pad_apply(&p2, &m);
     assert(!rt_phonepad_pad_held(&p2) && rt_pad_trigger_seen(p2.axes[4]) == 0);
 }
+
+// Round 26 (item 6): the phone sends action names and each game's controller
+// binds read them; the page draws the running game's buttons.
+RT_CHECK(phonepad_buttons_per_game) {
+    rt_phone_message m;
+    assert(rt_phonepad_parse_for("b fire 1", RT_IOS_LAYOUT_PORTAL2, &m) && m.trigger == 5 && m.action == RT_TOUCH_FIRE);
+    assert(rt_phonepad_parse_for("b blue 1", RT_IOS_LAYOUT_PORTAL2, &m) && m.trigger == 5);   // the old page's name
+    assert(rt_phonepad_parse_for("b emote 1", RT_IOS_LAYOUT_PORTAL2, &m) && m.button == 11);   // d-pad up: gestures
+    assert(rt_phonepad_parse_for("b zoom 1", RT_IOS_LAYOUT_PORTAL2, &m) && m.button == 10);
+    // Left 4 Dead 2: its own binds (B reload, d-pad for items, slot 1 as a command).
+    assert(rt_phonepad_parse_for("b reload 1", RT_IOS_LAYOUT_L4D2, &m) && m.button == 1);
+    assert(rt_phonepad_parse_for("b crouch 1", RT_IOS_LAYOUT_L4D2, &m) && m.button == 9 && m.tap);
+    assert(rt_phonepad_parse_for("b slot5 1", RT_IOS_LAYOUT_L4D2, &m) && m.button == 12);
+    assert(rt_phonepad_parse_for("b slot1 1", RT_IOS_LAYOUT_L4D2, &m) && m.command && !strcmp(m.command, "slot1"));
+    assert(rt_phonepad_parse_for("b pause 1", RT_IOS_LAYOUT_L4D2, &m) && m.button == 6);
+    assert(!rt_phonepad_parse_for("b reload 1", RT_IOS_LAYOUT_PORTAL2, &m));   // Portal 2 has no reload
+    assert(rt_phonepad_parse_for("b crouch 1", RT_IOS_LAYOUT_HL2, &m) && m.button == 1 && m.tap);   // toggle_duck
+    char text[2048];
+    assert(rt_phonepad_layout_message(RT_IOS_LAYOUT_L4D2, 0, text, sizeof(text)));
+    assert(!strncmp(text, "g l4d2 0 ", 9) && strstr(text, "reload,") && strstr(text, "slot3,") && !strstr(text, "look_mode"));
+    assert(rt_phonepad_layout_message(RT_IOS_LAYOUT_PORTAL2, 0, text, sizeof(text)));
+    assert(!strncmp(text, "g portal2 0 ", 12) && strstr(text, "jump,") && !strstr(text, "emote") && !strstr(text, "flag"));
+    const char *fire = strstr(text, "fire,");
+    assert(fire && !strstr(fire + 1, ";fire,"));   // the mirrored portal buttons once
+    assert(rt_phonepad_layout_message(RT_IOS_LAYOUT_PORTAL2, 1, text, sizeof(text)) && strstr(text, "emote,hand.wave.fill"));
+}
+
+// Round 26 (item 5): the phone's move stick feels like the touch stick: a small
+// push walks (past the game's 0.15 threshold), the dead zone stays still.
+RT_CHECK(phonepad_move_stick_like_touch) {
+    int16_t a[2];
+    rt_phonepad_move_axes(0, 0, a);
+    assert(a[0] == 0 && a[1] == 0);
+    rt_phonepad_move_axes(.05, 0, a);
+    assert(a[0] == 0);                                    // dead zone
+    rt_phonepad_move_axes(.2, 0, a);
+    assert(a[0] > (int)(.15 * 32767) && a[1] == 0);       // walks, not nothing
+    rt_phonepad_move_axes(1, 0, a);
+    assert(a[0] == 32767);
+    rt_phonepad_move_axes(0, 1, a);
+    assert(a[1] == -32767);                               // up is SDL's negative y
+}

@@ -65,6 +65,7 @@ int rt_ios_phonepad_active(void);   // phonepad_ios.m
 #include "live_settings.h"
 #include "settings_menu_ios.h"
 #include "layout_sync_ios.h"
+#include "phone_controller_ios.h"
 
 int rt_ios_game_ui_visible(void);   // game_state.c
 extern _Atomic unsigned long rt_ios_frames;  // gl_ios.m : images présentées
@@ -324,6 +325,7 @@ typedef struct { long taps, fixes, reported; CGRect area; int fps, metal, lit, h
     SDL_Joystick *coopPad;    // touch as player 2 (round 23): the full virtual controller, also `pad` meanwhile
     Sint16 coopLook[2];       // its right stick (look)
     BOOL padRefused;          // création refusée : ne pas réessayer à chaque image
+    BOOL coopShown;           // round 26: a co-op map is loaded (the emote button shows)
     BOOL padButtons;          // round 26: the pad has buttons, the touch buttons press them (Left 4 Dead 2)
     BOOL padLog;              // P2_TOUCH_LOG=1: each touch button sent through the pad is logged
     Sint16 padAxes[2];        // dernières valeurs envoyées
@@ -687,6 +689,11 @@ static const CFTimeInterval kQuickLoadHold = 0.5;
     case RT_TOUCH_WEAPON_PREV: if (down) [self wheel:1]; break;
     case RT_TOUCH_WEAPON_NEXT: if (down) [self wheel:-1]; break;
     case RT_TOUCH_ZOOM: [self zoomTap]; break;   // pressed and released: a tap each (the game's zoom toggles)
+    // +mouse_menu_taunt as a command (Q held didn't open the menu in split-screen, iPad Pro);
+    // the finger aims (RT_TOUCH_AIM). Q if the engine takes no command.
+    case RT_TOUCH_EMOTE:
+        if (!rt_ios_game_command(down ? "+mouse_menu_taunt" : "-mouse_menu_taunt")) [self key:SDL_SCANCODE_Q down:down];
+        break;
     default: break;
     }
 }
@@ -860,6 +867,7 @@ static UIImage *icon_image(NSString *symbol, CGFloat point_size) {
         const rt_touch_button *t = &layout[i];
         if ((t->flags & RT_TOUCH_PORTAL) && !portal_buttons()) continue;
         if ((t->flags & RT_TOUCH_DATASET) && !rt_ios_backtap_dataset_on()) continue;
+        if ((t->flags & RT_TOUCH_COOP) && !coopShown) continue;   // round 26: gestures, co-op only
         double cx, cy, size;
         // The player's own place and size (Edit button layout), else the built-in one.
         rt_touch_place_custom(t, &custom.b[t->action], sizeScale, CGRectGetMinX(a), CGRectGetMinY(a), a.size.width,
@@ -987,6 +995,9 @@ static int controller_count(void) {
         fprintf(stderr, "[ios] manette virtuelle : détachée par le jeu, recréée\n");
         pad = NULL;
     }
+    // Round 26: the emote button comes and goes with co-op maps.
+    BOOL coop = rt_touch_coop_shown(rt_ios_game_kind(rt_ios_current_game()), rt_ios_level_map()) != 0;
+    if (coop != coopShown) { coopShown = coop; [self invalidateLayout]; }
     if ([self syncCoop]) return;
     if (rt_ios_touch_test_wasd()) padRefused = YES;   // essai témoin : touches W/A/S/D
     // A phone controller (phonepad_ios.m) takes the first slot when no real controller holds it.
@@ -1377,5 +1388,13 @@ void rt_ios_touch_controls_attach(SDL_Window *window) {
     controls.frame = host.bounds;
     [host addSubview:controls];
     [host addGestureRecognizer:[P2TouchWatcher new]];
+    // P2_PAD_PANEL_TEST_INGAME=1 (simulator checks, round 26): "Use as controller" over the
+    // game's window, for builds without the launcher (one game, no picker).
+    if (getenv("P2_PAD_PANEL_TEST_INGAME")) {
+        UIView *panel = rt_ios_phone_controller_panel(^{});
+        panel.frame = controls.bounds;
+        panel.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [controls addSubview:panel];   // the overlay is kept in front of SDL's views
+    }
 }
 #endif
