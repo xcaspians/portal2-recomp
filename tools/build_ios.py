@@ -41,7 +41,8 @@ ROOT = Path(__file__).resolve().parent.parent
 FRAMEWORKS = ['UIKit', 'Foundation', 'CoreGraphics', 'QuartzCore', 'OpenGLES', 'Metal', 'AVFoundation',
               'AudioToolbox', 'CoreAudio', 'CoreMotion', 'GameController', 'CoreHaptics', 'CoreBluetooth', 'OpenAL',
               'Security',   # Security: the Steam Web API key in the Keychain (runtime/ios/workshop_ios.m)
-              'Network', 'CoreImage']   # the phone controller's server and QR code (runtime/ios/phonepad_ios.m)
+              'Network', 'CoreImage',   # the phone controller's server and QR code (runtime/ios/phonepad_ios.m)
+              'WebKit']   # round 26: this iPhone as the controller, the page in a web view (runtime/ios/phone_controller_ios.m)
 # Frameworks de libd3d9metal en plus de ceux de l'app (otool -L de sa dylib iOS).
 D3D9METAL_FRAMEWORKS = ['MetalFX', 'CoreVideo', 'CoreFoundation']
 TARGETS = {
