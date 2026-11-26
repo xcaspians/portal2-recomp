@@ -265,6 +265,17 @@ void rt64_cpuid(CPU64 *c);
 // Native arm64 code called from lifted code (native64.c): System V arguments
 // moved to arm64 registers, x0/x1 and d0/d1 back as rax/rdx and xmm0/xmm1.
 void rt64_native_call(CPU64 *c, uint64_t fn);
+// Round 27 (native64.c): a native function's call signature, where the
+// registers alone can't tell. hidden_return: it returns a structure through a
+// pointer (rdi on x86-64, x8 on arm64). stack_args: integer arguments past the
+// eighth, with their sizes in bytes (1, 2, 4 or 8; 0 means 8).
+#define RT64_NATIVE_MAX_STACK 8
+typedef struct { int hidden_return; int stack_args; uint8_t stack_sizes[RT64_NATIVE_MAX_STACK]; } rt64_native_sig;
+int rt64_native_set_sig(uint64_t fn, const rt64_native_sig *sig);
+int rt64_native_set_vtable_sig(uint64_t object, int slot, const rt64_native_sig *sig);   // a C++ interface's method
+const rt64_native_sig *rt64_native_sig_of(uint64_t fn);
+size_t rt64_native_layout(const uint64_t gp[6], const uint64_t *guest_stack, const rt64_native_sig *sig, uint64_t ints[8],
+                          uint8_t *stack, size_t stack_cap, uint64_t *x8);
 int rt64_is_native(uint64_t address);   // an address in a dyld-loaded (native) image
 void rt64_syscall(CPU64 *c);                        // the SYSCALL instruction (posix64.c)
 RT64_ALWAYS_INLINE uint64_t rt64_get_rflags(CPU64 *c, const FL64 *f) {
