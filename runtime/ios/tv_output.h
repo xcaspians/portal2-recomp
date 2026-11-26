@@ -47,5 +47,7 @@ void rt_ios_tv_watch(void);
 void rt_ios_tv_refresh(void);
 void rt_ios_tv_poll(void);
 int rt_ios_tv_hz(void);
+// A UIView over the TV picture (top right), or NULL to remove it (round 23: the phone QR code).
+void rt_ios_tv_overlay(void *view);
 
 #endif

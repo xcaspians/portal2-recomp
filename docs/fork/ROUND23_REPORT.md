@@ -88,6 +88,36 @@ Tested on the iPad Pro; the iPad mini got installs only. Sauce is now
   Not built, as asked.
 - **Item 10:** see "Bug causes" above.
 
+### Item 9b: a phone as a controller, no app (added after the first report)
+
+| The panel on the iPad | The QR code on the TV (stand-in) |
+|---|---|
+| ![panel](round23/phone-panel.jpg) | ![tv](round23/phone-panel-tv.jpg) |
+
+- **How it works:**
+  - Gear menu > **Phone controller** shows a QR code and a 4-digit code, on the iPad and on the TV when one is connected.
+  - A friend scans it with the phone's camera on the same Wi-Fi and gets a page with Portal 2's controls: a stick under each thumb, blue and orange portals, jump, crouch, use, pause.
+  - Nothing to install, on iPhone or Android.
+- **Web app mode:**
+  - the page carries a web app manifest (full screen, landscape, Sauce's own drop icon) and the iPhone tags, so "Add to Home Screen" saves it as a full-screen app;
+  - a one-line hint on the page says how, and disappears once it's installed.
+- **Survives the iPad's IP changing:**
+  - Sauce registers its own Bonjour name, `sauce-XXXX.local` (four hex digits, fixed per iPad). iOS no longer lets apps read the device's own name, so the iPad's name couldn't be used.
+  - The QR code carries the IP, which every phone can open. The page then moves itself to the `.local` name when the phone can resolve it (iPhones do; most recent Androids do), so the saved home-screen app keeps working next time.
+  - Checked: the Mac resolves `sauce-29b8.local` to the Pro and the page answers on it.
+- **Safety:**
+  - the server starts only once you open the panel;
+  - it listens on Wi-Fi and wired networks, never cellular, and refuses any address that isn't local;
+  - it wants this session's code (a wrong code gets "403");
+  - **Kick phone** disconnects the phone and makes a new code, which the page then asks for.
+- **One phone or several: one.** Portal 2's co-op has two players, and with a controller or the iPad's touch as player 1, a second phone would have no player to drive. A second phone is told "busy" (tested).
+- **Who it controls:** the phone is a game controller plugged in after any real one.
+  - **Player 2 in co-op**, with a controller or the iPad's touch as player 1.
+  - **Player 1 when nothing else plays:** tested in `sp_a1_intro3`, it walked the player about 425 units in 3 seconds.
+  - Same caveat as item 9: whether split-screen gives a controller in the second slot to player 2 needs your test with a real phone.
+- **Input lag over Wi-Fi:** measured with the same pings the page sends, the Mac standing in for a phone (60 pings): **3.8 ms round trip at the median**, 3.3 ms best, 112 ms at the 95th percentile and 157 ms worst. The bursts are Wi-Fi power saving; a real phone on Wi-Fi will add a little. The page shows its round trip, and Sauce logs it ("aller-retour").
+- **Tools:** `tools/phonepad_probe.py` stands in for a phone (page, wrong code, round trips, walking).
+
 ## Part C: P2CE piece D (the Steam connection)
 
 The Steam connection now works, and the engine opens.
@@ -136,21 +166,20 @@ Tool: `tools/tvos_probe.sh`; numbers in `docs/fork/APPLETV_RESEARCH.md` section 
 ## Part E: devices and housekeeping
 
 - **iPad mini:**
-  - saves backed up (6 saves) and Sauce 0.6.0-fork.1 installed;
+  - saves backed up (6 saves) and Sauce installed, with the phone controller;
   - the old Half-Life 2 and L4D2 apps are gone, as you said;
-  - **L4D2's data isn't copied yet:** the mini didn't answer the free-space check (probably locked), and I won't push 16 GB blind. It's under Needs Caspian.
+  - once it answered (55.9 GB free), L4D2's data went into Sauce (install only, nothing launched).
 - **iPhone:** backup taken, then Sauce installed.
 - **iPad Pro:** Sauce installed (backup first).
 - **Backlog:** Left 4 Dead (1) added to `Prompts/backlog.md` (do not build yet).
 - **Version:** Sauce 0.6.0-fork.1 (the gear menu's last line).
-- **Item 9b (phone as controller):** **not in the prompt file.** `Prompts/23-sauce-launcher-tv-coop.md` has items 1–15, and Part B stops at 10. The only mention is the backlog's one line. Send the 9b text and I'll build it.
+- **Item 9b (phone as controller):** built after you added it to the prompt; see Part B.
 
 ## Needs Caspian
 
-1. **Item 9b:** the phone-as-controller web app isn't in `Prompts/23` on disk. Paste it and I'll build it.
-2. **iPad mini:** unlock it with the cable in and tell me, and I'll copy L4D2's 16 GB into Sauce. Or run `tools/ios_device.sh --game l4d2 data` with `P2_DEVICE` set to the mini.
-3. **Co-op with one controller** (first checklist item below): tell me whether player 2 moves with touch.
-4. **The Apple TV port:** the probe settles the numbers. Say if you want round 1 of the port (Portal first).
+1. **Co-op with one controller** (first checklist item below): tell me whether player 2 moves with touch, and with a phone.
+2. **A real phone:** scan the QR code from an iPhone and an Android, add it to the home screen, then reopen it the next day. It should still find the iPad.
+3. **The Apple TV port:** the probe settles the numbers. Say if you want round 1 of the port (Portal first).
 
 ## Hand re-test checklist (iPad Pro first)
 
@@ -163,4 +192,8 @@ Tool: `tools/tvos_probe.sh`; numbers in `docs/fork/APPLETV_RESEARCH.md` section 
 3. **TV without a controller:** plug into the monitor or TV. The game goes to the TV and the iPad shows the touch buttons over black; play by touch.
 4. **TV with a controller:** the iPad shows "Playing on TV". Set gear menu > TV > Touch controls > Always on, and the buttons come back on the iPad.
 5. **AirPlay:** a circle on screen (the portal gun's crosshair ring, or a round light) stays round.
-6. **Mini:** after L4D2's copy, the Left 4 Dead series shows it installed.
+6. **Phone controller:** gear menu > Phone controller, scan with a phone:
+   - walk, look and use both portals;
+   - Add to Home Screen, then reopen it from there;
+   - press Kick phone: the page asks for the new code.
+7. **Mini:** the Left 4 Dead series shows L4D2 installed.

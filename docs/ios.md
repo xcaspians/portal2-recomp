@@ -621,6 +621,34 @@ were locked for the last run of this checkout, so the app was not exercised
 again. Same experimental status as the Mac app
 ([portal1.md](portal1.md#what-was-tested)).
 
+## A phone as a controller (fork, round 23)
+
+Gear menu > **Phone controller** shows a QR code (on the iPad, and on the TV
+when one is connected) and a 4-digit code. A friend scans it with the phone's
+camera, on the same Wi-Fi, and gets a page with Portal 2's controls: a stick
+under each thumb, both portals, jump, crouch, use, pause. Nothing to install,
+on iPhone or Android. Share > **Add to Home Screen** (Android: Install app)
+keeps it as a full-screen landscape app.
+
+- **Who it controls:** the phone is a game controller plugged in after any
+  real one: player 2 in co-op with a controller (or the iPad's touch) as
+  player 1, player 1 when nothing else plays. **One phone at a time:**
+  Portal 2's co-op has two players, so a second phone is told "busy".
+- **Safety:** the server runs only once the panel has been opened, on Wi-Fi
+  and wired networks (never cellular), answers local addresses only, and
+  wants this session's code. **Kick phone** disconnects it and makes a new
+  code (the page asks for it).
+- **Addresses:** the QR code carries the iPad's IP (any phone resolves it);
+  the page then moves to `sauce-XXXX.local`, a name Sauce registers with
+  Bonjour, so a saved home-screen app keeps working when the iPad's IP
+  changes. A phone that can't resolve `.local` stays on the IP.
+- **Input lag** (measured from a Mac on the same network, `tools/phonepad_probe.py`):
+  3.8 ms round trip at the median, about 110 ms at the 95th percentile (Wi-Fi
+  power-saving bursts). The page shows its own round trip; Sauce logs it.
+- Code: `runtime/ios/phonepad.c` (rules, checked), `phonepad_ios.m`
+  (server, Bonjour name, QR panel, the virtual controller), `ios/phonepad/`
+  (the page). Port `P2_PHONEPAD_PORT` (8017).
+
 ## Sauce: one app for every game (fork, round 19)
 
 Since round 19 every game lives in **one app, Sauce** (its home-screen name;

@@ -16,6 +16,10 @@
 #import <GameController/GameController.h>
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
+#include "tv_output.h"
+UIView *rt_ios_phonepad_panel(void (^close)(void));   // phonepad_ios.m
+NSString *rt_ios_phonepad_url(void);
+#import <CoreImage/CoreImage.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,7 +45,7 @@ static int menu_open, closing_hold;
 int rt_ios_settings_menu_captures_pad(void) { return menu_open || closing_hold; }
 int rt_ios_settings_menu_open(void) { return menu_open; }
 
-typedef enum { ROW_SETTING, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED, ROW_SWITCH_GAME, ROW_CALIBRATE,
+typedef enum { ROW_SETTING, ROW_PHONE, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED, ROW_SWITCH_GAME, ROW_CALIBRATE,
                ROW_EDIT_LAYOUT } RowKind;
 
 @interface P2MenuRow : NSObject
@@ -246,6 +250,7 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
     [self addSection:@""];
     [self addResetRow];
     if (rt_ios_has_game_choice()) [self addSwitchGameRow];
+    [self addPhoneRow];   // round 23 item 9b
     [rows addObject:close];   // last in controller order, first on screen
     // "Sauce 0.4.0-fork.3 (abc1234) · Half-Life 2": the app, its version, the running game (round 19).
     NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"P2ForkVersion"] ?: @"unknown";
@@ -576,6 +581,56 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     fprintf(stderr, "[ios] jeux : changer de jeu, l'app se ferme\n");
     exit(0);
 }
+// A phone as a controller (phonepad_ios.m): the QR code panel over the menu,
+// and on the TV while it is open.
+- (void)addPhoneRow {
+    P2MenuRow *row = [P2MenuRow new];
+    row.kind = ROW_PHONE;
+    __weak P2SettingsMenu *weakSelf = self;
+    UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
+    conf.title = @"Phone controller";
+    conf.subtitle = @"Scan a QR code: a phone becomes a controller";
+    conf.image = [UIImage systemImageNamed:@"iphone.radiowaves.left.and.right"];
+    conf.imagePadding = 6;
+    conf.baseForegroundColor = UIColor.whiteColor;
+    conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+        (void)a; [weakSelf showPhonePanel];
+    }]];
+    row.view = row.button;
+    row.view.layer.cornerRadius = 12;
+    [row.button.heightAnchor constraintGreaterThanOrEqualToConstant:48].active = YES;
+    [stack addArrangedSubview:row.button];
+    [rows addObject:row];
+}
+- (void)showPhonePanel {
+    __block UIView *shade = [[UIView alloc] initWithFrame:self.bounds];
+    shade.backgroundColor = [UIColor colorWithWhite:0 alpha:.55];
+    shade.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    UIView *phonePanel = rt_ios_phonepad_panel(^{ [shade removeFromSuperview]; rt_ios_tv_overlay(NULL); });
+    phonePanel.translatesAutoresizingMaskIntoConstraints = NO;
+    [shade addSubview:phonePanel];
+    [NSLayoutConstraint activateConstraints:@[[phonePanel.centerXAnchor constraintEqualToAnchor:shade.centerXAnchor],
+                                              [phonePanel.centerYAnchor constraintEqualToAnchor:shade.centerYAnchor],
+                                              [phonePanel.widthAnchor constraintLessThanOrEqualToConstant:440]]];
+    [self addSubview:shade];
+    NSString *url = rt_ios_phonepad_url();
+    if (url && rt_ios_tv_hz() > 0) {   // the QR code on the TV too
+        CIFilter *f = [CIFilter filterWithName:@"CIQRCodeGenerator"];
+        [f setValue:[url dataUsingEncoding:NSUTF8StringEncoding] forKey:@"inputMessage"];
+        CIImage *img = [f.outputImage imageByApplyingTransform:CGAffineTransformMakeScale(12, 12)];
+        CGImageRef cg = img ? [[CIContext context] createCGImage:img fromRect:img.extent] : NULL;
+        if (cg) {
+            UIImageView *v = [[UIImageView alloc] initWithImage:[UIImage imageWithCGImage:cg]];
+            CGImageRelease(cg);
+            v.backgroundColor = UIColor.whiteColor;
+            v.contentMode = UIViewContentModeScaleAspectFit;
+            v.layer.magnificationFilter = kCAFilterNearest;
+            v.layer.cornerRadius = 12; v.clipsToBounds = YES;
+            rt_ios_tv_overlay((__bridge void *)v);
+        }
+    }
+}
 - (void)addResetRow {
     P2MenuRow *row = [P2MenuRow new];
     row.kind = ROW_RESET;
@@ -803,6 +858,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     case ROW_RESET: [self resetPressed]; return;
     case ROW_RECOMMENDED: [self useRecommended]; return;
     case ROW_SWITCH_GAME: [self switchGamePressed:nil]; return;
+    case ROW_PHONE: [self showPhonePanel]; return;   // a controller's A on the row
     case ROW_CALIBRATE: [self openCalibration]; return;
     case ROW_EDIT_LAYOUT: [self openEditor]; return;
     case ROW_MAP: [self startMap:row]; return;
@@ -872,9 +928,15 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     if (auto_open < 0) {
         const char *e = getenv("P2_SETTINGS_MENU_OPEN");
         auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : !strcmp(e, "display") || !strcmp(e, "end") ? 3
-                  : !strcmp(e, "main") || !strcmp(e, "main-end") ? 4 : !strcmp(e, "editor") ? 5 : 0;
+                  : !strcmp(e, "main") || !strcmp(e, "main-end") ? 4 : !strcmp(e, "editor") ? 5
+                  : !strcmp(e, "phone") ? 6 : 0;
     }
     // In a level's pause menu, as before; =main: on the main menu (no level).
+    if (auto_open == 6 && !gear.hidden && !rt_ios_game_in_level()) {   // =phone: the phone controller's QR panel
+        auto_open = 0;
+        [self openMenu];
+        [self showPhonePanel];
+    }
     if (auto_open == 5 && !gear.hidden && !rt_ios_game_in_level()) {   // =editor: the layout editor, on the main menu
         auto_open = 0;
         [self openMenu];

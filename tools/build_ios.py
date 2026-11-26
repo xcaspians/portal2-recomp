@@ -40,7 +40,8 @@ import localconfig
 ROOT = Path(__file__).resolve().parent.parent
 FRAMEWORKS = ['UIKit', 'Foundation', 'CoreGraphics', 'QuartzCore', 'OpenGLES', 'Metal', 'AVFoundation',
               'AudioToolbox', 'CoreAudio', 'CoreMotion', 'GameController', 'CoreHaptics', 'CoreBluetooth', 'OpenAL',
-              'Security']   # Security: the Steam Web API key in the Keychain (runtime/ios/workshop_ios.m)
+              'Security',   # Security: the Steam Web API key in the Keychain (runtime/ios/workshop_ios.m)
+              'Network', 'CoreImage']   # the phone controller's server and QR code (runtime/ios/phonepad_ios.m)
 # Frameworks de libd3d9metal en plus de ceux de l'app (otool -L de sa dylib iOS).
 D3D9METAL_FRAMEWORKS = ['MetalFX', 'CoreVideo', 'CoreFoundation']
 TARGETS = {
@@ -145,6 +146,8 @@ def main():
     (app / 'Info.plist').write_text(plist)
     # Page du jeu dans l'app Réglages d'iOS (lue par runtime/ios/settings.c).
     shutil.copytree(ROOT / 'ios/Settings.bundle', app / 'Settings.bundle', dirs_exist_ok=True)
+    # The phone controller's web page (runtime/ios/phonepad_ios.m, round 23 item 9b).
+    shutil.copytree(ROOT / 'ios/phonepad', app / 'phonepad', dirs_exist_ok=True)
     # Défauts par appareil (runtime/ios/device_defaults.c), lus au lancement.
     shutil.copy2(ROOT / 'ios/device_defaults.txt', app / 'device_defaults.txt')
     settings_for_game(app / 'Settings.bundle/Root.plist', game['name'])
