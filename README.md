@@ -11,7 +11,6 @@ included, everything is built on your machine from the games you own.
 [![CI](https://github.com/xcaspians/portal2-recomp/actions/workflows/ci.yml/badge.svg)](https://github.com/xcaspians/portal2-recomp/actions/workflows/ci.yml)
 ![Platforms](https://img.shields.io/badge/platforms-iPadOS%20%7C%20iOS%20%7C%20macOS-blue)
 ![Apple silicon](https://img.shields.io/badge/Apple%20silicon-native-success)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-xcaspians-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/xcaspians)
 
 <p>
   <img src="docs/images/sauce-launcher.jpg" alt="The Sauce launcher on iPad Pro: Continue, then the Portal, Half-Life and Left 4 Dead series" width="49%">
@@ -43,8 +42,7 @@ included, everything is built on your machine from the games you own.
 ## About this fork
 
 I'm a hobbyist. I don't write this code by hand: I direct an AI coding assistant (Claude) that writes, tests
-and documents it, and I decide what gets built and test it on my own devices. If you'd like to support it,
-there's [Buy Me a Coffee](https://buymeacoffee.com/xcaspians).
+and documents it, and I decide what gets built and test it on my own devices.
 
 > Unofficial fan project, not affiliated with or endorsed by Valve. Portal, Portal 2, Half-Life, Left 4 Dead,
 > Steam and Source are trademarks of Valve Corporation. **Never attach game files** (or apps and generated
