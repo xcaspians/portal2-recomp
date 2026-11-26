@@ -62,3 +62,20 @@ extra round.
   Generated C and compile time will grow; round B's splitting and caching
   matter.
 - **iOS memory:** a 64-bit engine plus V8 plus Metal on a 4 GB iPad is tight.
+
+## Round 28 (26 Nov 2026): past Steam, stopped by the link size
+
+With the Steam client healthy again (its background service had stopped at 4:26 that morning), `make
+p2ce-launch` gets past `SteamInternal_SteamAPI_Init ok (app 440000)`. The launcher then loads its systems one
+by one:
+
+- **video_services:** lifted and added to `P2CE_SYSTEMS`. The next stop is `richpresence`: "Unable to load
+  interface RichPresenceInterface001".
+- **The rest of the launcher's list** all lift with no traps: richpresence, toolframework, vguimatsurface,
+  workshop, panorama (1.3 M instructions) and panoramauiclient.
+- **But one executable holding them no longer links.** `ld: B/BL out of range (max is +/-128MB)` at a branch
+  island. With panorama the code reaches about 1 GB of displacement; even without it, 237 MB.
+- **Next step (needs Caspian's OK):** link each lifted module as its own dylib (as the real engine has its
+  own .so files) and resolve calls between them through the existing module table, or split the text into
+  separately linked groups. Then continue to the console banner.
+
