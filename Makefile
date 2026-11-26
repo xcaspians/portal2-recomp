@@ -221,10 +221,16 @@ p2ce-modules-check: $(X64_RUNTIME) runtime/x64/rt64.h tests/x64_modules_live.c t
 # libsteam_api.dylib (runtime/x64/steam64.c, round 23), with Steam running.
 # Round 27: the engine's systems, with the empty renderer (-shaderapi shaderapiempty)
 # until the renderer is decided (docs/fork/P2CE_RENDERER_DECISION.md).
+# Round 28: video_services (the launcher stops without it). The launcher also
+# loads richpresence, toolframework, vguimatsurface, workshop, panorama and
+# panoramauiclient: they lift, but one executable holding them all no longer
+# links (arm64 branches reach +/-128 MB), so they wait for a split into
+# libraries (docs/fork/P2CE_PLAN.md).
 P2CE_SYSTEMS ?= bin/linux64/shaderapiempty.so bin/linux64/inputsystem.so bin/linux64/materialsystem.so \
 	bin/linux64/datacache.so bin/linux64/studiorender.so bin/linux64/vphysics.so bin/linux64/vphysics_jolt.so \
 	bin/linux64/engineaudio.so bin/linux64/soundemittersystem.so bin/linux64/scriptsystem.so bin/linux64/vscript.so \
-	bin/linux64/localize.so bin/linux64/scenefilecache.so bin/linux64/vgui2.so
+	bin/linux64/localize.so bin/linux64/scenefilecache.so bin/linux64/vgui2.so \
+	bin/linux64/video_services.so
 P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/libtier0.so \
 	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/launcher.so \
 	bin/linux64/filesystem_stdio.so bin/linux64/engine.so $(P2CE_SYSTEMS)
