@@ -17,6 +17,7 @@
 #import <CoreImage/CoreImage.h>
 #import <Network/Network.h>
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #include <SDL.h>
 #include <arpa/inet.h>
 #include <dns_sd.h>
@@ -38,7 +39,9 @@ static char code[5];
 static char ip[64], local_name[64];
 static int port;
 static SDL_Joystick *phone_pad;
-static Sint16 axes[SDL_CONTROLLER_AXIS_MAX];
+static rt_phone_pad want, sent;   // what the phone holds, what SDL has (phonepad.c)
+static _Atomic double last_heard;   // CACurrentMediaTime of the phone's last message (pings every second)
+static dispatch_source_t watchdog;
 static DNSServiceRef dns;
 static double last_rtt = -1;
 static char last_status[96] = "Not running";
@@ -66,8 +69,16 @@ static void pad_on(void) {
     if (phone_pad || !SDL_WasInit(SDL_INIT_GAMECONTROLLER)) return;
     phone_connected = 1;
     rt_ios_touch_sync_pads();   // the touch controls give up the first slot when nothing else holds it
+    // Tests (P2_PHONEPAD_TEST_SLOT1=1): a stand-in for a real controller in the first slot,
+    // so the phone is player 2, as with a controller as player 1.
+    static SDL_Joystick *stand_in;
+    if (!stand_in && getenv("P2_PHONEPAD_TEST_SLOT1")) {
+        stand_in = create_pad();
+        fprintf(stderr, "[ios] manette téléphone : manette témoin au premier rang (%s)\n", stand_in ? "ok" : SDL_GetError());
+    }
     phone_pad = create_pad();
-    memset(axes, 0, sizeof(axes));
+    rt_phonepad_pad_rest(&want);   // SDL's own rest: sticks centred, triggers at the minimum
+    sent = want;
     fprintf(stderr, "[ios] manette téléphone : %s\n", phone_pad ? "branchée" : SDL_GetError());
 }
 static void pad_off(void) {
@@ -81,26 +92,60 @@ static void pad_off(void) {
     rt_ios_touch_sync_pads();
     fprintf(stderr, "[ios] manette téléphone : débranchée\n");
 }
-static void pad_axis(int axis, Sint16 v) {
-    if (phone_pad && axes[axis] != v) { axes[axis] = v; SDL_JoystickSetVirtualAxis(phone_pad, axis, v); }
+// Everything that differs between what the phone holds and what SDL has.
+static void sync_pad(void) {
+    if (!phone_pad) return;
+    for (int a = 0; a < 6; ++a)
+        if (want.axes[a] != sent.axes[a]) { sent.axes[a] = want.axes[a]; SDL_JoystickSetVirtualAxis(phone_pad, a, want.axes[a]); }
+    for (int b = 0; b < 32; ++b)
+        if (((want.buttons ^ sent.buttons) >> b) & 1u)
+            SDL_JoystickSetVirtualButton(phone_pad, b, (want.buttons >> b) & 1u ? SDL_PRESSED : SDL_RELEASED);
+    sent.buttons = want.buttons;
+}
+// P2_PHONEPAD_TRACE=1: 0.2 s after each trigger change, what the game reads (tests).
+static void trace_triggers(const char *why) {
+    static int on = -1;
+    if (on < 0) on = getenv("P2_PHONEPAD_TRACE") != NULL;
+    if (!on) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 5), dispatch_get_main_queue(), ^{
+        SDL_GameController *gc = phone_pad ? SDL_GameControllerFromInstanceID(SDL_JoystickInstanceID(phone_pad)) : NULL;
+        int slot = -1;
+        for (int i = 0; i < SDL_NumJoysticks(); ++i)
+            if (SDL_JoystickGetDeviceInstanceID(i) == SDL_JoystickInstanceID(phone_pad)) slot = i;
+        if (gc) fprintf(stderr, "[ios] manette téléphone : gâchettes lues par le jeu %d / %d (%s ; rang %d, joueur SDL %d)\n",
+                        SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_TRIGGERLEFT),
+                        SDL_GameControllerGetAxis(gc, SDL_CONTROLLER_AXIS_TRIGGERRIGHT), why, slot,
+                        SDL_GameControllerGetPlayerIndex(gc));
+    });
 }
 static void apply(const rt_phone_message *m) {
     if (!phone_pad) return;
-    switch (m->kind) {
-    case RT_PHONE_MOVE:
-        pad_axis(SDL_CONTROLLER_AXIS_LEFTX, rt_phonepad_axis(m->x, 0));
-        pad_axis(SDL_CONTROLLER_AXIS_LEFTY, rt_phonepad_axis(m->y, 1));
-        break;
-    case RT_PHONE_LOOK:
-        pad_axis(SDL_CONTROLLER_AXIS_RIGHTX, rt_phonepad_axis(m->x, 0));
-        pad_axis(SDL_CONTROLLER_AXIS_RIGHTY, rt_phonepad_axis(m->y, 1));
-        break;
-    case RT_PHONE_BUTTON:
-        if (m->button >= 0) SDL_JoystickSetVirtualButton(phone_pad, m->button, m->down ? SDL_PRESSED : SDL_RELEASED);
-        if (m->trigger >= 0) pad_axis(m->trigger, m->down ? 32767 : 0);
-        break;
-    default: break;
-    }
+    rt_phonepad_pad_apply(&want, m);
+    sync_pad();
+    if (m->trigger >= 0) trace_triggers(m->down ? "appui" : "relâché");
+}
+// Round 24 safety net: let go of everything the phone holds (quiet phone, the
+// iPad's app going inactive, the page hidden).
+static void release_all(const char *why) {
+    if (!phone_pad || !rt_phonepad_pad_held(&want)) return;
+    rt_phonepad_pad_rest(&want);
+    sync_pad();
+    fprintf(stderr, "[ios] manette téléphone : tout relâché (%s)\n", why);
+    trace_triggers(why);
+}
+static void start_watchdog(void) {
+    if (watchdog) return;
+    double quiet = rt_ios_env_float("P2_PHONEPAD_QUIET", 2.5f, 0.5f);   // seconds without a message (pings: 1 s)
+    watchdog = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    dispatch_source_set_timer(watchdog, DISPATCH_TIME_NOW, NSEC_PER_SEC / 4, NSEC_PER_SEC / 20);
+    dispatch_source_set_event_handler(watchdog, ^{
+        if (phone_pad && CACurrentMediaTime() - last_heard > quiet) release_all("plus de nouvelles du téléphone");
+    });
+    dispatch_resume(watchdog);
+    [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationWillResignActiveNotification object:nil
+                                                     queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
+        (void)n; release_all("Sauce en arrière-plan");
+    }];
 }
 
 // ---- the network ----
@@ -145,6 +190,7 @@ static void ws_loop(nw_connection_t c, NSMutableData *buffer) {
             if (used < 0 || op == 8) { nw_connection_cancel(c); return; }
             [buffer replaceBytesInRange:NSMakeRange(0, (NSUInteger)used) withBytes:NULL length:0];
             if (op != 1) continue;
+            last_heard = CACurrentMediaTime();
             if (!strncmp(text, "r ", 2)) {   // the phone's measured round trip (ms)
                 last_rtt = atof(text + 2);
                 static int logged;
@@ -207,7 +253,8 @@ static void handle(nw_connection_t c, NSMutableData *buffer) {
             phone = c;
             set_status("Phone connected");
             fprintf(stderr, "[ios] manette téléphone : connectée\n");
-            dispatch_async(dispatch_get_main_queue(), ^{ pad_on(); });
+            last_heard = CACurrentMediaTime();
+            dispatch_async(dispatch_get_main_queue(), ^{ pad_on(); start_watchdog(); });
             ws_loop(c, [NSMutableData data]);
             return;
         }
@@ -287,7 +334,7 @@ static void register_name(struct in_addr address) {
 
 void rt_ios_phonepad_start(void) {
     if (listener) return;
-    queue = dispatch_queue_create("phonepad", DISPATCH_QUEUE_SERIAL);
+    if (!queue) queue = dispatch_queue_create("phonepad", DISPATCH_QUEUE_SERIAL);
     rt_phonepad_code(arc4random_uniform(10000), code);
     port = (int)rt_ios_env_float("P2_PHONEPAD_PORT", 8017, 1024);
     struct in_addr raw = {0};
@@ -309,6 +356,19 @@ void rt_ios_phonepad_start(void) {
     });
     nw_listener_start(listener);
     fprintf(stderr, "[ios] manette téléphone : http://%s:%d/?code=%s\n", ip, port, code);
+}
+// The panel closed before any phone connected: pairing stops; the next opening
+// starts again with a new code. A connected phone keeps playing.
+void rt_ios_phonepad_stop_if_idle(void) {
+    if (!queue || getenv("P2_PHONEPAD")) return;   // P2_PHONEPAD: the server from launch (tests)
+    dispatch_sync(queue, ^{   // done before the panel can open again (never waits on the main thread)
+        if (phone || !listener) return;
+        nw_listener_cancel(listener);
+        listener = nil;
+        if (dns) { DNSServiceRefDeallocate(dns); dns = NULL; }
+        snprintf(last_status, sizeof(last_status), "Not running");
+        fprintf(stderr, "[ios] manette téléphone : appairage annulé (fenêtre fermée sans téléphone)\n");
+    });
 }
 void rt_ios_phonepad_kick(void) {
     if (!queue) return;
@@ -337,9 +397,19 @@ static UIImage *qr(NSString *text, CGFloat size) {
 NSString *rt_ios_phonepad_url(void) {
     return ip[0] ? [NSString stringWithFormat:@"http://%s:%d/?code=%s", ip, port, code] : nil;
 }
+// The panel stops listening for changes once it leaves the screen, however it was closed.
+@interface P2PhonePanel : UIView
+@property(nonatomic, strong) id observer;
+@end
+@implementation P2PhonePanel
+- (void)willMoveToWindow:(UIWindow *)window {
+    if (!window && self.observer) { [NSNotificationCenter.defaultCenter removeObserver:self.observer]; self.observer = nil; }
+}
+@end
+
 UIView *rt_ios_phonepad_panel(void (^close)(void)) {
     rt_ios_phonepad_start();
-    UIView *panel = [UIView new];
+    P2PhonePanel *panel = [P2PhonePanel new];
     panel.backgroundColor = [UIColor colorWithWhite:.06 alpha:.97];
     panel.layer.cornerRadius = 22;
     UIStackView *s = [UIStackView new];
@@ -385,9 +455,9 @@ UIView *rt_ios_phonepad_panel(void (^close)(void)) {
         if (now) image.image = qr(now, 220);
     };
     refresh();
-    __block id observer = [NSNotificationCenter.defaultCenter addObserverForName:@"P2PhonePadChanged" object:nil
-                                                                          queue:NSOperationQueue.mainQueue
-                                                                     usingBlock:^(NSNotification *n) { (void)n; refresh(); }];
+    panel.observer = [NSNotificationCenter.defaultCenter addObserverForName:@"P2PhonePadChanged" object:nil
+                                                                     queue:NSOperationQueue.mainQueue
+                                                                usingBlock:^(NSNotification *n) { (void)n; refresh(); }];
     [s addArrangedSubview:state];
     UIStackView *buttons = [UIStackView new];
     buttons.spacing = 10;
@@ -400,10 +470,25 @@ UIView *rt_ios_phonepad_panel(void (^close)(void)) {
     done.title = @"Done";
     [buttons addArrangedSubview:[UIButton buttonWithConfiguration:done primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
         (void)a;
-        [NSNotificationCenter.defaultCenter removeObserver:observer];
         if (close) close();
     }]]];
     [s addArrangedSubview:buttons];
+    // Round 24: a close button in the corner too (touch); a controller's A or B also closes it.
+    UIButtonConfiguration *x = [UIButtonConfiguration plainButtonConfiguration];
+    x.image = [UIImage systemImageNamed:@"xmark.circle.fill"
+                      withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:28]];
+    x.baseForegroundColor = [UIColor colorWithWhite:1 alpha:.75];
+    UIButton *xButton = [UIButton buttonWithConfiguration:x primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+        (void)a;
+        if (close) close();
+    }]];
+    xButton.accessibilityLabel = @"Close";
+    xButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:xButton];
+    [NSLayoutConstraint activateConstraints:@[[xButton.topAnchor constraintEqualToAnchor:panel.topAnchor constant:6],
+                                              [xButton.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-6],
+                                              [xButton.widthAnchor constraintEqualToConstant:44],
+                                              [xButton.heightAnchor constraintEqualToConstant:44]]];
     return panel;
 }
 #endif

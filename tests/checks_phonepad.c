@@ -61,3 +61,28 @@ RT_CHECK(phonepad_controller_messages) {
     assert(!rt_phonepad_parse("b fly 1", &m) && !rt_phonepad_parse("m nan 0", &m) && !rt_phonepad_parse("", &m));
     assert(rt_phonepad_axis(1, 0) == 32767 && rt_phonepad_axis(1, 1) == -32767 && rt_phonepad_axis(0, 0) == 0);
 }
+
+// Round 24 bug 2: fire released from the phone, or from touch as player 2,
+// must read as released (SDL's virtual trigger rests at -32768; 0 was half
+// pressed and kept the portal gun firing in split-screen co-op).
+RT_CHECK(phonepad_trigger_release_player2) {
+    assert(rt_pad_trigger_seen(rt_pad_trigger_axis(1)) == 32767);
+    assert(rt_pad_trigger_seen(rt_pad_trigger_axis(0)) == 0);
+    assert(rt_pad_trigger_seen(0) > 16000);   // the old release value: half pressed
+    // The player-2 pad (the phone's controller after a real one): press, release, nothing further.
+    rt_phone_pad p2; rt_phone_message m;
+    rt_phonepad_pad_rest(&p2);
+    assert(!rt_phonepad_pad_held(&p2));
+    assert(rt_phonepad_parse("b blue 1", &m)); rt_phonepad_pad_apply(&p2, &m);
+    assert(rt_pad_trigger_seen(p2.axes[5]) == 32767 && rt_phonepad_pad_held(&p2));
+    assert(rt_phonepad_parse("b blue 0", &m)); rt_phonepad_pad_apply(&p2, &m);
+    assert(rt_pad_trigger_seen(p2.axes[5]) == 0 && !rt_phonepad_pad_held(&p2));
+    assert(rt_phonepad_parse("b blue 0", &m)); rt_phonepad_pad_apply(&p2, &m);   // a second release changes nothing
+    assert(!rt_phonepad_pad_held(&p2));
+    // Safety net: everything held, then "x" (page to the background) or a quiet phone: all released.
+    const char *held[] = {"b orange 1", "b jump 1", "m 0 1", "l 0.5 0"};
+    for (int i = 0; i < 4; ++i) { assert(rt_phonepad_parse(held[i], &m)); rt_phonepad_pad_apply(&p2, &m); }
+    assert(rt_phonepad_pad_held(&p2) && p2.buttons == 1u);
+    assert(rt_phonepad_parse("x", &m) && m.kind == RT_PHONE_RELEASE); rt_phonepad_pad_apply(&p2, &m);
+    assert(!rt_phonepad_pad_held(&p2) && rt_pad_trigger_seen(p2.axes[4]) == 0);
+}

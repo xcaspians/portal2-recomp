@@ -128,6 +128,7 @@ size_t rt_phonepad_ws_text(const char *text, uint8_t *out, size_t cap) {
 int rt_phonepad_parse(const char *text, rt_phone_message *m) {
     memset(m, 0, sizeof(*m));
     m->button = m->trigger = -1;
+    if (text && !strcmp(text, "x")) { m->kind = RT_PHONE_RELEASE; return 1; }
     if (!text || !text[0] || text[1] != ' ') return 0;
     if (text[0] == 'm' || text[0] == 'l') {
         double x, y;
@@ -161,4 +162,31 @@ int rt_phonepad_parse(const char *text, rt_phone_message *m) {
 int16_t rt_phonepad_axis(double value, int is_y) {
     double v = fmax(-1, fmin(1, value)) * (is_y ? -1 : 1);
     return (int16_t)lround(v * 32767);
+}
+
+int rt_pad_trigger_axis(int down) { return down ? RT_PAD_TRIGGER_DOWN : RT_PAD_TRIGGER_UP; }
+int rt_pad_trigger_seen(int v) { return (int)(((long)v + 32768) * 32767 / 65535); }
+
+void rt_phonepad_pad_rest(rt_phone_pad *p) {
+    memset(p, 0, sizeof(*p));
+    p->axes[4] = p->axes[5] = RT_PAD_TRIGGER_UP;   // SDL_CONTROLLER_AXIS_TRIGGERLEFT, TRIGGERRIGHT
+}
+void rt_phonepad_pad_apply(rt_phone_pad *p, const rt_phone_message *m) {
+    switch (m->kind) {
+    case RT_PHONE_MOVE: p->axes[0] = rt_phonepad_axis(m->x, 0); p->axes[1] = rt_phonepad_axis(m->y, 1); break;
+    case RT_PHONE_LOOK: p->axes[2] = rt_phonepad_axis(m->x, 0); p->axes[3] = rt_phonepad_axis(m->y, 1); break;
+    case RT_PHONE_BUTTON:
+        if (m->button >= 0 && m->button < 32) {
+            if (m->down) p->buttons |= 1u << m->button; else p->buttons &= ~(1u << m->button);
+        }
+        if (m->trigger == 4 || m->trigger == 5) p->axes[m->trigger] = (int16_t)rt_pad_trigger_axis(m->down);
+        break;
+    case RT_PHONE_RELEASE: rt_phonepad_pad_rest(p); break;
+    default: break;
+    }
+}
+int rt_phonepad_pad_held(const rt_phone_pad *p) {
+    rt_phone_pad rest;
+    rt_phonepad_pad_rest(&rest);
+    return memcmp(p, &rest, sizeof(rest)) != 0;
 }

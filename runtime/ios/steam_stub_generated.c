@@ -394,7 +394,6 @@ EXPORT void SteamAPI_ISteamMatchmaking_AddRequestLobbyListNearValueFilter(void *
 EXPORT void SteamAPI_ISteamMatchmaking_AddRequestLobbyListNumericalFilter(void *a0, const char *a1, int32_t a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3;  }
 EXPORT void SteamAPI_ISteamMatchmaking_AddRequestLobbyListResultCountFilter(void *a0, int32_t a1) { (void)a0; (void)a1;  }
 EXPORT void SteamAPI_ISteamMatchmaking_AddRequestLobbyListStringFilter(void *a0, const char *a1, const char *a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3;  }
-EXPORT uint64_t SteamAPI_ISteamMatchmaking_CreateLobby(void *a0, int32_t a1, int32_t a2) { (void)a0; (void)a1; (void)a2; return 0; }
 EXPORT bool SteamAPI_ISteamMatchmaking_DeleteLobbyData(void *a0, uint64_t a1, const char *a2) { (void)a0; (void)a1; (void)a2; return false; }
 EXPORT bool SteamAPI_ISteamMatchmaking_GetFavoriteGame(void *a0, int32_t a1, void *a2, void *a3, void *a4, void *a5, void *a6, void *a7) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; (void)a6; (void)a7; return false; }
 EXPORT int32_t SteamAPI_ISteamMatchmaking_GetFavoriteGameCount(void *a0) { (void)a0; return 0; }
@@ -410,11 +409,9 @@ EXPORT int32_t SteamAPI_ISteamMatchmaking_GetLobbyMemberLimit(void *a0, uint64_t
 EXPORT uint64_t SteamAPI_ISteamMatchmaking_GetLobbyOwner(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
 EXPORT int32_t SteamAPI_ISteamMatchmaking_GetNumLobbyMembers(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
 EXPORT bool SteamAPI_ISteamMatchmaking_InviteUserToLobby(void *a0, uint64_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return false; }
-EXPORT uint64_t SteamAPI_ISteamMatchmaking_JoinLobby(void *a0, uint64_t a1) { (void)a0; (void)a1; return 0; }
 EXPORT void SteamAPI_ISteamMatchmaking_LeaveLobby(void *a0, uint64_t a1) { (void)a0; (void)a1;  }
 EXPORT bool SteamAPI_ISteamMatchmaking_RemoveFavoriteGame(void *a0, uint32_t a1, uint32_t a2, uint16_t a3, uint16_t a4, uint32_t a5) { (void)a0; (void)a1; (void)a2; (void)a3; (void)a4; (void)a5; return false; }
 EXPORT bool SteamAPI_ISteamMatchmaking_RequestLobbyData(void *a0, uint64_t a1) { (void)a0; (void)a1; return false; }
-EXPORT uint64_t SteamAPI_ISteamMatchmaking_RequestLobbyList(void *a0) { (void)a0; return 0; }
 EXPORT bool SteamAPI_ISteamMatchmaking_SendLobbyChatMsg(void *a0, uint64_t a1, void *a2, int32_t a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }
 EXPORT bool SteamAPI_ISteamMatchmaking_SetLinkedLobby(void *a0, uint64_t a1, uint64_t a2) { (void)a0; (void)a1; (void)a2; return false; }
 EXPORT bool SteamAPI_ISteamMatchmaking_SetLobbyData(void *a0, uint64_t a1, const char *a2, const char *a3) { (void)a0; (void)a1; (void)a2; (void)a3; return false; }

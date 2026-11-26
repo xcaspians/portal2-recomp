@@ -157,6 +157,10 @@ void *steam_flat(CPU *c, const char *symbol) {
     }
     void *fn = dlsym(handle, symbol);
     if (!fn) fail(c, "Steam: %s is absent from %s", symbol, steam_dylib_path());
+    // P2_STEAM_TRACE=1: each Steam function once, at its first call (callers cache it).
+    static int trace = -1;
+    if (trace < 0) trace = getenv("P2_STEAM_TRACE") != NULL;
+    if (trace) fprintf(stderr, "[steam] first call: %s\n", symbol);
     return fn;
 }
 #define FLAT(type, name) ((type)steam_flat(c, name))
