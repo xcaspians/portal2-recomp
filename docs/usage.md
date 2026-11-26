@@ -63,16 +63,28 @@ Enable the developer console in the game's keyboard options, then:
   Use the LAN address even when both copies run on the same Mac: `127.0.0.1`
   does not reach the other copy.
 
-On iPhone, add two lines to `Documents/launch.args` in the app's files:
-`+connect` and the host's address. iOS asks once for local network access:
-allow it.
+On iPhone and iPad, use **Play nearby** (round 25) instead: in the Sauce
+launcher (the Co-op card) or the gear menu, **Host** starts the co-op lobby and
+waits for a friend; **Join** lists the devices hosting on the same Wi-Fi by
+name, and one tap connects. Hosts advertise `_sauce-coop._tcp` over Bonjour
+(`runtime/ios/nearby_ios.m`, rules in `nearby.c`). iOS asks once for local
+network access: allow it (if declined, Play nearby says how to turn it back
+on). If either side drops, both get a message and land on the main menu. The
+Mac build doesn't advertise itself: a Mac host shows up in Join only if you
+announce it, e.g. `dns-sd -R "My Mac" _sauce-coop._tcp local 27015 game=portal2 proto=1`;
+a Mac joins an iPad by its address as above.
+
+The old way still works: add two lines to `Documents/launch.args` in the
+app's files, `+connect` and the host's address.
 
 | Case | Status |
 |---|---|
 | Two copies on one Mac | Tested: the partner loads the map and stays connected |
 | Mac hosts, iPhone joins | Tested, same result |
 | Two Macs | Should work the same way; not tested |
-| iPhone hosts | Not tested |
+| iPad hosts (Play nearby), Mac joins | Tested on an iPad Pro (round 25): both in the co-op hub, ~2.1 GB, 120 fps |
+| Mac hosts, iPad joins (Play nearby) | Tested on an iPad Pro (round 25) |
+| iPhone and iPad together | Not tested yet (hand test) |
 | Steam invites and lobbies | Not tested; some Steam calls used by matchmaking are not bridged yet |
 | Over the internet | Not tested; the host needs `sv_lan 0` and UDP port 27015 open |
 | With a Windows or Linux PC | Not tested |

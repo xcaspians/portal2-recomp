@@ -18,6 +18,7 @@
 #import <UIKit/UIKit.h>
 #include "tv_output.h"
 #include "env_ios.h"
+#include "nearby_ios.h"
 UIView *rt_ios_phonepad_panel(void (^close)(void));   // phonepad_ios.m
 NSString *rt_ios_phonepad_url(void);
 void rt_ios_phonepad_stop_if_idle(void);
@@ -49,7 +50,7 @@ int rt_ios_settings_menu_captures_pad(void) { return menu_open || closing_hold; 
 int rt_ios_settings_menu_open(void) { return menu_open; }
 
 typedef enum { ROW_SETTING, ROW_PHONE, ROW_RESET, ROW_CLOSE, ROW_MAP, ROW_COMMUNITY, ROW_RECOMMENDED, ROW_SWITCH_GAME, ROW_CALIBRATE,
-               ROW_EDIT_LAYOUT } RowKind;
+               ROW_EDIT_LAYOUT, ROW_NEARBY } RowKind;
 
 @interface P2MenuRow : NSObject
 @property (nonatomic) RowKind kind;
@@ -77,6 +78,8 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
 @end
 
 @implementation P2SettingsMenu {
+    void (^launcherClose)(void);   // round 25: opened from the launcher, before any game (nil in a game)
+    CADisplayLink *launcherTick;   // there: the controller is read here (no game tick)
     UIButton *gear;
     UIView *dim, *panel, *header;
     UIScrollView *scroll;
@@ -95,6 +98,7 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     UILabel *icloudStatus;    // "Last synced ..." under the iCloud switch
     CFTimeInterval icloudShownAt;
     UIView *phoneShade;       // the phone controller's panel (round 24: open until closed, menu or not)
+    UIView *nearbyShade;      // Play nearby (round 25), the same way
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -160,6 +164,7 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     // Round 24: the phone panel outlives the menu (the game leaving its pause menu closes the
     // menu, e.g. the phone's own Start or A); it keeps its touches until it is closed.
     if (phoneShade) return [phoneShade hitTest:[self convertPoint:point toView:phoneShade] withEvent:event] ?: phoneShade;
+    if (nearbyShade) return [nearbyShade hitTest:[self convertPoint:point toView:nearbyShade] withEvent:event] ?: nearbyShade;
     if (menu_open || editor) return [super hitTest:point withEvent:event];   // the panel, or the layout editor
     if (!gear.hidden && CGRectContainsPoint(gear.frame, point))
         return [gear hitTest:[self convertPoint:point toView:gear] withEvent:event];
@@ -242,27 +247,32 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
 
     // Portal 2 only: Maps & Mods and Community Maps (its maps folders and
     // Workshop app). iCloud saves where the game has them (icloud_saves_ios.m).
-    BOOL portal2 = !strcmp(rt_ios_current_game()->name, "portal2");
+    // From the launcher (round 25): the settings every game shares, nothing that needs a running game.
+    BOOL launcher = launcherClose != nil;
+    BOOL portal2 = !launcher && !strcmp(rt_ios_current_game()->name, "portal2");
     for (int i = 0; i < rt_menu_item_count; ++i) {
         const rt_menu_item *it = &rt_menu_items[i];
         if (!rt_ios_icloud_supported() && !strcmp(it->key, "P2ICloudSaves")) continue;
+        if (launcher && !rt_menu_item_in_launcher(it)) continue;   // one game's iCloud saves: set in that game
         if (!rt_menu_item_for_game(it, rt_ios_current_game()->back_taps)) continue;
         if (it->section) [self addSection:@(it->section)];
         [self addSettingRow:it];
         if (!strcmp(it->key, "P2MaxFPS")) [self addRecommendedRow];
         if (!strcmp(it->key, "P2PortalButtons")) [self addEditLayoutRow];
-        if (!strcmp(it->key, "P2BackTapSensitivity") && rt_ios_current_game()->back_taps) [self addCalibrateRow];
+        if (!strcmp(it->key, "P2BackTapSensitivity") && rt_ios_current_game()->back_taps && !launcher) [self addCalibrateRow];
     }
     if (portal2) [self addMapsSection];
     [self addSection:@""];
     [self addResetRow];
-    if (rt_ios_has_game_choice()) [self addSwitchGameRow];
-    [self addPhoneRow];   // round 23 item 9b
+    if (rt_ios_has_game_choice() && !launcher) [self addSwitchGameRow];
+    if (portal2) [self addNearbyRow];   // round 25: co-op with another device
+    if (!launcher) [self addPhoneRow];   // round 23 item 9b
     [rows addObject:close];   // last in controller order, first on screen
     // "Sauce 0.4.0-fork.3 (abc1234) · Half-Life 2": the app, its version, the running game (round 19).
     NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"P2ForkVersion"] ?: @"unknown";
     NSString *app = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"recomp fork";
-    UILabel *footer = label([NSString stringWithFormat:@"%@ %@ · %@", app, version, @(rt_ios_current_game()->title)], 13,
+    UILabel *footer = label(launcher ? [NSString stringWithFormat:@"%@ %@ · shared by every game", app, version]
+                                     : [NSString stringWithFormat:@"%@ %@ · %@", app, version, @(rt_ios_current_game()->title)], 13,
                             UIFontWeightRegular, .5);
     footer.textAlignment = NSTextAlignmentCenter;
     [stack addArrangedSubview:footer];
@@ -304,6 +314,17 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     dim = panel = header = nil; scroll = nil; stack = nil; rows = nil; icloudStatus = nil; community = nil; calibration = nil;
     focus = -1;
     resetArmedUntil = 0;
+    // From the launcher: closed for good unless it reopens at once (the layout editor
+    // or back-tap calibration close the panel and open it again afterwards).
+    if (launcherClose)
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (menu_open || self->editor || !self->launcherClose) return;
+            [self->launcherTick invalidate];
+            self->launcherTick = nil;
+            void (^done)(void) = self->launcherClose;
+            self->launcherClose = nil;
+            done();
+        });
 }
 
 - (void)addSection:(NSString *)name {
@@ -483,8 +504,9 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     __weak P2SettingsMenu *weakSelf = self;
     UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
     conf.title = @"Edit button layout";
-    conf.subtitle = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad ? @"Saved for iPad, this game"
-                                                                                       : @"Saved for iPhone, this game";
+    BOOL pad = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad;
+    conf.subtitle = launcherClose ? (pad ? @"Saved for iPad, Portal 2's buttons" : @"Saved for iPhone, Portal 2's buttons")
+                                  : (pad ? @"Saved for iPad, this game" : @"Saved for iPhone, this game");
     conf.image = [UIImage systemImageNamed:@"square.and.pencil"];
     conf.imagePadding = 8;
     conf.baseForegroundColor = UIColor.whiteColor;
@@ -652,6 +674,50 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     fprintf(stderr, "[ios] manette téléphone : fenêtre fermée\n");
 }
 - (BOOL)phonePanelOpen { return phoneShade != nil; }
+// Play nearby (nearby_ios.m): Host or Join, then the panel and the menu close and the game goes on.
+- (void)addNearbyRow {
+    P2MenuRow *row = [P2MenuRow new];
+    row.kind = ROW_NEARBY;
+    __weak P2SettingsMenu *weakSelf = self;
+    UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
+    conf.title = @"Play nearby";
+    conf.subtitle = @"Co-op with a friend's device on the same Wi-Fi";
+    conf.image = [UIImage systemImageNamed:@"person.2.wave.2"];
+    conf.imagePadding = 6;
+    conf.baseForegroundColor = UIColor.whiteColor;
+    conf.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    row.button = [UIButton buttonWithConfiguration:conf primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+        (void)a; [weakSelf showNearbyPanel];
+    }]];
+    row.view = row.button;
+    row.view.layer.cornerRadius = 12;
+    [row.button.heightAnchor constraintGreaterThanOrEqualToConstant:48].active = YES;
+    [stack addArrangedSubview:row.button];
+    [rows addObject:row];
+}
+- (void)showNearbyPanel {
+    if (nearbyShade) return;
+    UIView *shade = [[UIView alloc] initWithFrame:self.bounds];
+    shade.backgroundColor = [UIColor colorWithWhite:0 alpha:.55];
+    shade.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    __weak P2SettingsMenu *weakSelf = self;
+    UIView *p = rt_ios_nearby_panel(^{ [weakSelf closeNearbyPanel]; }, ^{
+        P2SettingsMenu *me = weakSelf;
+        [me closeNearbyPanel];
+        [me closeMenu];
+    });
+    p.translatesAutoresizingMaskIntoConstraints = NO;
+    [shade addSubview:p];
+    [NSLayoutConstraint activateConstraints:@[[p.centerXAnchor constraintEqualToAnchor:shade.centerXAnchor],
+                                              [p.centerYAnchor constraintEqualToAnchor:shade.centerYAnchor]]];
+    [self addSubview:shade];
+    nearbyShade = shade;
+}
+- (void)closeNearbyPanel {
+    if (!nearbyShade) return;
+    [nearbyShade removeFromSuperview];
+    nearbyShade = nil;
+}
 // Round 24 device check (P2_SETTINGS_MENU_OPEN=phone P2_PHONEPAD_PANEL_CHECK=1): the
 // menu closes under the panel, as when the game leaves its pause menu; the panel's
 // close button must still take the touch, and closing must leave a phone connected.
@@ -910,6 +976,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     case ROW_RECOMMENDED: [self useRecommended]; return;
     case ROW_SWITCH_GAME: [self switchGamePressed:nil]; return;
     case ROW_PHONE: [self showPhonePanel]; return;   // a controller's A on the row
+    case ROW_NEARBY: [self showNearbyPanel]; return;
     case ROW_CALIBRATE: [self openCalibration]; return;
     case ROW_EDIT_LAYOUT: [self openEditor]; return;
     case ROW_MAP: [self startMap:row]; return;
@@ -929,6 +996,11 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
 - (void)pollPad:(BOOL)paused {
     GCExtendedGamepad *g = [self pad].extendedGamepad;
     BOOL a = g.buttonA.isPressed, b = g.buttonB.isPressed, options = g.buttonOptions.isPressed;
+    if (nearbyShade) {   // Play nearby: B closes it (its buttons are for touch)
+        if (b && !prevB) [self closeNearbyPanel];
+        prevA = a; prevB = b; prevOptions = options;
+        return;
+    }
     if (phoneShade) {   // the phone panel first: A (Done) or B closes it, nothing reaches the menu below
         if ((a && !prevA) || (b && !prevB)) [self closePhonePanel];
         prevA = a; prevB = b; prevOptions = options;
@@ -967,6 +1039,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     if (dx) [self change:dx];
 }
 - (void)tick {
+    rt_ios_nearby_tick();   // Play nearby's waiting and connection messages (round 25)
     // The gear shows in the main menu and the pause menu (game UI up), never in gameplay.
     BOOL paused = rt_ios_game_menu_shown() != 0;
     // The game's own Community Test Chambers button (game_state.c): Community Maps instead.
@@ -985,7 +1058,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
         const char *e = getenv("P2_SETTINGS_MENU_OPEN");
         auto_open = !e ? 0 : !strcmp(e, "1") ? 1 : !strcmp(e, "map") ? 2 : !strcmp(e, "display") || !strcmp(e, "end") ? 3
                   : !strcmp(e, "main") || !strcmp(e, "main-end") ? 4 : !strcmp(e, "editor") ? 5
-                  : !strcmp(e, "phone") ? 6 : 0;
+                  : !strcmp(e, "phone") ? 6 : !strcmp(e, "nearby") ? 7 : 0;
     }
     // In a level's pause menu, as before; =main: on the main menu (no level).
     if (auto_open == 6 && !gear.hidden && !rt_ios_game_in_level()) {   // =phone: the phone controller's QR panel
@@ -993,6 +1066,11 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
         [self openMenu];
         [self showPhonePanel];
         if (getenv("P2_PHONEPAD_PANEL_CHECK")) [self checkPhonePanel];
+    }
+    if (auto_open == 7 && !gear.hidden && !rt_ios_game_in_level()) {   // =nearby: Play nearby, on the main menu
+        auto_open = 0;
+        [self openMenu];
+        [self showNearbyPanel];
     }
     if (auto_open == 5 && !gear.hidden && !rt_ios_game_in_level()) {   // =editor: the layout editor, on the main menu
         auto_open = 0;
@@ -1042,7 +1120,40 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     if (icloudStatus && CACurrentMediaTime() - icloudShownAt > 1) [self showICloudStatus];
     if (paused || menu_open) [self pollPad:paused];
 }
+
+- (void)openFromLauncher:(void (^)(void))close {
+    launcherClose = close;
+    gear.hidden = YES;
+    launcherTick = [CADisplayLink displayLinkWithTarget:self selector:@selector(launcherStep)];
+    [launcherTick addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    [self openMenu];
+    // P2_CONTROLS_TEST="<key>=<value>" (device checks): that row set as a tap would, then the panel closed.
+    const char *test = getenv("P2_CONTROLS_TEST");
+    if (test && strchr(test, '=')) {
+        NSString *pair = @(test);
+        NSRange eq = [pair rangeOfString:@"="];
+        NSString *key = [pair substringToIndex:eq.location], *value = [pair substringFromIndex:eq.location + 1];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            for (P2MenuRow *row in self->rows)
+                if (row.kind == ROW_SETTING && !strcmp(row.item->key, key.UTF8String)) {
+                    [self store:row value:value.UTF8String];
+                    fprintf(stderr, "[ios] essai réglages du lanceur : %s = %s\n", key.UTF8String, value.UTF8String);
+                }
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [self closeMenu]; });
+        });
+    }
+}
+- (void)launcherStep {
+    if (closing_hold && ![self padActive]) closing_hold = 0;
+    [self pollPad:NO];
+}
 @end
+
+UIView *rt_ios_settings_menu_launcher(void (^close)(void)) {
+    P2SettingsMenu *m = [[P2SettingsMenu alloc] initWithFrame:CGRectZero];
+    [m openFromLauncher:close];
+    return m;
+}
 
 void *rt_ios_settings_menu_create(void) {
     return (__bridge_retained void *)[[P2SettingsMenu alloc] initWithFrame:CGRectZero];

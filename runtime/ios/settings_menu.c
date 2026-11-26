@@ -131,3 +131,5 @@ const char *rt_menu_item_default(const rt_menu_item *it, const char *game) {
     if (!strcmp(it->key, "P2Gyro") && game && (!strcmp(game, "hl2") || !strcmp(game, "l4d2"))) return "1";
     return it->def;
 }
+
+int rt_menu_item_in_launcher(const rt_menu_item *it) { return strcmp(it->key, "P2ICloudSaves") != 0; }

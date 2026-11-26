@@ -20,6 +20,8 @@
 #include "game_ios.h"
 #include "game_picker.h"
 #include "game_picker_ios.h"
+#include "nearby_ios.h"
+#include "settings_menu_ios.h"
 #include "rt.h"
 #include "tv_output.h"
 
@@ -177,6 +179,8 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     NSInteger focus;                   // index in cards, -1: none (touch only)
     UIStackView *manage;
     UIScrollView *manageScroll;
+    UIView *nearbyShade;               // Play nearby's panel (round 25), over the launcher
+    UIView *controls;                  // the touch and controls settings (round 25), over the launcher
     BOOL remember;
     NSMutableDictionary<NSString *, UILabel *> *sizeLabels;
     NSMutableDictionary<NSString *, NSString *> *sizes;
@@ -212,6 +216,8 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     for (int i = 0; open && i < rt_picker_series_count(); ++i)
         if (!strcmp(rt_picker_series_at(i)->id, open)) [self show:rt_picker_series_at(i) animated:NO];
     if (lit) { focus = atoi(lit); [self applyFocus]; }
+    if (getenv("P2_NEARBY_OPEN")) [self showNearby];   // device checks: Play nearby open in the launcher
+    if (getenv("P2_CONTROLS_OPEN")) [self showControls];   // device checks: the controls settings open in the launcher
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
@@ -308,9 +314,46 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     y = [self grid:shown.count width:tw height:th top:y make:^P2Card *(NSUInteger i, CGRect frame) {
         return [self seriesTile:[shown[i] pointerValue] frame:frame];
     }];
-    // Remember my choice and Manage games: focusable too.
+    // Play nearby (round 25): Portal 2 co-op with a friend's device, a card of its own under the library.
+    const rt_ios_game *p2 = rt_ios_game_named("portal2");
+    if (p2 && !strcmp(p2->name, "portal2") && playable(p2)) {
+        y += 8;
+        UILabel *coop = text(@"CO-OP", 14 * k, UIFontWeightBold, .55);
+        coop.frame = CGRectMake(32, y, 300, 20 * k);
+        [page addSubview:coop];
+        y += 20 * k + 12;
+        CGFloat nw = MIN(w - 64, 616 * k), nh = 86 * k;
+        P2Card *nearby = [[P2Card alloc] initWithFrame:CGRectMake((w - nw) / 2, y, nw, nh)];
+        UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.2.wave.2.fill"]];
+        icon.tintColor = accent(); icon.contentMode = UIViewContentModeScaleAspectFit;
+        icon.frame = CGRectMake(22 * k, 20 * k, 56 * k, nh - 40 * k);
+        UILabel *nt = one_line(@"Play nearby", 22 * k, UIFontWeightBold, 1);
+        nt.textAlignment = NSTextAlignmentNatural;
+        nt.frame = CGRectMake(96 * k, 16 * k, nw - 120 * k, 28 * k);
+        UILabel *ns = one_line(@"Portal 2 co-op with a friend's device on the same Wi-Fi · Host or Join", 14 * k, UIFontWeightRegular, .6);
+        ns.textAlignment = NSTextAlignmentNatural;
+        ns.frame = CGRectMake(96 * k, 48 * k, nw - 120 * k, 20 * k);
+        for (UIView *v in @[icon, nt, ns]) { v.userInteractionEnabled = NO; [nearby addSubview:v]; }
+        __weak P2GamePicker *weakNearby = self;
+        nearby.action = ^{ [weakNearby showNearby]; };
+        [page addSubview:nearby];
+        [cards addObject:nearby];
+        y += nh + 8;
+    }
+    // Controls, Remember my choice and Manage games: focusable too.
     y += 26;
-    CGFloat bw = 300 * k, bh = 50 * k, bx = (w - 2 * bw - 16) / 2;
+    CGFloat bw = MIN(300 * k, (w - 64 - 32) / 3), bh = 50 * k, bx = (w - 3 * bw - 32) / 2;
+    // Round 25: the touch and controls settings (the gear menu's), shared by every game.
+    P2Card *ctl = [[P2Card alloc] initWithFrame:CGRectMake(bx, y, bw, bh)];
+    ctl.layer.cornerRadius = bh / 2;
+    UILabel *cl = one_line(@"Controls", 15 * k, UIFontWeightSemibold, .9);
+    cl.frame = CGRectInset(ctl.bounds, 14, 0); cl.userInteractionEnabled = NO;
+    [ctl addSubview:cl];
+    __weak P2GamePicker *weakControls = self;
+    ctl.action = ^{ [weakControls showControls]; };
+    [page addSubview:ctl];
+    [cards addObject:ctl];
+    bx += bw + 16;
     P2Card *rem = [[P2Card alloc] initWithFrame:CGRectMake(bx, y, bw, bh)];
     rem.layer.cornerRadius = bh / 2;
     UILabel *rl = one_line([self rememberText], 15 * k, UIFontWeightSemibold, .9);
@@ -461,7 +504,43 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     c.action = ^{ [weak pick:name]; };
     return c;
 }
+// ---- Play nearby (nearby_ios.m) ----
+- (void)showNearby {
+    if (nearbyShade) return;
+    UIView *shade = [[UIView alloc] initWithFrame:self.view.bounds];
+    shade.backgroundColor = [UIColor colorWithWhite:0 alpha:.6];
+    shade.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    __weak P2GamePicker *weak = self;
+    UIView *p = rt_ios_nearby_panel(^{ [weak closeNearby]; }, ^{
+        // Host or a host tapped: Portal 2 starts with the co-op words on its command line.
+        P2GamePicker *me = weak;
+        [me closeNearby];
+        [me pick:@"portal2"];
+    });
+    p.translatesAutoresizingMaskIntoConstraints = NO;
+    [shade addSubview:p];
+    [NSLayoutConstraint activateConstraints:@[[p.centerXAnchor constraintEqualToAnchor:shade.centerXAnchor],
+                                              [p.centerYAnchor constraintEqualToAnchor:shade.centerYAnchor]]];
+    [self.view addSubview:shade];
+    nearbyShade = shade;
+}
+- (void)showControls {
+    if (controls) return;
+    __weak P2GamePicker *weak = self;
+    controls = rt_ios_settings_menu_launcher(^{
+        P2GamePicker *me = weak;
+        [me->controls removeFromSuperview];
+        me->controls = nil;
+    });
+    controls.frame = self.view.bounds;
+    [self.view addSubview:controls];
+}
+- (void)closeNearby {
+    [nearbyShade removeFromSuperview];
+    nearbyShade = nil;
+}
 - (void)goBack {
+    if (nearbyShade) { [self closeNearby]; return; }
     if (manageScroll && !manageScroll.hidden) { [self toggleManage]; return; }
     if (!series) return;
     const rt_picker_series *from = series;
@@ -487,6 +566,7 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
 }
 // The nearest card in a direction (dx, dy), from the focused one's centre.
 - (void)moveFocus:(CGPoint)d {
+    if (controls || nearbyShade) return;   // a panel over the launcher has the controller
     if (!cards.count) return;
     if (focus < 0) { focus = 0; [self applyFocus]; return; }
     CGPoint from = CGPointMake(CGRectGetMidX(cards[focus].frame), CGRectGetMidY(cards[focus].frame));
@@ -535,11 +615,12 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     pad.buttonA.pressedChangedHandler = ^(GCControllerButtonInput *b, float v, BOOL pressed) {
         (void)b; (void)v;
         P2GamePicker *me = weak;
-        if (pressed && me && me->focus >= 0 && me->focus < (NSInteger)me->cards.count) [me->cards[me->focus] fire];
+        if (pressed && me && !me->nearbyShade && !me->controls && me->focus >= 0 && me->focus < (NSInteger)me->cards.count) [me->cards[me->focus] fire];
     };
     pad.buttonB.pressedChangedHandler = ^(GCControllerButtonInput *b, float v, BOOL pressed) {
         (void)b; (void)v;
-        if (pressed) [weak goBack];
+        P2GamePicker *me = weak;
+        if (pressed && me && !me->controls) [me goBack];
     };
 }
 
@@ -707,7 +788,9 @@ const char *rt_ios_choose_game(void) {
     }
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     NSString *last = [d stringForKey:kLast];
-    const char *pick = rt_picker_autostart(names, here, n, getenv("P2_GAME_CHOICE"), last.UTF8String, [d boolForKey:kRemember]);
+    // P2_NEARBY_OPEN (device checks): the launcher shows even when a game is remembered.
+    const char *pick = getenv("P2_NEARBY_OPEN") || getenv("P2_CONTROLS_OPEN") ? NULL
+                     : rt_picker_autostart(names, here, n, getenv("P2_GAME_CHOICE"), last.UTF8String, [d boolForKey:kRemember]);
     if (!pick) {
         // Picker window over everything; SDL's comes after it.
         P2GamePicker *picker = [P2GamePicker new];

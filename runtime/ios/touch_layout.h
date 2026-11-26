@@ -23,6 +23,7 @@ typedef enum {
     // Left 4 Dead 2's item slots (keys 1 to 5): primary, secondary, throwable,
     // medkit, pills. Added at the end: stored layouts name actions, not numbers.
     RT_TOUCH_SLOT1, RT_TOUCH_SLOT2, RT_TOUCH_SLOT3, RT_TOUCH_SLOT4, RT_TOUCH_SLOT5,
+    RT_TOUCH_ZOOM,          // Portal 2's hold-to-zoom (+zoom: middle mouse button, a controller's right bumper)
     RT_TOUCH_ACTION_COUNT
 } rt_touch_action;
 

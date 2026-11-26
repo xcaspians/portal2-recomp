@@ -26,6 +26,8 @@ static const rt_touch_button portal2[] = {
     {RT_TOUCH_FLAG_ERROR, "xmark", RT_TOUCH_FLAG, 1, 0, -B * 1.35f, EDGE, SMALL, RT_TOUCH_DATASET},
     // Mode de la caméra, dans le coin en bas à gauche (icône selon le mode).
     {RT_TOUCH_LOOK_MODE, "r.joystick.fill", RT_TOUCH_INK, 0, 1, EDGE, -EDGE, SMALL, 0},
+    // Round 25: zoom, held (the game's +zoom), on the left between the portals and the stick.
+    {RT_TOUCH_ZOOM, "plus.magnifyingglass", RT_TOUCH_INK, .06f, .50f, 0, 0, 46, 0},
 };
 
 // Half-Life 2 : sept commandes de jeu de la taille des boutons, réparties
@@ -136,6 +138,7 @@ int rt_touch_pad_button(rt_touch_action action) {
     case RT_TOUCH_CROUCH: return 1;   // B
     case RT_TOUCH_USE: return 2;      // X
     case RT_TOUCH_PAUSE: return 6;    // Start
+    case RT_TOUCH_ZOOM: return 10;    // right shoulder (+zoom)
     default: return -1;
     }
 }
@@ -146,7 +149,7 @@ int rt_touch_pad_trigger(rt_touch_action action) {
 // ---- Button layout editor ----
 static const char *const action_names[RT_TOUCH_ACTION_COUNT] = {
     "jump", "crouch", "use", "pause", "fire", "alt_fire", "look_mode", "flag", "reload", "sprint", "flashlight",
-    "weapon_prev", "weapon_next", "quicksave", "slot1", "slot2", "slot3", "slot4", "slot5"};
+    "weapon_prev", "weapon_next", "quicksave", "slot1", "slot2", "slot3", "slot4", "slot5", "zoom"};
 const char *rt_touch_action_name(rt_touch_action a) { return a < RT_TOUCH_ACTION_COUNT ? action_names[a] : "?"; }
 
 int rt_touch_custom_format(const rt_touch_custom_layout *l, char *out, size_t size) {

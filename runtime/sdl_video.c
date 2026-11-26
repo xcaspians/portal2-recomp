@@ -649,7 +649,13 @@ static int sdl_video(CPU *c, const char *name) {
         if (flags & SDL_INIT_VIDEO) setenv("SDL_MAC_PRESS_AND_HOLD", "0", 0);
 #endif
         r = (uint32_t)(!strcmp(n, "Init") ? SDL_Init(flags) : SDL_InitSubSystem(flags));
-    } else if (!strcmp(n, "QuitSubSystem")) SDL_QuitSubSystem(rt_arg32(c, 0));
+    } else if (!strcmp(n, "QuitSubSystem")) {
+        // Round 25 (Left 4 Dead 2's touch stick): a game that stops the controller
+        // subsystems drops the virtual controllers with them; said in the log.
+        uint32_t flags = rt_arg32(c, 0);
+        if (flags & (SDL_INIT_JOYSTICK | SDL_INIT_GAMECONTROLLER)) fprintf(stderr, "[sdl] le jeu arrête les manettes (SDL_QuitSubSystem 0x%x)\n", flags);
+        SDL_QuitSubSystem(flags);
+    }
     else if (!strcmp(n, "WasInit")) r = SDL_WasInit(rt_arg32(c, 0));
     else if (!strcmp(n, "SetHint")) r = (uint32_t)SDL_SetHint(rt_guest_cstr_or_null(c, rt_arg32(c, 0)), rt_guest_cstr_or_null(c, rt_arg32(c, 1)));
     else if (!strcmp(n, "GetError")) r = rt_intern_string(c, SDL_GetError());

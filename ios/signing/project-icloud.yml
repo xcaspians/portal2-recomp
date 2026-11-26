@@ -5,6 +5,11 @@
 # iCloud.<identifiant> sur le compte développeur (Apple ne supprime jamais un
 # conteneur) ; ios/signing/sign.py reprend ensuite ces droits du profil.
 include: [project.yml]
+options:
+  # XcodeGen 2.46 writes the nested SystemCapabilities below as text ("[\"com.apple.iCloud\": ...]"),
+  # which Xcode can't read: its Signing & Capabilities tab then neither shows nor adds iCloud.
+  # capabilities.py makes it the dictionary Xcode writes (round 25; tests/test_ios_signing_project.py).
+  postGenCommand: python3 capabilities.py P2Signing.xcodeproj/project.pbxproj
 targets:
   Portal2:
     # Automatic signing registers a capability on the App ID only when the

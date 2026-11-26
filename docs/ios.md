@@ -357,8 +357,13 @@ capability, which only a provisioning profile can grant:
    icloud-container-identifiers"): open
    `ios/signing/P2Signing.xcodeproj` in Xcode, select the Portal2 target >
    Signing & Capabilities, check that iCloud shows "iCloud Documents" with
-   the container `iCloud.<identifier>` ticked, build once (⌘B), then run
-   step 2 again.
+   the container `iCloud.<identifier>` ticked (the existing one: never press
+   + to make a new container), build once (⌘B), then run step 2 again.
+   Before round 25 the tab could neither show nor add iCloud: XcodeGen 2.46
+   writes the project's nested `SystemCapabilities` as text, and
+   `project-icloud.yml` now runs `ios/signing/capabilities.py` after
+   generation to make it a real dictionary
+   (`tests/test_ios_signing_project.py`).
 4. Install on the iPad too: `P2_DEVICE=<iPad UDID> tools/ios_device.sh install`.
 
 Until then the app runs as before, and the menu says "iCloud isn't
