@@ -19,6 +19,7 @@
 #include <string.h>
 #include "game_ios.h"
 #include "game_picker.h"
+#include "layout_sync_ios.h"
 #include "game_picker_ios.h"
 #include "nearby_ios.h"
 #include "settings_menu_ios.h"
@@ -235,6 +236,7 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     if (lit) { focus = atoi(lit); [self applyFocus]; }
     if (getenv("P2_NEARBY_OPEN")) [self showNearby];   // device checks: Play nearby open in the launcher
     if (getenv("P2_CONTROLS_OPEN")) [self showControls];   // device checks: the controls settings open in the launcher
+    rt_ios_layouts_sync("lanceur");   // round 26: custom layouts through iCloud, before the editor can open
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
