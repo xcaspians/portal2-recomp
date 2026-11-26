@@ -48,13 +48,28 @@ on to loading the engine's systems. It stops at the renderer,
 DXVK (to Vulkan), so it needs a bridge of its own (the plan's rendering
 round), not just lifting.
 
+**Then, with the empty renderer** (`-shaderapi shaderapiempty`, lifted too):
+`engine.so` loads and every one of its start-up routines runs (after two
+more fixes: `pthread_once` routines that nest deadlocked, and unoptimised
+jump tables in its protobuf code weren't recognised). The launcher then asks
+for the next engine system, `inputsystem.so`:
+
+```
+AppFramework : Unable to load module inputsystem!
+Unable to load interface InputSystemVersion001 from inputsystem, requested from EXE.
+```
+
+So the engine is open and the launcher is assembling its systems; each
+further system library is lifted the same way (the plan's later rounds).
+
 ## What's next
 
 1. Lift `shaderapidx11.so` and decide its bridge: Direct3D 11 to Metal (a
    new layer; the D3D9 one doesn't cover it) or Vulkan through MoltenVK
    under DXVK. This is the big decision for P2CE.
-2. With `-textmode`, try a null shader API (`shaderapiempty.so`, if the
-   depot has it) to reach the engine's console banner without a renderer.
+2. Without a renderer, lift the engine's other systems one at a time
+   (`inputsystem.so`, then the material system, data cache, physics, sound,
+   VScript...) with `-shaderapi shaderapiempty`, toward the console banner.
 3. Steam's interfaces through C++ vtables are reached but barely exercised:
    structures returned through a hidden pointer aren't handled yet (rare
    in Steam's API), and more than eight arguments aren't either.
