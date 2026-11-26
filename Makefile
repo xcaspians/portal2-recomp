@@ -97,10 +97,11 @@ test: build/tier0-smoke build/abi-smoke
 	./build/abi-smoke
 
 # What CI runs (make -j check): Python tests and the runtime against generated fixtures, no game files needed.
-check: build/abi-smoke build/x64-check
+check: build/abi-smoke build/x64-check build/x64-dylib-check
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
 	./build/abi-smoke
 	./build/x64-check
+	./build/x64-dylib-check
 
 clean:
 	rm -rf build
@@ -167,6 +168,17 @@ build/x64/second.c: build/x64/libx64second.so tools/elfprep64.py tools/lift64.py
 	$(PYTHON) tools/lift64.py --layout build/x64/libx64second.so.layout.json --all --symbol x64_second --out $@
 build/x64-check: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c build/x64/second.c tests/x64_checks.c
 	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) build/x64/fixture.c build/x64/second.c tests/x64_checks.c $(X64_LIBS) -o $@
+# The same checks with each lifted module in its own dylib and the runtime in
+# librt64.dylib (tools/link64.py), as make p2ce-launch links P2CE since round 28.
+build/x64-dylib-check: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c build/x64/second.c tests/x64_checks.c tools/link64.py
+	@mkdir -p build/x64-dylib
+	$(CC) -O1 -g0 -w -Iruntime -c build/x64/fixture.c -o build/x64-dylib/fixture.o
+	$(CC) -O1 -g0 -w -Iruntime -c build/x64/second.c -o build/x64-dylib/second.o
+	rm -f build/x64-dylib/libm_x64_fixture.a build/x64-dylib/libm_x64_second.a
+	ar rcs build/x64-dylib/libm_x64_fixture.a build/x64-dylib/fixture.o
+	ar rcs build/x64-dylib/libm_x64_second.a build/x64-dylib/second.o
+	$(PYTHON) tools/link64.py --out build/x64-dylib --exe $@ --main tests/x64_checks.c \
+		build/x64-dylib/libm_x64_fixture.a build/x64-dylib/libm_x64_second.a
 
 # Live milestone (needs P2CE's depot 440005, never part of `make check`):
 # lifts P2CE's own libtier0.so into build/p2ce-tier0 and calls some of its
@@ -229,13 +241,15 @@ p2ce-modules-check: $(X64_RUNTIME) runtime/x64/rt64.h tests/x64_modules_live.c t
 # Round 28: video_services (the launcher stops without it). The launcher also
 # loads richpresence, toolframework, vguimatsurface, workshop, panorama and
 # panoramauiclient: they lift, but one executable holding them all no longer
-# links (arm64 branches reach +/-128 MB), so they wait for a split into
-# libraries (docs/fork/P2CE_PLAN.md).
+# links (arm64 branches reach +/-128 MB). Since then each module is its own
+# dylib (tools/link64.py: build/p2ce/dylib), with the runtime in librt64.dylib.
 P2CE_SYSTEMS ?= bin/linux64/shaderapiempty.so bin/linux64/inputsystem.so bin/linux64/materialsystem.so \
 	bin/linux64/datacache.so bin/linux64/studiorender.so bin/linux64/vphysics.so bin/linux64/vphysics_jolt.so \
 	bin/linux64/engineaudio.so bin/linux64/soundemittersystem.so bin/linux64/scriptsystem.so bin/linux64/vscript.so \
 	bin/linux64/localize.so bin/linux64/scenefilecache.so bin/linux64/vgui2.so \
-	bin/linux64/video_services.so
+	bin/linux64/video_services.so bin/linux64/richpresence.so bin/linux64/toolframework.so bin/linux64/vguimatsurface.so \
+	bin/linux64/workshop.so bin/linux64/panorama.so bin/linux64/panoramauiclient.so \
+	bin/linux64/libfreetype.so.6 bin/linux64/libfontconfig.so.1
 P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/libtier0.so \
 	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/launcher.so \
 	bin/linux64/filesystem_stdio.so bin/linux64/engine.so $(P2CE_SYSTEMS)
@@ -251,8 +265,9 @@ p2ce-launch: $(X64_RUNTIME) runtime/x64/rt64.h src/main64.c tools/run64.py
 	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-launch: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
 	set -e; $(PYTHON) tools/build64.py --out build/p2ce/lib --opt $(P2CE_OPT) --registry build/p2ce/registry.c \
 		$(foreach m,$(P2CE_LAUNCH_MODULES),"$(P2CE_ROOT)/$(m)"); \
-	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) src/main64.c build/p2ce/registry.c \
-		$$(ls build/p2ce/lib/*/lib*.a) $(X64_LIBS) -o build/p2ce/p2ce-run; \
+	$(PYTHON) tools/link64.py --out build/p2ce/dylib --exe build/p2ce/p2ce-run --main src/main64.c \
+		--registry build/p2ce/registry.c \
+		$$(sed -n 's/^extern const RT64Module \(m_[a-z0-9_]*\);/build\/p2ce\/lib\/\1\/lib\1.a/p' build/p2ce/registry.c); \
 	P2_STEAM_API_DYLIB="$(P2CE_STEAM_API)" P2_STEAM_APPID=$(P2CE_APPID) \
 	$(PYTHON) tools/run64.py --depot "$(P2CE_ROOT)" --depot "$(P2CE_CONTENT)" --mirror build/p2ce/game --timeout $(P2CE_TIMEOUT) \
 		build/p2ce/p2ce-run $(P2CE_ARGS)
