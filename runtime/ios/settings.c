@@ -40,6 +40,7 @@ const rt_ios_setting rt_ios_settings[] = {
     {"P2TVOutput", "P2_TV_OUTPUT", "1", "0"},
     {"P2TVResolution", "P2_TV_RESOLUTION", NULL, NULL},           // auto, 1080, 1440, 2160
     {"P2TVMaxFPS", "P2_TV_MAX_FPS", NULL, NULL},                 // auto (the TV's rate), 30, 60, 120
+    {"P2TVTouch", "P2_TV_TOUCH", NULL, NULL},                    // auto, always: touch controls on the iPad (round 23)
 };
 const int rt_ios_settings_count = (int)(sizeof(rt_ios_settings) / sizeof(*rt_ios_settings));
 

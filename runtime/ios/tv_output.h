@@ -16,6 +16,12 @@ int rt_tv_enabled(const char *value);
 // even sizes. 0 when the TV's size is unknown.
 int rt_tv_render_size(int tv_w, int tv_h, const char *resolution, int *w, int *h);
 
+// The same for a screen whose pixel grid may not have the shape it shows (an
+// anamorphic AirPlay or HDMI mode, round 23): mode_w x mode_h pixels (lines from
+// mode_h) showing an area of shape `aspect` (width / height of the screen's
+// bounds), so circles stay circles. aspect <= 0: the mode's own shape.
+int rt_tv_render_size_shown(int mode_w, int mode_h, double aspect, const char *resolution, int *w, int *h);
+
 // The frame cap on the TV: P2_TV_MAX_FPS (a number, or "auto"/empty for the TV's
 // own refresh rate), never above the TV's rate when it is known (> 0).
 int rt_tv_frame_cap(const char *value, int tv_hz);
@@ -23,6 +29,12 @@ int rt_tv_frame_cap(const char *value, int tv_hz);
 // The engine command that switches the game's picture to w x h, in a window
 // (the iOS app has no real fullscreen mode switch): "mat_setvideomode W H 1".
 int rt_tv_mode_command(int w, int h, char *out, unsigned long size);
+
+// The touch controls' mode (P2_TOUCH_CONTROLS, touch_layout.h) while the
+// picture is on a TV: P2_TV_TOUCH "always" keeps them on the iPad even with a
+// controller or keyboard connected ("1"); "auto" or unset leaves `mode` as is
+// (hidden while a controller or keyboard is connected, until a touch).
+const char *rt_tv_touch_mode(const char *mode, int on_tv, const char *tv_touch);
 
 // P2_TV_SIMULATE="1920x1080" (tests on an iPad without a TV): the iPad's own
 // screen stands in for a TV of that size. 1 and the size when set and readable.

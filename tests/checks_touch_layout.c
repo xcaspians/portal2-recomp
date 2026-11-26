@@ -397,3 +397,18 @@ RT_CHECK(ios_l4d2_profile) {
     assert(!strcmp(g->userdata, "l4d2-userdata") && !g->back_taps && g->layout == RT_IOS_LAYOUT_L4D2);
     assert(!strcmp(g->cvar_interface, "VEngineCvar007") && g->find_command_base == 10 && !strcmp(g->data_dir, "l4d2"));   // in the one app (round 19)
 }
+
+// Round 23: Portal 2 co-op split-screen with one controller: touch is player 2,
+// through a controller in the second slot, with Portal 2's own bindings.
+RT_CHECK(touch_player2_in_coop) {
+    assert(rt_touch_player2_wanted("portal2", "mp_coop_lobby_3", 1));
+    assert(!rt_touch_player2_wanted("portal2", "mp_coop_lobby_3", 0));   // no controller: touch is player 1
+    assert(!rt_touch_player2_wanted("portal2", "mp_coop_lobby_3", 2));   // two controllers: touch not needed
+    assert(!rt_touch_player2_wanted("portal2", "sp_a1_intro1", 1));      // single player
+    assert(!rt_touch_player2_wanted("mel", "mp_coop_x", 1) && !rt_touch_player2_wanted("l4d2", "c1m1_hotel", 1));
+    assert(!rt_touch_player2_wanted("portal2", NULL, 1) && !rt_touch_player2_wanted(NULL, "mp_coop_x", 1));
+    assert(rt_touch_pad_button(RT_TOUCH_JUMP) == 0 && rt_touch_pad_button(RT_TOUCH_CROUCH) == 1);
+    assert(rt_touch_pad_button(RT_TOUCH_USE) == 2 && rt_touch_pad_button(RT_TOUCH_PAUSE) == 6);
+    assert(rt_touch_pad_trigger(RT_TOUCH_FIRE) == 5 && rt_touch_pad_trigger(RT_TOUCH_ALT_FIRE) == 4);
+    assert(rt_touch_pad_button(RT_TOUCH_FIRE) == -1 && rt_touch_pad_trigger(RT_TOUCH_JUMP) == -1);
+}

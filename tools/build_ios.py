@@ -294,7 +294,7 @@ def cover(app, config, game):
 
 # Version of Caspian's fork, shown at the bottom of the in-game settings menu
 # (Info.plist key P2ForkVersion, settings_menu_ios.m).
-FORK_VERSION = '0.5.0-fork.1'   # round 19: the one app, Sauce
+FORK_VERSION = '0.6.0-fork.1'   # round 23: the launcher, TV touch, co-op touch
 
 
 def fork_version(root=ROOT):

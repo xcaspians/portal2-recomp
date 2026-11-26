@@ -102,6 +102,21 @@ void rt_touch_place_custom(const rt_touch_button *b, const rt_touch_custom *c, d
 // Action names in the stored text ("jump", "use"...).
 const char *rt_touch_action_name(rt_touch_action a);
 
+// ---- Touch as player 2 (round 23) ----
+// Portal 2 co-op split-screen with one controller: the controller is player 1
+// and the touch controls drive player 2 through a full virtual controller in
+// the second slot. On the iPad co-op can only be split-screen (no online play),
+// so a co-op map ("mp_coop_...") loaded with exactly one controller is the
+// signal. `game` is the running game's kind (rt_ios_game_kind).
+int rt_touch_player2_wanted(const char *game, const char *map, int controllers);
+// The controller button (SDL_GameControllerButton number) a touch action
+// presses in player-2 mode, or -1; its trigger axis (SDL_GameControllerAxis
+// number: 4 left, 5 right) for the portals, or -1. Portal 2's own bindings
+// (cfg/joy_configuration.cfg): A jump, B crouch, X use, Start menu, right
+// trigger blue portal (+attack), left trigger orange portal (+attack2).
+int rt_touch_pad_button(rt_touch_action action);
+int rt_touch_pad_trigger(rt_touch_action action);
+
 // Overlay hidden for a controller or a keyboard (touch_controls.m draws it,
 // tests/checks_touch_layout.c checks these rules). mode is P2_TOUCH_CONTROLS:
 // NULL or "auto" hides it while a controller or keyboard is connected, until a

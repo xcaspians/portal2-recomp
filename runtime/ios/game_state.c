@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "tv_output.h"
+#include "settings_menu_ios.h"
 #include "device_ios.h"
 #include "game_ios.h"
 #include "modules.h"
@@ -100,6 +101,26 @@ static int set_convar(CPU *c, uint32_t convar, const char *value) {
     return !strcmp(convar_string(convar), value);
 }
 static int level_known(void);   // below: a level has loaded, or this game can't tell
+
+// The loaded map (host_map), while in a level: touch as player 2 in Portal 2's
+// co-op (touch_controls.m, rt_touch_player2_wanted). Read twice a second.
+static char level_map[64];
+const char *rt_ios_level_map(void) { return level_map; }
+static void update_level_map(CPU *c) {
+    static uint64_t next;
+    static uint32_t convar;
+    static int missing;
+    uint64_t now = SDL_GetTicks64();
+    if (now < next || missing) return;
+    next = now + 500;
+    if (!rt_ios_game_in_level()) { level_map[0] = 0; return; }
+    if (!convar && !(convar = find_convar(c, "host_map"))) { missing = 1; return; }
+    const char *name = convar_string(convar);
+    if (strncmp(level_map, name, sizeof(level_map) - 1)) {
+        snprintf(level_map, sizeof(level_map), "%s", name);
+        fprintf(stderr, "[ios] carte : %s\n", level_map);
+    }
+}
 static void update_move_response(CPU *c) {
     if (convar_broken) return;
     uint32_t convar = find_convar(c, "joy_response_move");
@@ -441,6 +462,7 @@ void rt_ios_game_state_poll(void) {
     update_level(c, visible);
     watch_community_dialog(c, visible);
     if (linear_wanted || saved_response[0]) update_move_response(c);
+    update_level_map(c);
     autoexec(c);
     menu_exec(now);
     memory_log(now);

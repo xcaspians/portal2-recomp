@@ -1,6 +1,6 @@
 // Mode d'essai des commandes tactiles (simulateur) : voir touch_test.h.
 #include <TargetConditionals.h>
-#if TARGET_OS_IPHONE && TARGET_OS_SIMULATOR
+#if TARGET_OS_IPHONE   // devices too since round 23 (inert without P2_TOUCH_TEST_*)
 #include <SDL.h>
 #include <math.h>
 #include <stdio.h>

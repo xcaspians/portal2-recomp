@@ -17,6 +17,7 @@
 #import <UIKit/UIKit.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "power_ios.h"
 #include "settings.h"
 #include "settings_menu_ios.h"
@@ -53,6 +54,12 @@ static void send_mode(int w, int h) {
     fprintf(stderr, "[ios] TV : %s%s\n", mode_line, mode_pending ? " (en attente du moteur)" : "");
 }
 
+// "Playing on TV" over the iPad: a controller in use, and the touch controls not kept on.
+static BOOL note_wanted(void) {
+    const char *t = getenv("P2_TV_TOUCH");
+    return GCController.controllers.count > 0 && !(t && !strcmp(t, "always"));
+}
+
 static void show_pad_note(BOOL on) {
     UIView *pad = home;
     if (!pad) return;
@@ -67,7 +74,7 @@ static void show_pad_note(BOOL on) {
     if (on) {
         pad_note.frame = pad.bounds;
         pad_note.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        pad_note.hidden = GCController.controllers.count == 0;   // touch play: the controls only
+        pad_note.hidden = !note_wanted();   // touch play: the controls only
         if (pad_note.superview != pad) [pad insertSubview:pad_note atIndex:0];
     } else {
         [pad_note removeFromSuperview];
@@ -91,6 +98,7 @@ static void move_home(void) {
     rt_ios_render_size(&w, &h);   // the iPad's own picture again
     if (w > 0 && h > 0) send_mode(w, h);
     rt_ios_power_reload();
+    [NSNotificationCenter.defaultCenter postNotificationName:@"P2TVChanged" object:nil];   // touch controls (round 23)
     fprintf(stderr, "[ios] TV : image revenue sur l'iPad\n");
 }
 
@@ -112,7 +120,13 @@ static void move_to_tv(UIScreen *screen, int sim_w, int sim_h) {
         tv_hz = (int)UIScreen.mainScreen.maximumFramesPerSecond;
     }
     int w = 0, h = 0;
-    if (!rt_tv_render_size(pw, ph, getenv("P2_TV_RESOLUTION"), &w, &h)) return;
+    // The shape shown (the window's frame, from the screen's bounds), not the mode's
+    // pixel grid: circles stay circles on an anamorphic AirPlay or HDMI mode.
+    double shown = frame.size.height > 0 ? frame.size.width / frame.size.height : 0;
+    if (!rt_tv_render_size_shown(pw, ph, shown, getenv("P2_TV_RESOLUTION"), &w, &h)) return;
+    if (screen)
+        fprintf(stderr, "[ios] TV : mode %dx%d (rapport des pixels %.3f), écran %.0fx%.0f points, échelle %.2f\n", pw, ph,
+                screen.currentMode ? screen.currentMode.pixelAspectRatio : 1.0, frame.size.width, frame.size.height, screen.scale);
     tv_window = [[UIWindow alloc] initWithFrame:frame];
     if (screen) tv_window.screen = screen;
     else tv_window.windowLevel = UIWindowLevelNormal + 1;
@@ -130,6 +144,7 @@ static void move_to_tv(UIScreen *screen, int sim_w, int sim_h) {
     show_pad_note(YES);
     send_mode(w, h);
     rt_ios_power_reload();   // the TV's frame cap (power_ios.m)
+    [NSNotificationCenter.defaultCenter postNotificationName:@"P2TVChanged" object:nil];   // touch controls (round 23)
     fprintf(stderr, "[ios] TV : %s %dx%d pixels à %d Hz, image %dx%d\n", screen ? "écran externe" : "simulé (iPad)",
             pw, ph, tv_hz, w, h);
 }
@@ -146,7 +161,9 @@ void rt_ios_tv_refresh(void) {
         int pw = screen ? (int)(screen.currentMode ? screen.currentMode.size.width : screen.nativeBounds.size.width) : sw;
         int ph = screen ? (int)(screen.currentMode ? screen.currentMode.size.height : screen.nativeBounds.size.height) : sh;
         int w = 0, h = 0;
-        if (rt_tv_render_size(pw, ph, getenv("P2_TV_RESOLUTION"), &w, &h) && (w != tv_w || h != tv_h)) move_home();
+        CGRect b = screen ? screen.bounds : tv_window.frame;
+        double shown = b.size.height > 0 ? b.size.width / b.size.height : 0;
+        if (rt_tv_render_size_shown(pw, ph, shown, getenv("P2_TV_RESOLUTION"), &w, &h) && (w != tv_w || h != tv_h)) move_home();
     }
     if (wanted && !tv_window) move_to_tv(screen, sw, sh);
 }
@@ -180,7 +197,7 @@ void rt_ios_tv_poll(void) {
         mode_pending = 0;
         fprintf(stderr, "[ios] TV : %s envoyée\n", mode_line);
     }
-    if (pad_note && tv_window) pad_note.hidden = GCController.controllers.count == 0;
+    if (pad_note && tv_window) pad_note.hidden = !note_wanted();
 }
 
 void rt_ios_tv_watch(void) {

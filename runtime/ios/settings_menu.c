@@ -15,6 +15,8 @@ static const char *const tv_res_values[] = {"auto", "1080", "1440", "2160", NULL
 static const char *const tv_res_labels[] = {"Auto", "1080p", "1440p", "4K", NULL};
 static const char *const tv_fps_values[] = {"auto", "30", "60", "120", NULL};
 static const char *const tv_fps_labels[] = {"TV's rate", "30", "60", "120", NULL};
+static const char *const tv_touch_values[] = {"auto", "always", NULL};
+static const char *const tv_touch_labels[] = {"Auto", "Always on", NULL};
 static const char *const gyro_values[] = {"0.5", "0.75", "1", "1.5", "2", NULL};
 static const char *const gyro_labels[] = {"×0.5", "×0.75", "Normal", "×1.5", "×2", NULL};
 
@@ -39,6 +41,8 @@ const rt_menu_item rt_menu_items[] = {
     {"P2TVOutput", "TV", "Picture on the TV", RT_MENU_TOGGLE, "1", 0, 0, 0, 0, NULL, NULL, NULL, 0},
     {"P2TVResolution", NULL, "TV resolution", RT_MENU_CHOICE, "auto", 0, 0, 0, 0, NULL, tv_res_values, tv_res_labels, 0},
     {"P2TVMaxFPS", NULL, "TV frame rate", RT_MENU_CHOICE, "auto", 0, 0, 0, 0, NULL, tv_fps_values, tv_fps_labels, 0},
+    // Auto: hidden while a controller or keyboard is connected (until a touch); Always on: kept on the iPad.
+    {"P2TVTouch", NULL, "Touch controls", RT_MENU_CHOICE, "auto", 0, 0, 0, 0, NULL, tv_touch_values, tv_touch_labels, 0},
 };
 const int rt_menu_item_count = (int)(sizeof(rt_menu_items) / sizeof(*rt_menu_items));
 
