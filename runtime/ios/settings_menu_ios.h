@@ -25,3 +25,10 @@ const char *rt_ios_level_map(void);   // game_state.c: the loaded map ("" outsid
 int rt_ios_game_take_community_request(void);
 int rt_ios_game_commands_available(void);
 int rt_ios_game_command(const char *line);
+
+#ifdef __OBJC__
+@class UIView;
+// Round 25: the same panel from Sauce's launcher (no game running): the settings
+// every game shares. `close` runs once it is closed for good.
+UIView *rt_ios_settings_menu_launcher(void (^close)(void));
+#endif

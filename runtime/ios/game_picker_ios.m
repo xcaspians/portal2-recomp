@@ -21,6 +21,7 @@
 #include "game_picker.h"
 #include "game_picker_ios.h"
 #include "nearby_ios.h"
+#include "settings_menu_ios.h"
 #include "rt.h"
 #include "tv_output.h"
 
@@ -179,6 +180,7 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     UIStackView *manage;
     UIScrollView *manageScroll;
     UIView *nearbyShade;               // Play nearby's panel (round 25), over the launcher
+    UIView *controls;                  // the touch and controls settings (round 25), over the launcher
     BOOL remember;
     NSMutableDictionary<NSString *, UILabel *> *sizeLabels;
     NSMutableDictionary<NSString *, NSString *> *sizes;
@@ -215,6 +217,7 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
         if (!strcmp(rt_picker_series_at(i)->id, open)) [self show:rt_picker_series_at(i) animated:NO];
     if (lit) { focus = atoi(lit); [self applyFocus]; }
     if (getenv("P2_NEARBY_OPEN")) [self showNearby];   // device checks: Play nearby open in the launcher
+    if (getenv("P2_CONTROLS_OPEN")) [self showControls];   // device checks: the controls settings open in the launcher
 }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
@@ -337,9 +340,20 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
         [cards addObject:nearby];
         y += nh + 8;
     }
-    // Remember my choice and Manage games: focusable too.
+    // Controls, Remember my choice and Manage games: focusable too.
     y += 26;
-    CGFloat bw = 300 * k, bh = 50 * k, bx = (w - 2 * bw - 16) / 2;
+    CGFloat bw = MIN(300 * k, (w - 64 - 32) / 3), bh = 50 * k, bx = (w - 3 * bw - 32) / 2;
+    // Round 25: the touch and controls settings (the gear menu's), shared by every game.
+    P2Card *ctl = [[P2Card alloc] initWithFrame:CGRectMake(bx, y, bw, bh)];
+    ctl.layer.cornerRadius = bh / 2;
+    UILabel *cl = one_line(@"Controls", 15 * k, UIFontWeightSemibold, .9);
+    cl.frame = CGRectInset(ctl.bounds, 14, 0); cl.userInteractionEnabled = NO;
+    [ctl addSubview:cl];
+    __weak P2GamePicker *weakControls = self;
+    ctl.action = ^{ [weakControls showControls]; };
+    [page addSubview:ctl];
+    [cards addObject:ctl];
+    bx += bw + 16;
     P2Card *rem = [[P2Card alloc] initWithFrame:CGRectMake(bx, y, bw, bh)];
     rem.layer.cornerRadius = bh / 2;
     UILabel *rl = one_line([self rememberText], 15 * k, UIFontWeightSemibold, .9);
@@ -510,6 +524,17 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     [self.view addSubview:shade];
     nearbyShade = shade;
 }
+- (void)showControls {
+    if (controls) return;
+    __weak P2GamePicker *weak = self;
+    controls = rt_ios_settings_menu_launcher(^{
+        P2GamePicker *me = weak;
+        [me->controls removeFromSuperview];
+        me->controls = nil;
+    });
+    controls.frame = self.view.bounds;
+    [self.view addSubview:controls];
+}
 - (void)closeNearby {
     [nearbyShade removeFromSuperview];
     nearbyShade = nil;
@@ -541,6 +566,7 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
 }
 // The nearest card in a direction (dx, dy), from the focused one's centre.
 - (void)moveFocus:(CGPoint)d {
+    if (controls || nearbyShade) return;   // a panel over the launcher has the controller
     if (!cards.count) return;
     if (focus < 0) { focus = 0; [self applyFocus]; return; }
     CGPoint from = CGPointMake(CGRectGetMidX(cards[focus].frame), CGRectGetMidY(cards[focus].frame));
@@ -589,11 +615,12 @@ static UIColor *accent(void) { return [UIColor colorWithRed:.98 green:.55 blue:.
     pad.buttonA.pressedChangedHandler = ^(GCControllerButtonInput *b, float v, BOOL pressed) {
         (void)b; (void)v;
         P2GamePicker *me = weak;
-        if (pressed && me && !me->nearbyShade && me->focus >= 0 && me->focus < (NSInteger)me->cards.count) [me->cards[me->focus] fire];
+        if (pressed && me && !me->nearbyShade && !me->controls && me->focus >= 0 && me->focus < (NSInteger)me->cards.count) [me->cards[me->focus] fire];
     };
     pad.buttonB.pressedChangedHandler = ^(GCControllerButtonInput *b, float v, BOOL pressed) {
         (void)b; (void)v;
-        if (pressed) [weak goBack];
+        P2GamePicker *me = weak;
+        if (pressed && me && !me->controls) [me goBack];
     };
 }
 
@@ -762,7 +789,7 @@ const char *rt_ios_choose_game(void) {
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     NSString *last = [d stringForKey:kLast];
     // P2_NEARBY_OPEN (device checks): the launcher shows even when a game is remembered.
-    const char *pick = getenv("P2_NEARBY_OPEN") ? NULL
+    const char *pick = getenv("P2_NEARBY_OPEN") || getenv("P2_CONTROLS_OPEN") ? NULL
                      : rt_picker_autostart(names, here, n, getenv("P2_GAME_CHOICE"), last.UTF8String, [d boolForKey:kRemember]);
     if (!pick) {
         // Picker window over everything; SDL's comes after it.

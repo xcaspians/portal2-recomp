@@ -78,6 +78,8 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
 @end
 
 @implementation P2SettingsMenu {
+    void (^launcherClose)(void);   // round 25: opened from the launcher, before any game (nil in a game)
+    CADisplayLink *launcherTick;   // there: the controller is read here (no game tick)
     UIButton *gear;
     UIView *dim, *panel, *header;
     UIScrollView *scroll;
@@ -245,28 +247,32 @@ static UILabel *label(NSString *text, CGFloat size, UIFontWeight weight, CGFloat
 
     // Portal 2 only: Maps & Mods and Community Maps (its maps folders and
     // Workshop app). iCloud saves where the game has them (icloud_saves_ios.m).
-    BOOL portal2 = !strcmp(rt_ios_current_game()->name, "portal2");
+    // From the launcher (round 25): the settings every game shares, nothing that needs a running game.
+    BOOL launcher = launcherClose != nil;
+    BOOL portal2 = !launcher && !strcmp(rt_ios_current_game()->name, "portal2");
     for (int i = 0; i < rt_menu_item_count; ++i) {
         const rt_menu_item *it = &rt_menu_items[i];
         if (!rt_ios_icloud_supported() && !strcmp(it->key, "P2ICloudSaves")) continue;
+        if (launcher && !rt_menu_item_in_launcher(it)) continue;   // one game's iCloud saves: set in that game
         if (!rt_menu_item_for_game(it, rt_ios_current_game()->back_taps)) continue;
         if (it->section) [self addSection:@(it->section)];
         [self addSettingRow:it];
         if (!strcmp(it->key, "P2MaxFPS")) [self addRecommendedRow];
         if (!strcmp(it->key, "P2PortalButtons")) [self addEditLayoutRow];
-        if (!strcmp(it->key, "P2BackTapSensitivity") && rt_ios_current_game()->back_taps) [self addCalibrateRow];
+        if (!strcmp(it->key, "P2BackTapSensitivity") && rt_ios_current_game()->back_taps && !launcher) [self addCalibrateRow];
     }
     if (portal2) [self addMapsSection];
     [self addSection:@""];
     [self addResetRow];
-    if (rt_ios_has_game_choice()) [self addSwitchGameRow];
+    if (rt_ios_has_game_choice() && !launcher) [self addSwitchGameRow];
     if (portal2) [self addNearbyRow];   // round 25: co-op with another device
-    [self addPhoneRow];   // round 23 item 9b
+    if (!launcher) [self addPhoneRow];   // round 23 item 9b
     [rows addObject:close];   // last in controller order, first on screen
     // "Sauce 0.4.0-fork.3 (abc1234) · Half-Life 2": the app, its version, the running game (round 19).
     NSString *version = [NSBundle.mainBundle objectForInfoDictionaryKey:@"P2ForkVersion"] ?: @"unknown";
     NSString *app = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"recomp fork";
-    UILabel *footer = label([NSString stringWithFormat:@"%@ %@ · %@", app, version, @(rt_ios_current_game()->title)], 13,
+    UILabel *footer = label(launcher ? [NSString stringWithFormat:@"%@ %@ · shared by every game", app, version]
+                                     : [NSString stringWithFormat:@"%@ %@ · %@", app, version, @(rt_ios_current_game()->title)], 13,
                             UIFontWeightRegular, .5);
     footer.textAlignment = NSTextAlignmentCenter;
     [stack addArrangedSubview:footer];
@@ -308,6 +314,17 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     dim = panel = header = nil; scroll = nil; stack = nil; rows = nil; icloudStatus = nil; community = nil; calibration = nil;
     focus = -1;
     resetArmedUntil = 0;
+    // From the launcher: closed for good unless it reopens at once (the layout editor
+    // or back-tap calibration close the panel and open it again afterwards).
+    if (launcherClose)
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (menu_open || self->editor || !self->launcherClose) return;
+            [self->launcherTick invalidate];
+            self->launcherTick = nil;
+            void (^done)(void) = self->launcherClose;
+            self->launcherClose = nil;
+            done();
+        });
 }
 
 - (void)addSection:(NSString *)name {
@@ -487,8 +504,9 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
     __weak P2SettingsMenu *weakSelf = self;
     UIButtonConfiguration *conf = [UIButtonConfiguration grayButtonConfiguration];
     conf.title = @"Edit button layout";
-    conf.subtitle = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad ? @"Saved for iPad, this game"
-                                                                                       : @"Saved for iPhone, this game";
+    BOOL pad = UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad;
+    conf.subtitle = launcherClose ? (pad ? @"Saved for iPad, Portal 2's buttons" : @"Saved for iPhone, Portal 2's buttons")
+                                  : (pad ? @"Saved for iPad, this game" : @"Saved for iPhone, this game");
     conf.image = [UIImage systemImageNamed:@"square.and.pencil"];
     conf.imagePadding = 8;
     conf.baseForegroundColor = UIColor.whiteColor;
@@ -1102,7 +1120,40 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     if (icloudStatus && CACurrentMediaTime() - icloudShownAt > 1) [self showICloudStatus];
     if (paused || menu_open) [self pollPad:paused];
 }
+
+- (void)openFromLauncher:(void (^)(void))close {
+    launcherClose = close;
+    gear.hidden = YES;
+    launcherTick = [CADisplayLink displayLinkWithTarget:self selector:@selector(launcherStep)];
+    [launcherTick addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+    [self openMenu];
+    // P2_CONTROLS_TEST="<key>=<value>" (device checks): that row set as a tap would, then the panel closed.
+    const char *test = getenv("P2_CONTROLS_TEST");
+    if (test && strchr(test, '=')) {
+        NSString *pair = @(test);
+        NSRange eq = [pair rangeOfString:@"="];
+        NSString *key = [pair substringToIndex:eq.location], *value = [pair substringFromIndex:eq.location + 1];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            for (P2MenuRow *row in self->rows)
+                if (row.kind == ROW_SETTING && !strcmp(row.item->key, key.UTF8String)) {
+                    [self store:row value:value.UTF8String];
+                    fprintf(stderr, "[ios] essai réglages du lanceur : %s = %s\n", key.UTF8String, value.UTF8String);
+                }
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [self closeMenu]; });
+        });
+    }
+}
+- (void)launcherStep {
+    if (closing_hold && ![self padActive]) closing_hold = 0;
+    [self pollPad:NO];
+}
 @end
+
+UIView *rt_ios_settings_menu_launcher(void (^close)(void)) {
+    P2SettingsMenu *m = [[P2SettingsMenu alloc] initWithFrame:CGRectZero];
+    [m openFromLauncher:close];
+    return m;
+}
 
 void *rt_ios_settings_menu_create(void) {
     return (__bridge_retained void *)[[P2SettingsMenu alloc] initWithFrame:CGRectZero];

@@ -53,3 +53,6 @@ int rt_menu_item_for_game(const rt_menu_item *it, int back_taps);
 // The item's default for this game ("1" for gyro aiming in Half-Life 2, where
 // it is on by default, game_ios.c and touch_controls.m).
 const char *rt_menu_item_default(const rt_menu_item *it, const char *game);
+// Round 25: shown in the panel opened from Sauce's launcher, before any game:
+// the settings every game shares (not a game's own iCloud saves).
+int rt_menu_item_in_launcher(const rt_menu_item *it);

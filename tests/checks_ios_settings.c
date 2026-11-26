@@ -317,3 +317,28 @@ RT_CHECK(ios_frame_rate_auto_range_and_live_pacing) {
     last = 0; rt_ios_pace(300, &last, 30, 120);
     assert(rt_ios_pace(302, &last, 30, 120) == 0 && rt_ios_pace(302.001, &last, 30, 120) > 302.03);
 }
+
+// Round 25: the controls panel opened from the launcher (no game yet) shows only
+// settings every game shares: the same preference key whichever game runs, so a
+// change there applies in every game.
+#include "../runtime/ios/game_ios.h"
+RT_CHECK(ios_settings_from_the_launcher_are_shared) {
+    static const char *const games[] = {"portal2", "mel", "hl2", "portal1", "l4d2"};
+    int shown = 0;
+    for (int i = 0; i < rt_menu_item_count; ++i) {
+        const rt_menu_item *it = &rt_menu_items[i];
+        if (!rt_menu_item_in_launcher(it)) continue;
+        ++shown;
+        char first[160], other[160];
+        rt_ios_set_game(games[0]);
+        rt_ios_pref_key(it->key, first, sizeof(first));
+        for (size_t g = 1; g < sizeof(games) / sizeof(*games); ++g) {
+            rt_ios_set_game(games[g]);
+            assert(!strcmp(rt_ios_pref_key(it->key, other, sizeof(other)), first));
+        }
+    }
+    rt_ios_set_game("portal2");
+    assert(shown == rt_menu_item_count - 1);   // all but iCloud saves
+    assert(!rt_menu_item_in_launcher(rt_menu_item_named("P2ICloudSaves")));
+    assert(rt_menu_item_in_launcher(rt_menu_item_named("P2TouchSize")));
+}
