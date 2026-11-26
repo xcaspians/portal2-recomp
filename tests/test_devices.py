@@ -43,6 +43,8 @@ class DevicesTest(unittest.TestCase):
         self.assertIn('locked', devices.plain_error('ERROR: The device is passcode locked'))
         self.assertIn('Trust', devices.plain_error('device is not paired'))
         self.assertIn('stopped answering', devices.plain_error('Operation timed out'))
+        # Wi-Fi dropping mid-copy (seen on the iPad Pro, round 28).
+        self.assertIn('stopped answering', devices.plain_error('The connection to the remote device is no longer valid.'))
 
     def test_plan(self):
         built = {'portal2': None, 'mel': None, 'workshop': None}
@@ -51,9 +53,10 @@ class DevicesTest(unittest.TestCase):
         fresh['data'] = {'portal2': True}
         steps, problem = devices.plan('mel', fresh, built, 6_800_000_000)
         self.assertIsNone(problem)
-        self.assertEqual([c for _, c in steps], [['install'], ['mel', 'data', 'push']])   # the app first
+        self.assertEqual([c for _, c in steps], [['install'], ['mel', 'data', 'push'], ['--game', 'mel', 'manifest']])   # the app first
         ready = {'app_installed': True, 'free_bytes': 50_000_000_000, 'data': {'portal2': True}}
-        self.assertEqual([c for _, c in devices.plan('portal2', ready, built, 11_500_000_000)[0]], [['data']])
+        self.assertEqual([c for _, c in devices.plan('portal2', ready, built, 11_500_000_000)[0]],
+                         [['data'], ['--game', 'portal2', 'manifest']])
         self.assertEqual([c for _, c in devices.plan('workshop', ready, built, 800_000_000)[0]], [['workshop', 'push']])
 
     def test_plan_refusals(self):
@@ -72,26 +75,53 @@ class DevicesTest(unittest.TestCase):
         bare = {'app_installed': True, 'apps': {'portal2': True}, 'free_bytes': 50_000_000_000, 'data': {}}
         steps, problem = devices.plan('portal1', bare, built, 4_400_000_000)
         self.assertIsNone(problem)
-        self.assertEqual([c for _, c in steps], [['--game', 'portal1', 'data']])
+        self.assertEqual([c for _, c in steps], [['--game', 'portal1', 'data'], ['--game', 'portal1', 'manifest']])
         # Half-Life 2 and Left 4 Dead 2 live in the one app too since round 19:
         # their data into it, the app installed first when missing.
         self.assertEqual(devices.OWN_APP, ())
         steps, problem = devices.plan('l4d2', bare, built, 14_000_000_000)
         self.assertIsNone(problem)
-        self.assertEqual([c for _, c in steps], [['--game', 'l4d2', 'data']])
+        self.assertEqual([c for _, c in steps], [['--game', 'l4d2', 'data'], ['--game', 'l4d2', 'manifest']])
         no_app = dict(bare, app_installed=False, apps={'portal2': False})
         self.assertEqual([c for _, c in devices.plan('hl2', no_app, built, 10_000_000_000)[0]],
-                         [['install'], ['--game', 'hl2', 'data']])
+                         [['install'], ['--game', 'hl2', 'data'], ['--game', 'hl2', 'manifest']])
         # Not built on this Mac: the sentence, no steps.
         self.assertEqual(devices.plan('hl2', bare, dict(built, hl2='HL2 not built'), 1), ([], 'HL2 not built'))
         self.assertEqual(devices.app_game('portal1'), 'portal2')
         self.assertEqual(devices.app_game('l4d2'), 'portal2')
 
 
+    def test_plan_backs_up_saves_before_replacing_and_updates_only_what_changed(self):
+        built = dict.fromkeys(devices.DOWNLOADS)
+        on = {'app_installed': True, 'apps': {'portal2': True}, 'free_bytes': 50_000_000_000,
+              'data': {'portal2': True}}
+        steps, problem = devices.plan('portal2', on, built, 1, backup='/tmp/b')
+        self.assertIsNone(problem)
+        self.assertEqual(steps[0][1], ['saves-backup', '/tmp/b'])   # before the copy replaces anything
+        steps, _ = devices.plan('portal2', on, built, 1, only=['Documents/prep', 'Documents/game/portal2'])
+        self.assertEqual(steps[0][1], ['data', '--only', 'Documents/prep Documents/game/portal2'])
+        self.assertIn('2 folders changed', steps[0][0])
+        # Nothing on the device yet: nothing to back up.
+        fresh = dict(on, data={})
+        self.assertNotIn('saves-backup', [c[0] for _, c in devices.plan('portal2', fresh, built, 1, backup='/tmp/b')[0]])
+
+
+    def test_status_asks_every_game_in_the_app(self):
+        self.assertEqual(devices.IN_APP, ('portal2', 'mel', 'portal1', 'hl2', 'l4d2'))
+
+    def test_device_tools_get_home(self):
+        # Round 28: status ran ios_device.sh without HOME, so has-data failed and
+        # every game showed as missing from the device.
+        env = devices.device_env('UDID')
+        self.assertEqual(env['P2_DEVICE'], 'UDID')
+        self.assertIn('HOME', env)
+        self.assertNotIn("'PATH': '/usr/bin", (devices.ROOT / 'tools/devices.py').read_text())
+
+
 class InstallerMatchesDevicesTest(unittest.TestCase):
     def test_installer_lists_every_download_and_names_the_one_app(self):
         import re
-        swift = (devices.ROOT / 'installer/Installer.swift').read_text()
+        swift = (devices.ROOT / 'installer/Devices.swift').read_text()
         listed = re.findall(r'\("(\w+)", "[^"]+"\)', swift.split('let downloads')[1].split('\n\n')[0])
         self.assertEqual(tuple(listed), devices.DOWNLOADS)
         self.assertIn(f'let deviceAppName = "{devices.games.APP_NAME}"', swift)   # rename: both, tests keep them equal

@@ -44,7 +44,7 @@ rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 SLICES=()
 for arch in arm64 x86_64; do
     swiftc -O -parse-as-library -swift-version 5 -target $arch-apple-macos13.0 \
-        installer/Installer.swift -o "$OUT/installer-$arch"
+        installer/Installer.swift installer/Devices.swift -o "$OUT/installer-$arch"
     SLICES+=("$OUT/installer-$arch")
 done
 lipo -create "${SLICES[@]}" -output "$APP/Contents/MacOS/installer"

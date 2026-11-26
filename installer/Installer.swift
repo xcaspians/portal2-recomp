@@ -454,193 +454,11 @@ nonisolated func unpackSource() throws {
     try? fm.removeItem(at: old)
 }
 
-// MARK: - Devices (tools/devices.py plans, tools/ios_device.sh does the work)
-
-// The checkout that built the iPhone apps: this installer's own copy, or a
-// git checkout named by P2_REPO.
-let repoDir = ProcessInfo.processInfo.environment["P2_REPO"].map { URL(fileURLWithPath: $0) } ?? sourceDir
-
-struct DeviceInfo: Decodable, Identifiable, Equatable {
-    let udid: String
-    let name: String?
-    let model: String?
-    let kind: String?
-    let link: String
-    let ready: Bool
-    let problem: String?
-    var id: String { udid }
-}
-struct DeviceStatus: Decodable, Equatable {
-    var app_installed: Bool?
-    var free_bytes: Int64?
-    var data: [String: Bool]?
-    var apps: [String: Bool]?
-    var problem: String?
-}
-struct PlanStep: Decodable { let label: String; let command: [String] }
-struct DownloadPlan: Decodable { let steps: [PlanStep]; let need_bytes: Int64; let problem: String? }
-
-// tools/devices.py DOWNLOADS: every game, all in the one app (round 19).
-let downloads: [(id: String, title: String)] = [("portal2", "Portal 2"), ("mel", "Portal Stories: Mel"),
-                                                ("portal1", "Portal"), ("hl2", "Half-Life 2"),
-                                                ("l4d2", "Left 4 Dead 2"), ("workshop", "Workshop maps")]
-// The one app every game lives in on the device (tools/games.py APP_NAME, round 19).
-let deviceAppName = "Sauce"
-
 // The installer's version (tools/build_installer.sh: git describe), shown in the window.
 let installerVersion = (Bundle.main.object(forInfoDictionaryKey: "P2SourceVersion") as? String)
     ?? (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "development build"
 
-@MainActor
-final class Devices: ObservableObject {
-    @Published var list: [DeviceInfo] = []
-    @Published var status: [String: DeviceStatus] = [:]
-    @Published var busy: String? = nil          // "<udid>/<game>" while downloading
-    @Published var message: [String: String] = [:]
-    @Published var line = ""
-    @Published var stepText = ""
-    @Published var searching = false
-    private var process: Process?
-
-    private func tool(_ args: [String]) async -> Data {
-        await withCheckedContinuation { done in
-            DispatchQueue.global().async {
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-                p.arguments = [repoDir.appendingPathComponent("tools/devices.py").path] + args
-                p.currentDirectoryURL = repoDir
-                let pipe = Pipe()
-                p.standardOutput = pipe
-                p.standardError = FileHandle.nullDevice
-                try? p.run()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                p.waitUntilExit()
-                done.resume(returning: data)
-            }
-        }
-    }
-    // withStatus: also free space and games on each ready device. Reading free
-    // space opens the Portal app on the device for a second (P2_DEVICE_REPORT),
-    // so only on Refresh, never just because the window opened.
-    func refresh(withStatus: Bool = true) async {
-        searching = true
-        defer { searching = false }
-        list = (try? JSONDecoder().decode([DeviceInfo].self, from: await tool(["list"]))) ?? []
-        for d in list where d.ready && withStatus {
-            status[d.udid] = try? JSONDecoder().decode(DeviceStatus.self, from: await tool(["status", "--device", d.udid]))
-        }
-    }
-    func download(_ game: String, to device: DeviceInfo) async {
-        let key = "\(device.udid)/\(game)"
-        message[key] = nil
-        busy = key
-        defer { busy = nil; process = nil }
-        guard let plan = try? JSONDecoder().decode(DownloadPlan.self, from: await tool(["plan", "--device", device.udid, "--game", game])) else {
-            message[key] = "The download couldn't be planned. Check that the device is unlocked, then try again."
-            return
-        }
-        if let problem = plan.problem { message[key] = problem; return }
-        for (i, step) in plan.steps.enumerated() {
-            stepText = "\(step.label) (\(i + 1) of \(plan.steps.count))"
-            let ok = await runStep(step.command, device: device.udid)
-            if !ok {
-                message[key] = line.isEmpty ? "Stopped." : line
-                return
-            }
-        }
-        message[key] = "Done. Open the \(deviceAppName) app on the device."
-        status[device.udid] = try? JSONDecoder().decode(DeviceStatus.self, from: await tool(["status", "--device", device.udid]))
-    }
-    private func runStep(_ words: [String], device: String) async -> Bool {
-        await withCheckedContinuation { done in
-            let p = Process()
-            p.executableURL = repoDir.appendingPathComponent("tools/ios_device.sh")
-            p.arguments = words
-            p.currentDirectoryURL = repoDir
-            var env = ProcessInfo.processInfo.environment
-            env["P2_DEVICE"] = device   // never a guess: the device the button belongs to
-            p.environment = env
-            let pipe = Pipe()
-            p.standardOutput = pipe
-            p.standardError = pipe
-            pipe.fileHandleForReading.readabilityHandler = { h in
-                let text = String(decoding: h.availableData, as: UTF8.self)
-                if let last = text.split(separator: "\n").last.map(String.init), !last.isEmpty {
-                    DispatchQueue.main.async { self.line = last }
-                }
-            }
-            p.terminationHandler = { p in
-                pipe.fileHandleForReading.readabilityHandler = nil
-                done.resume(returning: p.terminationStatus == 0)
-            }
-            process = p
-            do { try p.run() } catch { done.resume(returning: false) }
-        }
-    }
-    func cancel() { process?.terminate(); line = "Canceled." }
-}
-
-struct DevicesPanel: View {
-    @ObservedObject var devices: Devices
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("iPhones and iPads plugged in, or paired on this Wi-Fi.")
-                Spacer()
-                Button(devices.searching ? "Looking…" : "Refresh") { Task { await devices.refresh() } }
-                    .disabled(devices.searching || devices.busy != nil)
-            }
-            if devices.list.isEmpty && !devices.searching {
-                Text("No device found. Plug one in with a cable and unlock it.").foregroundStyle(.secondary)
-            }
-            ForEach(devices.list) { d in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(d.name ?? "Device").bold()
-                        Text("\(d.model ?? "") · \(d.link)").foregroundStyle(.secondary)
-                        if let free = devices.status[d.udid]?.free_bytes {
-                            Text(String(format: "· %.1f GB free", Double(free) / 1e9)).foregroundStyle(.secondary)
-                        }
-                    }
-                    if let problem = d.problem ?? devices.status[d.udid]?.problem {
-                        Text(problem).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        ForEach(downloads, id: \.id) { g in
-                            let key = "\(d.udid)/\(g.id)"
-                            HStack {
-                                Text(g.title)
-                                if devices.status[d.udid]?.data?[g.id] == true { Text("on the device").foregroundStyle(.green) }
-                                Spacer()
-                                if devices.busy == key {
-                                    ProgressView().controlSize(.small)
-                                    Button("Cancel") { devices.cancel() }
-                                } else {
-                                    Button("Download") { Task { await devices.download(g.id, to: d) } }
-                                        .disabled(devices.busy != nil)
-                                }
-                            }
-                            if g.id == "portal2" {   // never offered for removal (tools/devices.py removable)
-                                Text("The base the other games run on, so it stays on the device.")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            if devices.busy == key {
-                                Text(devices.stepText).font(.caption)
-                                Text(devices.line).font(.caption.monospaced()).lineLimit(1).foregroundStyle(.secondary)
-                            }
-                            if let m = devices.message[key] {
-                                Text(m).font(.caption).fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                    }
-                }
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.08)))
-            }
-        }
-        .task { if devices.list.isEmpty { await devices.refresh(withStatus: false) } }
-    }
-}
+// The device side (games found in Steam, the iPad or iPhone, Install) is installer/Devices.swift.
 
 // MARK: - Views
 
@@ -689,7 +507,7 @@ struct PathLine: View {
     }
 }
 
-let windowTitle = "Portal 2, Half-Life 2 and Portal for Apple silicon"
+let windowTitle = "Sauce Installer"
 
 /// One game: a checkbox, then where its files are or how to get them.
 struct GameRow: View {
@@ -756,21 +574,13 @@ struct GameRow: View {
 
 struct ContentView: View {
     @ObservedObject var model: Installer
-    @StateObject private var devices = Devices()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(windowTitle).font(.title2.weight(.semibold))
-                    Spacer()
-                    Text("Version \(installerVersion)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                }
-                Text("Builds native Mac apps from your own copies of the games on Steam. Nothing from the games is downloaded by this installer.")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.bottom, 20)
-
+            Text(isAppleSilicon ? "Builds native Mac apps from your own copies of the games on Steam. Nothing from the games is downloaded by this installer."
+                 : "This Mac has an Intel processor: the Mac games need Apple silicon (M1 or newer), so they can't be built here.")
+                .font(.callout).foregroundStyle(isAppleSilicon ? Color.secondary : Color.orange).fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 16)
             VStack(alignment: .leading, spacing: 18) {
                 StepRow(number: 1, title: "Xcode command line tools", ok: model.tools) {
                     if model.tools { Text("Installed.") } else {
@@ -788,17 +598,11 @@ struct ContentView: View {
                 StepRow(number: 3, title: "Build", ok: model.phase == .done) {
                     buildStatus
                 }
-                StepRow(number: 4, title: "Devices", ok: false) {
-                    DevicesPanel(devices: devices)
-                }
             }
 
             Spacer(minLength: 16)
             footer
         }
-        .padding(24)
-        .frame(width: 600)
-        .frame(minHeight: 600)
     }
 
     @ViewBuilder var buildStatus: some View {
@@ -854,6 +658,56 @@ struct ContentView: View {
     }
 }
 
+/// The window: the iPad and iPhone side first (round 28), the Mac apps on the second tab.
+struct RootView: View {
+    @ObservedObject var model: Installer
+    @ObservedObject var hub: DeviceHub
+    @ObservedObject var update: InstallerUpdate
+    @State var tab = 0
+    var snapshot = false   // ImageRenderer draws neither a segmented control nor a scroll view
+
+    var page: some View {
+        Group {
+            if tab == 0 { DeviceFlowView(hub: hub, tools: model) } else { ContentView(model: model) }
+        }
+        .padding(.vertical, 8).padding(.trailing, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Sauce for iPad, iPhone and Mac").font(.title2.weight(.semibold))
+                Spacer()
+                Text("Version \(installerVersion)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            Text("Plays your own Steam copies of Portal, Portal 2, Mel, Half-Life 2 and Left 4 Dead 2. Nothing from the games is downloaded by this installer, and it never asks for your Steam password.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let newer = update.newer {
+                HStack {
+                    Text("Natif Installer \(newer.version) is out.")
+                    Button("Download") { NSWorkspace.shared.open(newer.url) }
+                }
+                .padding(8).background(RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.12)))
+            }
+            if snapshot {
+                Text(tab == 0 ? "[ iPad and iPhone | Mac ]" : "[ iPad and iPhone | Mac ]").font(.caption.monospaced())
+                page
+            } else {
+                Picker("", selection: $tab) {
+                    Text("iPad and iPhone").tag(0)
+                    Text("Mac").tag(1)
+                }
+                .pickerStyle(.segmented).labelsHidden()
+                ScrollView { page }
+            }
+        }
+        .padding(24)
+        .frame(width: 640)
+        .frame(minHeight: 680)
+    }
+}
+
 // MARK: - App
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -863,9 +717,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct InstallerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var model = Installer()
+    @StateObject private var hub = DeviceHub()
+    @StateObject private var update = InstallerUpdate()
     var body: some Scene {
         WindowGroup(windowTitle) {
-            ContentView(model: model).onAppear { model.startWatching() }
+            RootView(model: model, hub: hub, update: update).onAppear {
+                model.startWatching(); hub.start(); update.check()
+            }
         }
         .windowResizability(.contentSize)
     }
@@ -900,7 +758,38 @@ func snapshot(to path: String, state: String) {
     case "failed": model.phase = .failed("Half-Life 2: lib/libSDL2.dylib not found")
     default: break
     }
-    let renderer = ImageRenderer(content: ContentView(model: model).background(Color(nsColor: .windowBackgroundColor)))
+    let hub = DeviceHub()
+    if state.hasPrefix("devices") {   // the iPad and iPhone tab, made-up devices and games
+        let home = URL(fileURLWithPath: "/Users/you/Library/Application Support/Steam/steamapps/common")
+        hub.scanned = true
+        hub.library = ["portal2": LibraryEntry(folder: home.appendingPathComponent("Portal 2"), linux: URL(fileURLWithPath: "/depot_661")),
+                       "mel": LibraryEntry(folder: home.appendingPathComponent("Portal Stories Mel"), linux: nil),
+                       "hl2": LibraryEntry(folder: home.appendingPathComponent("Half-Life 2"), linux: URL(fileURLWithPath: "/depot_224"),
+                                           extras: ["Episode One", "Episode Two", "Lost Coast"])]
+        hub.picks = ["portal2", "hl2"]
+        hub.hasXcode = true
+        hub.list = [DeviceInfo(udid: "A", name: "My iPad Pro", model: "iPad Pro 11-inch (M5)", kind: "iPad", link: "USB", ready: true, problem: nil),
+                    DeviceInfo(udid: "B", name: "iPhone", model: "iPhone 18 Pro", kind: "iPhone", link: "Wi-Fi", ready: false,
+                               problem: "Not trusted yet: unlock it, plug it in, and tap Trust on its screen.")]
+        hub.selected = "A"
+        let installed = state != "devices-new"
+        hub.status["A"] = DeviceStatus(app_installed: installed, free_bytes: state == "devices-full" ? 12_000_000_000 : 80_000_000_000,
+                                       data: installed ? ["portal2": true] : [:], apps: nil,
+                                       updates: installed ? ["portal2": ["Documents/prep"]] : nil, problem: nil)
+        if state == "devices-running" {
+            hub.jobs = ["portal2": Job(state: .done("Done. Open Sauce on the iPad."), fraction: 1, text: ""),
+                        "hl2": Job(state: .running, fraction: 0.42, text: "Copy Half-Life 2 (about 10 GB) (2 of 3)")]
+            hub.running = true
+        }
+        if state == "devices-failed" {
+            hub.jobs = ["portal2": Job(state: .failed("The iPad is locked: unlock it and press Retry."), fraction: 0.3, text: "")]
+        }
+        hub.expiry = Date().addingTimeInterval(3 * 86400)
+    }
+    let view: AnyView = state.hasPrefix("devices")
+        ? AnyView(RootView(model: model, hub: hub, update: InstallerUpdate(), tab: 0, snapshot: true))
+        : AnyView(ContentView(model: model).padding(24).frame(width: 640))
+    let renderer = ImageRenderer(content: view.background(Color(nsColor: .windowBackgroundColor)))
     renderer.scale = 2
     guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
           let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else {
