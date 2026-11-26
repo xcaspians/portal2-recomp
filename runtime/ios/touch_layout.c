@@ -28,6 +28,8 @@ static const rt_touch_button portal2[] = {
     {RT_TOUCH_LOOK_MODE, "r.joystick.fill", RT_TOUCH_INK, 0, 1, EDGE, -EDGE, SMALL, 0},
     // Round 25: zoom, held (the game's +zoom), on the left between the portals and the stick.
     {RT_TOUCH_ZOOM, "plus.magnifyingglass", RT_TOUCH_INK, .06f, .50f, 0, 0, 46, 0},
+    // Round 26: co-op gestures (wave, hug...), held, the finger picks one; co-op only.
+    {RT_TOUCH_EMOTE, "hand.wave.fill", RT_TOUCH_INK, .5f, 1, 0, -34, 46, RT_TOUCH_COOP | RT_TOUCH_AIM},
 };
 
 // Half-Life 2 : sept commandes de jeu de la taille des boutons, réparties
@@ -129,6 +131,9 @@ void rt_touch_overlay_update(rt_overlay_state *s, rt_overlay_event event, int pa
     }
 }
 
+int rt_touch_coop_shown(const char *game, const char *map) {
+    return game && !strcmp(game, "portal2") && map && !strncmp(map, "mp_coop", 7);
+}
 int rt_touch_player2_wanted(const char *game, const char *map, int controllers) {
     return game && !strcmp(game, "portal2") && map && !strncmp(map, "mp_coop", 7) && controllers == 1;
 }
@@ -139,6 +144,7 @@ int rt_touch_pad_button(rt_touch_action action) {
     case RT_TOUCH_USE: return 2;      // X
     case RT_TOUCH_PAUSE: return 6;    // Start
     case RT_TOUCH_ZOOM: return 10;    // right shoulder (+zoom)
+    case RT_TOUCH_EMOTE: return 11;   // d-pad up (+mouse_menu_taunt)
     default: return -1;
     }
 }
@@ -171,7 +177,7 @@ rt_touch_pad_route rt_touch_pad_route_for(rt_ios_layout layout, rt_touch_action 
 // ---- Button layout editor ----
 static const char *const action_names[RT_TOUCH_ACTION_COUNT] = {
     "jump", "crouch", "use", "pause", "fire", "alt_fire", "look_mode", "flag", "reload", "sprint", "flashlight",
-    "weapon_prev", "weapon_next", "quicksave", "slot1", "slot2", "slot3", "slot4", "slot5", "zoom"};
+    "weapon_prev", "weapon_next", "quicksave", "slot1", "slot2", "slot3", "slot4", "slot5", "zoom", "emote"};
 const char *rt_touch_action_name(rt_touch_action a) { return a < RT_TOUCH_ACTION_COUNT ? action_names[a] : "?"; }
 
 int rt_touch_custom_format(const rt_touch_custom_layout *l, char *out, size_t size) {

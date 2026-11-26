@@ -125,7 +125,8 @@ RT_CHECK(ios_touch_layout_portal2_unchanged) {
         {RT_TOUCH_USE, x + w * .94, y + h * .80, k, 0}, {RT_TOUCH_PAUSE, x + w - k * .45, y + k * .45, k * .75, 0},
         {RT_TOUCH_FLAG_ERROR, x + w - k * 1.35, y + k * .45, k * .75, RT_TOUCH_DATASET},
         {RT_TOUCH_LOOK_MODE, x + k * .45, y + h - k * .45, k * .75, 0},
-        {RT_TOUCH_ZOOM, x + w * .06, y + h * .50, 46, 0}};   // round 25: added, the rest unchanged
+        {RT_TOUCH_ZOOM, x + w * .06, y + h * .50, 46, 0},   // round 25: added, the rest unchanged
+        {RT_TOUCH_EMOTE, x + w * .5, y + h - 34, 46, RT_TOUCH_COOP | RT_TOUCH_AIM}};   // round 26: co-op gestures
     assert(n == (int)(sizeof(old) / sizeof(*old)));
     for (int i = 0; i < n; ++i) {
         double cx, cy;
@@ -485,4 +486,24 @@ RT_CHECK(touch_layout_stored_per_game_and_device_kind) {
                     assert((strcmp(key, other) == 0) == (a == b && pa == pb));
                 }
     assert(!strcmp(rt_touch_layout_id(RT_IOS_LAYOUT_HL2), "hl2"));
+}
+
+// Round 26: an emote button for Portal 2's co-op gestures: Q held (+mouse_menu_taunt)
+// with the finger picking the gesture, d-pad up for touch as player 2; co-op maps only.
+RT_CHECK(touch_layout_emote_in_coop_only) {
+    int n, emote = 0;
+    const rt_touch_button *b = rt_touch_layout(RT_IOS_LAYOUT_PORTAL2, &n);
+    for (int i = 0; i < n; ++i)
+        if (b[i].action == RT_TOUCH_EMOTE) { ++emote; assert((b[i].flags & RT_TOUCH_COOP) && (b[i].flags & RT_TOUCH_AIM) && b[i].symbol); }
+    assert(emote == 1);
+    for (int l = RT_IOS_LAYOUT_HL2; l <= RT_IOS_LAYOUT_L4D2; ++l) {
+        b = rt_touch_layout((rt_ios_layout)l, &n);
+        for (int i = 0; i < n; ++i) assert(b[i].action != RT_TOUCH_EMOTE);
+    }
+    assert(rt_touch_coop_shown("portal2", "mp_coop_lobby_3") && !rt_touch_coop_shown("portal2", "sp_a1_intro1"));
+    assert(!rt_touch_coop_shown("portal2", "") && !rt_touch_coop_shown("hl2", "mp_coop_x") && !rt_touch_coop_shown(NULL, NULL));
+    assert(rt_touch_pad_button(RT_TOUCH_EMOTE) == 11);
+    assert(!strcmp(rt_touch_action_name(RT_TOUCH_EMOTE), "emote"));
+    rt_touch_custom_layout l;   // movable and resizable like the others: stored by name
+    assert(rt_touch_custom_parse("v1 emote=0.500,0.200,1.40", &l) == 1 && l.b[RT_TOUCH_EMOTE].set);
 }
