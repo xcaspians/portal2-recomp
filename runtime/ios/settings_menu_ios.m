@@ -434,8 +434,9 @@ static void community_closed(void *ctx, int all) { [(__bridge P2SettingsMenu *)c
         [self showICloudStatus];
     }
     // Metal reads its frame rate cap once, at start.
-    if ((it->flags & RT_MENU_RELAUNCH_ON_METAL) && rt_ios_metal_active) {
-        UILabel *note = label(@"Applies on next launch (Metal renderer)", 13, UIFontWeightRegular, 1);
+    if (((it->flags & RT_MENU_RELAUNCH_ON_METAL) && rt_ios_metal_active) || (it->flags & RT_MENU_RELAUNCH)) {
+        UILabel *note = label(it->flags & RT_MENU_RELAUNCH ? @"Applies on next launch" : @"Applies on next launch (Metal renderer)",
+                              13, UIFontWeightRegular, 1);
         note.textColor = [UIColor colorWithRed:1 green:.78 blue:.35 alpha:1];
         [v addSubview:note];
         [c addObjectsFromArray:@[

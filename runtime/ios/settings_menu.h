@@ -9,6 +9,7 @@
 typedef enum { RT_MENU_SLIDER, RT_MENU_TOGGLE, RT_MENU_CHOICE } rt_menu_kind;
 enum {
     RT_MENU_RELAUNCH_ON_METAL = 1,   // Metal reads it once at start: "Applies on next launch"
+    RT_MENU_RELAUNCH = 2,            // read once at start whatever the renderer (the log file)
 };
 
 typedef struct {

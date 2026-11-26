@@ -149,7 +149,7 @@ class IosProfiles(unittest.TestCase):
         import tempfile
         import build_ios
         with tempfile.TemporaryDirectory() as tmp:
-            for game in ('portal2', 'portal1', 'hl2'):
+            for game in ('portal2', 'portal1', 'hl2', 'mel', 'l4d2'):
                 path = Path(tmp) / f'{game}.plist'
                 shutil.copy(self.ROOT / 'ios/Settings.bundle/Root.plist', path)
                 build_ios.settings_for_game(path, game)
@@ -158,9 +158,12 @@ class IosProfiles(unittest.TestCase):
                 # Gyro aiming: off by default in Portal 2 (back taps shake the
                 # phone), on in Half-Life 2, as rt_gyro_enabled's default.
                 gyro = next(i for i in items if i.get('Key') == 'P2Gyro')
-                self.assertEqual(gyro['DefaultValue'], game == 'hl2')
+                self.assertEqual(gyro['DefaultValue'], game in ('hl2', 'l4d2'))
+                # Round 26: every game's page ends with Diagnostics > Log (missing on the iPad mini).
+                self.assertEqual([i.get('Title') for i in items[-2:]], ['Diagnostics', 'Log'])
+                self.assertEqual(items[-1]['Key'], 'P2Log')
                 self.assertIn('P2GyroSpeed', keys)
-                if game in ('portal2', 'portal1'):
+                if game in ('portal2', 'portal1', 'mel'):
                     self.assertIn('P2BackTap', keys)
                     self.assertIn('P2PortalButtons', keys)
                 else:
