@@ -645,9 +645,24 @@ keeps it as a full-screen landscape app.
 - **Input lag** (measured from a Mac on the same network, `tools/phonepad_probe.py`):
   3.8 ms round trip at the median, about 110 ms at the 95th percentile (Wi-Fi
   power-saving bursts). The page shows its own round trip; Sauce logs it.
+- **Closing the panel** (X, Done, or a controller's A or B) never disconnects
+  the phone. With no phone connected, it stops pairing.
+- **Nothing stays held:** fire, buttons and sticks are released on release, and
+  all at once when the phone goes quiet for `P2_PHONEPAD_QUIET` seconds (2.5),
+  hides the page, or Sauce goes inactive.
 - Code: `runtime/ios/phonepad.c` (rules, checked), `phonepad_ios.m`
   (server, Bonjour name, QR panel, the virtual controller), `ios/phonepad/`
   (the page). Port `P2_PHONEPAD_PORT` (8017).
+
+## Online co-op on iPad and iPhone (fork, round 24)
+
+Portal 2's **Standard** and **Challenge Mode co-op** find a partner through
+Steam lobbies, and Steam doesn't run on iOS. After `P2_ONLINE_TIMEOUT`
+seconds (8) on "Searching for Friends...", Sauce explains this and points to
+Local Splitscreen. Its **Back** gives the game Steam's own "no connection"
+answer, and the game closes the search itself ("Failed to create session",
+OK). Two iOS devices can't find each other yet. The only network co-op is
+still a Mac host with `connect <address>` (see docs/usage.md).
 
 ## Sauce: one app for every game (fork, round 19)
 

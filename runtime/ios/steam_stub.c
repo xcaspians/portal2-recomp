@@ -114,13 +114,94 @@ EXPORT int32_t SteamInternal_GameServer_Init_V2(uint32_t ip, uint16_t a, uint16_
     return 1;
 }
 
-// ---- callbacks : aucun ----
+// ---- callbacks : aucun, sauf les échecs de lobby (round 24) ----
+// The game's lobby requests wait for an answer that can't come here. When the
+// player leaves (online_notice_ios.m, its Back), each one gets Steam's own
+// failure answer: k_EResultNoConnection for a lobby, no lobbies for a list.
+// Nothing faked: there is no Steam connection on iOS. Host layout pack(4):
+// LobbyCreated_t {EResult; uint64 lobby} 12 bytes, LobbyMatchList_t {uint32} 4.
+enum { LOBBY_CREATED = 513, LOBBY_MATCH_LIST = 510, LOBBY_ENTER = 504, CALL_COMPLETED = 703, NO_CONNECTION = 3 };
+typedef struct { uint64_t call; int32_t id, size; } Pending;
+static Pending pending[8];
+static int pending_count, released, delivering;
+static uint64_t next_call = 0x51a0000001ull;
+static uint8_t completed[16];   // SteamAPICallCompleted_t {SteamAPICall_t; int id; uint32 size}
+
+static uint64_t fail_later(int32_t id, int32_t size) {
+    pthread_mutex_lock(&lock);
+    uint64_t call = 0;
+    if (pending_count < 8) { call = next_call++; pending[pending_count++] = (Pending){call, id, size}; }
+    pthread_mutex_unlock(&lock);
+    return call;
+}
+// online_notice_ios.m: the player gave up; the game's requests fail now.
+void steam_stub_online_give_up(void) {
+    pthread_mutex_lock(&lock);
+    released = pending_count > 0;
+    pthread_mutex_unlock(&lock);
+    fprintf(stderr, "[steam-stub] lobbies : échec renvoyé au jeu (pas de Steam sur iOS)\n");
+}
 EXPORT void SteamAPI_ManualDispatch_Init(void) {}
 EXPORT void SteamAPI_ManualDispatch_RunFrame(int32_t pipe) { (void)pipe; }
-EXPORT bool SteamAPI_ManualDispatch_GetNextCallback(int32_t pipe, void *message) { (void)pipe; (void)message; return false; }
-EXPORT void SteamAPI_ManualDispatch_FreeLastCallback(int32_t pipe) { (void)pipe; }
+typedef struct { int32_t user, id; uint8_t *param; int32_t size; } CallbackMsg;
+EXPORT bool SteamAPI_ManualDispatch_GetNextCallback(int32_t pipe, void *message) {
+    (void)pipe;
+    pthread_mutex_lock(&lock);
+    bool any = released && pending_count > 0;
+    if (any) {
+        Pending p = pending[0];
+        memcpy(completed, &p.call, 8); memcpy(completed + 8, &p.id, 4); memcpy(completed + 12, &p.size, 4);
+        *(CallbackMsg *)message = (CallbackMsg){1, CALL_COMPLETED, completed, 16};
+        delivering = 1;
+    }
+    pthread_mutex_unlock(&lock);
+    return any;
+}
+EXPORT void SteamAPI_ManualDispatch_FreeLastCallback(int32_t pipe) {
+    (void)pipe;
+    pthread_mutex_lock(&lock);
+    if (delivering && pending_count > 0) {
+        memmove(pending, pending + 1, sizeof(Pending) * (size_t)--pending_count);
+        if (!pending_count) released = 0;
+    }
+    delivering = 0;
+    pthread_mutex_unlock(&lock);
+}
 EXPORT bool SteamAPI_ManualDispatch_GetAPICallResult(int32_t pipe, uint64_t call, void *out, int32_t size, int32_t expected, bool *failed) {
-    (void)pipe; (void)call; (void)out; (void)size; (void)expected; if (failed) *failed = true; return false;
+    (void)pipe;
+    pthread_mutex_lock(&lock);
+    bool found = false;
+    for (int i = 0; i < pending_count && !found; ++i) found = pending[i].call == call && pending[i].id == expected;
+    pthread_mutex_unlock(&lock);
+    if (failed) *failed = !found;
+    if (!found || !out || size <= 0) return false;
+    memset(out, 0, (size_t)size);
+    if (expected == LOBBY_CREATED && size >= 4) { int32_t r = NO_CONNECTION; memcpy(out, &r, 4); }   // no lobby: no connection
+    return true;   // LobbyMatchList_t: 0 lobbies
+}
+
+// ---- lobbies (round 24): no Steam to ask, never an answer ----
+// The game's online co-op waits for a lobby: online_notice_ios.m explains,
+// after a timeout, that it needs Steam, and its Back fails the requests
+// (steam_stub_online_give_up above). JoinLobby (invites): handle 0, invalid.
+void steam_stub_online_requested(const char *what);   // online_notice_ios.m
+// Portal 2 (620) only: the other games keep the old answer (handle 0) and their offline flow.
+EXPORT uint64_t SteamAPI_ISteamMatchmaking_CreateLobby(void *self, int32_t type, int32_t members) {
+    (void)self; (void)type; (void)members;
+    if (steam_stub_app_id() != 620) return 0;
+    steam_stub_online_requested("CreateLobby");
+    return fail_later(LOBBY_CREATED, 12);
+}
+EXPORT uint64_t SteamAPI_ISteamMatchmaking_RequestLobbyList(void *self) {
+    (void)self;
+    if (steam_stub_app_id() != 620) return 0;
+    steam_stub_online_requested("RequestLobbyList");
+    return fail_later(LOBBY_MATCH_LIST, 4);
+}
+EXPORT uint64_t SteamAPI_ISteamMatchmaking_JoinLobby(void *self, uint64_t lobby) {
+    (void)self; (void)lobby;
+    if (steam_stub_app_id() == 620) steam_stub_online_requested("JoinLobby");
+    return 0;
 }
 
 // ---- tickets d'authentification ----
