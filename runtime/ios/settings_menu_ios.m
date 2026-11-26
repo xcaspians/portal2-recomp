@@ -17,8 +17,11 @@
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
 #include "tv_output.h"
+#include "env_ios.h"
 UIView *rt_ios_phonepad_panel(void (^close)(void));   // phonepad_ios.m
 NSString *rt_ios_phonepad_url(void);
+void rt_ios_phonepad_stop_if_idle(void);
+int rt_ios_phonepad_active(void);
 #import <CoreImage/CoreImage.h>
 #include <math.h>
 #include <stdio.h>
@@ -91,6 +94,7 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     BOOL communityFromGame;   // Community Maps opened by the game's own Community button
     UILabel *icloudStatus;    // "Last synced ..." under the iCloud switch
     CFTimeInterval icloudShownAt;
+    UIView *phoneShade;       // the phone controller's panel (round 24: open until closed, menu or not)
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -153,6 +157,9 @@ static int axis_step(int dir, int *held, CFTimeInterval *next, CFTimeInterval no
     scroll.frame = CGRectMake(0, 56, w, h - 56);
 }
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    // Round 24: the phone panel outlives the menu (the game leaving its pause menu closes the
+    // menu, e.g. the phone's own Start or A); it keeps its touches until it is closed.
+    if (phoneShade) return [phoneShade hitTest:[self convertPoint:point toView:phoneShade] withEvent:event] ?: phoneShade;
     if (menu_open || editor) return [super hitTest:point withEvent:event];   // the panel, or the layout editor
     if (!gear.hidden && CGRectContainsPoint(gear.frame, point))
         return [gear hitTest:[self convertPoint:point toView:gear] withEvent:event];
@@ -604,16 +611,19 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
     [rows addObject:row];
 }
 - (void)showPhonePanel {
-    __block UIView *shade = [[UIView alloc] initWithFrame:self.bounds];
+    if (phoneShade) return;
+    UIView *shade = [[UIView alloc] initWithFrame:self.bounds];
     shade.backgroundColor = [UIColor colorWithWhite:0 alpha:.55];
     shade.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    UIView *phonePanel = rt_ios_phonepad_panel(^{ [shade removeFromSuperview]; rt_ios_tv_overlay(NULL); });
+    __weak P2SettingsMenu *weakSelf = self;
+    UIView *phonePanel = rt_ios_phonepad_panel(^{ [weakSelf closePhonePanel]; });
     phonePanel.translatesAutoresizingMaskIntoConstraints = NO;
     [shade addSubview:phonePanel];
     [NSLayoutConstraint activateConstraints:@[[phonePanel.centerXAnchor constraintEqualToAnchor:shade.centerXAnchor],
                                               [phonePanel.centerYAnchor constraintEqualToAnchor:shade.centerYAnchor],
                                               [phonePanel.widthAnchor constraintLessThanOrEqualToConstant:440]]];
     [self addSubview:shade];
+    phoneShade = shade;
     NSString *url = rt_ios_phonepad_url();
     if (url && rt_ios_tv_hz() > 0) {   // the QR code on the TV too
         CIFilter *f = [CIFilter filterWithName:@"CIQRCodeGenerator"];
@@ -630,6 +640,47 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
             rt_ios_tv_overlay((__bridge void *)v);
         }
     }
+}
+// Closed by its X or Done, or a controller's A or B. The phone stays connected;
+// with no phone connected, pairing stops (a new code next time).
+- (void)closePhonePanel {
+    if (!phoneShade) return;
+    [phoneShade removeFromSuperview];
+    phoneShade = nil;
+    rt_ios_tv_overlay(NULL);
+    rt_ios_phonepad_stop_if_idle();
+    fprintf(stderr, "[ios] manette téléphone : fenêtre fermée\n");
+}
+- (BOOL)phonePanelOpen { return phoneShade != nil; }
+// Round 24 device check (P2_SETTINGS_MENU_OPEN=phone P2_PHONEPAD_PANEL_CHECK=1): the
+// menu closes under the panel, as when the game leaves its pause menu; the panel's
+// close button must still take the touch, and closing must leave a phone connected.
+- (void)checkPhonePanel {
+    double delay = rt_ios_env_float("P2_PHONEPAD_PANEL_CHECK", 4, 1);   // seconds: time for a test phone to connect
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self closeMenu];
+        [self layoutIfNeeded];
+        UIButton *x = nil;
+        NSMutableArray<UIView *> *todo = [NSMutableArray arrayWithObject:self->phoneShade ?: [UIView new]];
+        while (todo.count && !x) {
+            UIView *v = todo.lastObject; [todo removeLastObject];
+            if ([v isKindOfClass:UIButton.class] && [v.accessibilityLabel isEqualToString:@"Close"]) x = (UIButton *)v;
+            [todo addObjectsFromArray:v.subviews];
+        }
+        CGPoint centre = x ? [x convertPoint:CGPointMake(CGRectGetMidX(x.bounds), CGRectGetMidY(x.bounds)) toView:self] : CGPointZero;
+        UIView *hit = x ? [self hitTest:centre withEvent:nil] : nil;
+        BOOL touchable = hit && [hit isDescendantOfView:x];
+        int phone_before = rt_ios_phonepad_active();
+        [x sendActionsForControlEvents:UIControlEventTouchUpInside];
+        BOOL closed = self->phoneShade == nil;
+        fprintf(stderr, "[ios] essai fenêtre téléphone : %s (bouton fermer touchable menu fermé : %d, fermée : %d, téléphone %d -> %d)\n",
+                touchable && closed && phone_before == rt_ios_phonepad_active() ? "OK" : "ÉCHEC", touchable, closed,
+                phone_before, rt_ios_phonepad_active());
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [self openMenu];
+            [self showPhonePanel];   // reopened: shows the phone still connected
+        });
+    });
 }
 - (void)addResetRow {
     P2MenuRow *row = [P2MenuRow new];
@@ -878,6 +929,11 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
 - (void)pollPad:(BOOL)paused {
     GCExtendedGamepad *g = [self pad].extendedGamepad;
     BOOL a = g.buttonA.isPressed, b = g.buttonB.isPressed, options = g.buttonOptions.isPressed;
+    if (phoneShade) {   // the phone panel first: A (Done) or B closes it, nothing reaches the menu below
+        if ((a && !prevA) || (b && !prevB)) [self closePhonePanel];
+        prevA = a; prevB = b; prevOptions = options;
+        return;
+    }
     if (options && !prevOptions) {
         if (menu_open) [self closeMenu];
         else if (paused) [self openMenu];
@@ -936,6 +992,7 @@ static void calibration_closed(void *ctx) { [(__bridge P2SettingsMenu *)ctx cali
         auto_open = 0;
         [self openMenu];
         [self showPhonePanel];
+        if (getenv("P2_PHONEPAD_PANEL_CHECK")) [self checkPhonePanel];
     }
     if (auto_open == 5 && !gear.hidden && !rt_ios_game_in_level()) {   // =editor: the layout editor, on the main menu
         auto_open = 0;

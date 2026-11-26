@@ -334,7 +334,7 @@ static void register_name(struct in_addr address) {
 
 void rt_ios_phonepad_start(void) {
     if (listener) return;
-    queue = dispatch_queue_create("phonepad", DISPATCH_QUEUE_SERIAL);
+    if (!queue) queue = dispatch_queue_create("phonepad", DISPATCH_QUEUE_SERIAL);
     rt_phonepad_code(arc4random_uniform(10000), code);
     port = (int)rt_ios_env_float("P2_PHONEPAD_PORT", 8017, 1024);
     struct in_addr raw = {0};
@@ -356,6 +356,19 @@ void rt_ios_phonepad_start(void) {
     });
     nw_listener_start(listener);
     fprintf(stderr, "[ios] manette téléphone : http://%s:%d/?code=%s\n", ip, port, code);
+}
+// The panel closed before any phone connected: pairing stops; the next opening
+// starts again with a new code. A connected phone keeps playing.
+void rt_ios_phonepad_stop_if_idle(void) {
+    if (!queue || getenv("P2_PHONEPAD")) return;   // P2_PHONEPAD: the server from launch (tests)
+    dispatch_sync(queue, ^{   // done before the panel can open again (never waits on the main thread)
+        if (phone || !listener) return;
+        nw_listener_cancel(listener);
+        listener = nil;
+        if (dns) { DNSServiceRefDeallocate(dns); dns = NULL; }
+        snprintf(last_status, sizeof(last_status), "Not running");
+        fprintf(stderr, "[ios] manette téléphone : appairage annulé (fenêtre fermée sans téléphone)\n");
+    });
 }
 void rt_ios_phonepad_kick(void) {
     if (!queue) return;
@@ -384,9 +397,19 @@ static UIImage *qr(NSString *text, CGFloat size) {
 NSString *rt_ios_phonepad_url(void) {
     return ip[0] ? [NSString stringWithFormat:@"http://%s:%d/?code=%s", ip, port, code] : nil;
 }
+// The panel stops listening for changes once it leaves the screen, however it was closed.
+@interface P2PhonePanel : UIView
+@property(nonatomic, strong) id observer;
+@end
+@implementation P2PhonePanel
+- (void)willMoveToWindow:(UIWindow *)window {
+    if (!window && self.observer) { [NSNotificationCenter.defaultCenter removeObserver:self.observer]; self.observer = nil; }
+}
+@end
+
 UIView *rt_ios_phonepad_panel(void (^close)(void)) {
     rt_ios_phonepad_start();
-    UIView *panel = [UIView new];
+    P2PhonePanel *panel = [P2PhonePanel new];
     panel.backgroundColor = [UIColor colorWithWhite:.06 alpha:.97];
     panel.layer.cornerRadius = 22;
     UIStackView *s = [UIStackView new];
@@ -432,9 +455,9 @@ UIView *rt_ios_phonepad_panel(void (^close)(void)) {
         if (now) image.image = qr(now, 220);
     };
     refresh();
-    __block id observer = [NSNotificationCenter.defaultCenter addObserverForName:@"P2PhonePadChanged" object:nil
-                                                                          queue:NSOperationQueue.mainQueue
-                                                                     usingBlock:^(NSNotification *n) { (void)n; refresh(); }];
+    panel.observer = [NSNotificationCenter.defaultCenter addObserverForName:@"P2PhonePadChanged" object:nil
+                                                                     queue:NSOperationQueue.mainQueue
+                                                                usingBlock:^(NSNotification *n) { (void)n; refresh(); }];
     [s addArrangedSubview:state];
     UIStackView *buttons = [UIStackView new];
     buttons.spacing = 10;
@@ -447,10 +470,25 @@ UIView *rt_ios_phonepad_panel(void (^close)(void)) {
     done.title = @"Done";
     [buttons addArrangedSubview:[UIButton buttonWithConfiguration:done primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
         (void)a;
-        [NSNotificationCenter.defaultCenter removeObserver:observer];
         if (close) close();
     }]]];
     [s addArrangedSubview:buttons];
+    // Round 24: a close button in the corner too (touch); a controller's A or B also closes it.
+    UIButtonConfiguration *x = [UIButtonConfiguration plainButtonConfiguration];
+    x.image = [UIImage systemImageNamed:@"xmark.circle.fill"
+                      withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:28]];
+    x.baseForegroundColor = [UIColor colorWithWhite:1 alpha:.75];
+    UIButton *xButton = [UIButton buttonWithConfiguration:x primaryAction:[UIAction actionWithHandler:^(UIAction *a) {
+        (void)a;
+        if (close) close();
+    }]];
+    xButton.accessibilityLabel = @"Close";
+    xButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:xButton];
+    [NSLayoutConstraint activateConstraints:@[[xButton.topAnchor constraintEqualToAnchor:panel.topAnchor constant:6],
+                                              [xButton.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-6],
+                                              [xButton.widthAnchor constraintEqualToConstant:44],
+                                              [xButton.heightAnchor constraintEqualToConstant:44]]];
     return panel;
 }
 #endif
