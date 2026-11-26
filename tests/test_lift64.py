@@ -84,6 +84,16 @@ class ControlFlow(unittest.TestCase):
         code, _, _ = tr('cmovg', 'ecx, edx')
         self.assertIn('else { c->r[1] = (uint32_t)', code)
 
+    def test_mmx_shift_by_immediate_uses_the_mmx_register(self):
+        # Round 28 (P2CE's libavcodec): the SSE fast path took psrlq mm1, 0x20
+        # and wrote c->xmm[None].
+        for op in ('psrlq', 'psllq', 'psrld', 'pslld'):
+            code, _, _ = tr(op, 'mm1, 0x20')
+            self.assertNotIn('None', code)
+            self.assertIn('c->mm[1] = c->xmm[16].q[0]', code)
+        code, _, _ = tr('psrlq', 'xmm3, 0x20')
+        self.assertIn('c->xmm[3].q[i] >>= 32', code)
+
     def test_unknown_instruction_is_reported(self):
         with self.assertRaises(lift64.Unsupported):
             tr('fbstp', 'tbyte ptr [rax]')

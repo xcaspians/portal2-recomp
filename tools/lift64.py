@@ -500,13 +500,13 @@ def translate_sse(op, ops, here):
         return (f'{{ XMM64 s = {xmm_value(ops[1])}; for (int i = 0; i < {count}; ++i) '
                 f'c->xmm[{ops[0].xmm}].{lane}[i] = c->xmm[{ops[0].xmm}].{lane}[i] == s.{lane}[i] ? '
                 f'(__typeof__(s.{lane}[0]))~0ull : 0; }}')
-    if op in ('psrlq', 'psllq', 'psrld', 'pslld') and len(ops) == 2 and ops[1].imm is not None:
+    if op in ('psrlq', 'psllq', 'psrld', 'pslld') and len(ops) == 2 and ops[1].imm is not None and ops[0].xmm is not None:
         lane, count, bits = ('q', 2, 64) if op.endswith('q') else ('d', 4, 32)
         k = ops[1].imm
         direction = '>>' if op.startswith('psr') else '<<'
         body = f'c->xmm[{ops[0].xmm}].{lane}[i] {direction}= {k}' if k < bits else f'c->xmm[{ops[0].xmm}].{lane}[i] = 0'
         return f'for (int i = 0; i < {count}; ++i) {body};'
-    if op in ('psrldq', 'pslldq') and len(ops) == 2 and ops[1].imm is not None:
+    if op in ('psrldq', 'pslldq') and len(ops) == 2 and ops[1].imm is not None and ops[0].xmm is not None:
         k, d = min(ops[1].imm, 16), ops[0].xmm
         if op == 'psrldq':
             return f'{{ XMM64 t = c->xmm[{d}], v = {{0}}; for (int i = 0; i + {k} < 16; ++i) v.b[i] = t.b[i + {k}]; c->xmm[{d}] = v; }}'
