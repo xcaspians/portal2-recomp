@@ -13,3 +13,7 @@ const char *rt_ios_choose_game(void);
 void rt_ios_forget_game_choice(void);
 // Several games in this app (the Portal app with a hosted game).
 int rt_ios_has_game_choice(void);
+// Round 26: a playable installed game uses this touch layout (the launcher's
+// Controls offers its "Edit button layout" row).
+#include "game_ios.h"
+int rt_ios_layout_installed(rt_ios_layout layout);

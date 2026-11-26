@@ -196,7 +196,10 @@ RT_CHECK(ios_menu_items_match_settings_page) {
             break;
         }
     }
-    assert(!rt_menu_item_named("P2Log") && !rt_menu_item_named(NULL));
+    // Round 26: the Log switch is in the gear menu too, read at the next launch.
+    const rt_menu_item *log = rt_menu_item_named("P2Log");
+    assert(log && log->kind == RT_MENU_TOGGLE && (log->flags & RT_MENU_RELAUNCH) && !strcmp(log->def, "0"));
+    assert(rt_menu_item_for_game(log, 0) && rt_menu_item_in_launcher(log) && !rt_menu_item_named(NULL));
 }
 
 // Controller steps and shown values.

@@ -146,6 +146,28 @@ int rt_touch_pad_trigger(rt_touch_action action) {
     return action == RT_TOUCH_FIRE ? 5 : action == RT_TOUCH_ALT_FIRE ? 4 : -1;
 }
 
+int rt_touch_buttons_on_pad(rt_ios_layout layout) { return layout == RT_IOS_LAYOUT_L4D2; }
+rt_touch_pad_route rt_touch_pad_route_for(rt_ios_layout layout, rt_touch_action action) {
+    rt_touch_pad_route r = {-1, -1, 0, NULL};
+    if (!rt_touch_buttons_on_pad(layout)) return r;
+    switch (action) {   // SDL_GameControllerButton numbers; Left 4 Dead 2's controller binds
+    case RT_TOUCH_JUMP: r.button = 0; break;                  // A: +jump
+    case RT_TOUCH_RELOAD: r.button = 1; break;                // B: +reload
+    case RT_TOUCH_USE: r.button = 2; break;                   // X: +use
+    case RT_TOUCH_CROUCH: r.button = 9; r.tap = 1; break;     // left shoulder: toggle_duck
+    case RT_TOUCH_FLASHLIGHT: r.button = 11; break;           // d-pad up: impulse 100
+    case RT_TOUCH_SLOT3: r.button = 13; break;                // d-pad left: slot3 (throwable)
+    case RT_TOUCH_SLOT4: r.button = 14; break;                // d-pad right: slot4 (medkit)
+    case RT_TOUCH_SLOT5: r.button = 12; break;                // d-pad down: slot5 (pills)
+    case RT_TOUCH_FIRE: r.trigger = 5; break;                 // right trigger: +attack
+    case RT_TOUCH_ALT_FIRE: r.trigger = 4; break;             // left trigger: +attack2 (shove)
+    case RT_TOUCH_SLOT1: r.command = "slot1"; break;          // the controller only has Y: lastinv
+    case RT_TOUCH_SLOT2: r.command = "slot2"; break;
+    default: break;
+    }
+    return r;
+}
+
 // ---- Button layout editor ----
 static const char *const action_names[RT_TOUCH_ACTION_COUNT] = {
     "jump", "crouch", "use", "pause", "fire", "alt_fire", "look_mode", "flag", "reload", "sprint", "flashlight",
@@ -242,4 +264,16 @@ void rt_touch_place_custom(const rt_touch_button *b, const rt_touch_custom *c, d
     double r = *size / 2;
     *cx = clamp(x + w * c->fx, x + r, x + w - r);
     *cy = clamp(y + h * c->fy, y + r, y + h - r);
+}
+
+const char *rt_touch_layout_id(rt_ios_layout layout) {
+    return layout == RT_IOS_LAYOUT_HL2 ? "hl2" : layout == RT_IOS_LAYOUT_L4D2 ? "l4d2" : "portal2";
+}
+const char *rt_touch_layout_store_key(rt_ios_layout layout, int ipad, char *out, size_t size, char *legacy,
+                                      size_t legacy_size) {
+    const char *base = ipad ? "P2TouchLayout.pad" : "P2TouchLayout.phone";
+    if (layout == RT_IOS_LAYOUT_PORTAL2) snprintf(out, size, "%s", base);
+    else snprintf(out, size, "%s.%s", base, rt_touch_layout_id(layout));
+    if (legacy && legacy_size) snprintf(legacy, legacy_size, "%s", layout == RT_IOS_LAYOUT_PORTAL2 ? "" : base);
+    return out;
 }

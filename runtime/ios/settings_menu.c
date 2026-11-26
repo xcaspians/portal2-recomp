@@ -43,6 +43,9 @@ const rt_menu_item rt_menu_items[] = {
     {"P2TVMaxFPS", NULL, "TV frame rate", RT_MENU_CHOICE, "auto", 0, 0, 0, 0, NULL, tv_fps_values, tv_fps_labels, 0},
     // Auto: hidden while a controller or keyboard is connected (until a touch); Always on: kept on the iPad.
     {"P2TVTouch", NULL, "Touch controls", RT_MENU_CHOICE, "auto", 0, 0, 0, 0, NULL, tv_touch_values, tv_touch_labels, 0},
+    // Round 26: the Settings app's Log switch, here too (it was missing from the mini's
+    // Settings page): Documents/game.log, opened at launch (ios/main_ios.c).
+    {"P2Log", "Diagnostics", "Log (Documents/game.log)", RT_MENU_TOGGLE, "0", 0, 0, 0, 0, NULL, NULL, NULL, RT_MENU_RELAUNCH},
 };
 const int rt_menu_item_count = (int)(sizeof(rt_menu_items) / sizeof(*rt_menu_items));
 

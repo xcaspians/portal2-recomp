@@ -100,6 +100,16 @@ void rt_touch_stick_rests(rt_ios_layout layout, double out[2][2]);
 // A button's centre and diameter with a custom entry (else rt_touch_place_scaled).
 void rt_touch_place_custom(const rt_touch_button *b, const rt_touch_custom *c, double scale, double x, double y,
                            double w, double h, double *cx, double *cy, double *size);
+// Round 26: where a layout is stored. Each game layout has its own entry, per
+// device kind: "P2TouchLayout.pad" (Portal 2's, the key every game shared
+// before), "P2TouchLayout.pad.hl2", "P2TouchLayout.phone.l4d2"... Editing
+// Left 4 Dead 2's jump button no longer moves Portal 2's. `legacy` gets the
+// shared key a layout without its own entry yet is read from (its old places,
+// round 19 imports included), or "" for Portal 2's layout, which is that key.
+const char *rt_touch_layout_store_key(rt_ios_layout layout, int ipad, char *out, size_t size, char *legacy,
+                                      size_t legacy_size);
+// The layout's name in stored keys and the editor ("portal2", "hl2", "l4d2").
+const char *rt_touch_layout_id(rt_ios_layout layout);
 // Action names in the stored text ("jump", "use"...).
 const char *rt_touch_action_name(rt_touch_action a);
 
@@ -117,6 +127,26 @@ int rt_touch_player2_wanted(const char *game, const char *map, int controllers);
 // trigger blue portal (+attack), left trigger orange portal (+attack2).
 int rt_touch_pad_button(rt_touch_action action);
 int rt_touch_pad_trigger(rt_touch_action action);
+
+// ---- Left 4 Dead 2's buttons through the controller (round 26) ----
+// Left 4 Dead 2's config.cfg may hold controller binds only (seen on both
+// iPads: `unbindall` then A_BUTTON... and ESCAPE, no key or mouse button), so
+// buttons sent as keys and clicks do nothing while the stick (the virtual
+// controller) works. In that game the touch buttons press the virtual
+// controller's buttons and triggers instead, which its controller binds read:
+// A +jump, B +reload, X +use, left shoulder toggle_duck, d-pad up impulse 100,
+// d-pad left/right/down slot3/4/5, triggers +attack2 (shove) and +attack.
+typedef struct {
+    int button;             // SDL_GameControllerButton, -1: none
+    int trigger;            // SDL_GameControllerAxis of a trigger (4 left, 5 right), -1: none
+    int tap;                // a press on each change (pressed, released): the bind toggles (toggle_duck)
+    const char *command;    // no controller bind: a console command when pressed ("slot1"), else NULL
+} rt_touch_pad_route;
+// Does this layout send its buttons through the virtual controller?
+int rt_touch_buttons_on_pad(rt_ios_layout layout);
+// Where an action goes in that case; all -1/0/NULL: the usual key or click
+// (pause, camera mode, the dataset flag stay as they are).
+rt_touch_pad_route rt_touch_pad_route_for(rt_ios_layout layout, rt_touch_action action);
 
 // Overlay hidden for a controller or a keyboard (touch_controls.m draws it,
 // tests/checks_touch_layout.c checks these rules). mode is P2_TOUCH_CONTROLS:

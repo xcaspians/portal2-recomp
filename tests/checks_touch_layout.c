@@ -414,6 +414,34 @@ RT_CHECK(touch_player2_in_coop) {
     assert(rt_touch_pad_button(RT_TOUCH_FIRE) == -1 && rt_touch_pad_trigger(RT_TOUCH_JUMP) == -1);
 }
 
+// Round 26: Left 4 Dead 2's config.cfg held controller binds only (both iPads),
+// so its touch buttons press the virtual controller, matching those binds;
+// every game button of its layout goes somewhere the game reads. Portal 2 and
+// Half-Life 2 keep keys and clicks.
+RT_CHECK(touch_l4d2_buttons_through_the_controller) {
+    assert(rt_touch_buttons_on_pad(RT_IOS_LAYOUT_L4D2));
+    assert(!rt_touch_buttons_on_pad(RT_IOS_LAYOUT_PORTAL2) && !rt_touch_buttons_on_pad(RT_IOS_LAYOUT_HL2));
+    rt_touch_pad_route r = rt_touch_pad_route_for(RT_IOS_LAYOUT_L4D2, RT_TOUCH_JUMP);
+    assert(r.button == 0 && r.trigger == -1 && !r.tap && !r.command);           // A: +jump
+    assert(rt_touch_pad_route_for(RT_IOS_LAYOUT_L4D2, RT_TOUCH_RELOAD).button == 1);
+    assert(rt_touch_pad_route_for(RT_IOS_LAYOUT_L4D2, RT_TOUCH_USE).button == 2);
+    r = rt_touch_pad_route_for(RT_IOS_LAYOUT_L4D2, RT_TOUCH_CROUCH);
+    assert(r.button == 9 && r.tap);                                              // toggle_duck: a press per change
+    assert(rt_touch_pad_route_for(RT_IOS_LAYOUT_L4D2, RT_TOUCH_FIRE).trigger == 5);
+    assert(rt_touch_pad_route_for(RT_IOS_LAYOUT_L4D2, RT_TOUCH_ALT_FIRE).trigger == 4);
+    assert(!strcmp(rt_touch_pad_route_for(RT_IOS_LAYOUT_L4D2, RT_TOUCH_SLOT1).command, "slot1"));
+    int n;
+    const rt_touch_button *b = rt_touch_layout(RT_IOS_LAYOUT_L4D2, &n);
+    for (int i = 0; i < n; ++i) {
+        rt_touch_action a = b[i].action;
+        if (a == RT_TOUCH_PAUSE || a == RT_TOUCH_LOOK_MODE) continue;   // Escape (the engine's own) and local
+        r = rt_touch_pad_route_for(RT_IOS_LAYOUT_L4D2, a);
+        assert(r.button >= 0 || r.trigger >= 0 || r.command);
+    }
+    r = rt_touch_pad_route_for(RT_IOS_LAYOUT_HL2, RT_TOUCH_JUMP);
+    assert(r.button == -1 && r.trigger == -1 && !r.command);
+}
+
 // Round 25: Portal 2's zoom button, held like the game's own zoom: the middle
 // mouse button (+zoom) on the touch controls, the right bumper for touch as
 // player 2; stored by name like the others, so the editor moves and resizes it.
@@ -436,4 +464,25 @@ RT_CHECK(touch_layout_portal2_zoom_button) {
         b = rt_touch_layout((rt_ios_layout)layout, &n);
         for (int i = 0; i < n; ++i) assert(b[i].action != RT_TOUCH_ZOOM);
     }
+}
+
+// Round 26: each game layout is stored apart, per device kind; a game layout
+// without its own entry yet reads the key every game shared before.
+RT_CHECK(touch_layout_stored_per_game_and_device_kind) {
+    char key[64], legacy[64], other[64];
+    assert(!strcmp(rt_touch_layout_store_key(RT_IOS_LAYOUT_PORTAL2, 1, key, sizeof(key), legacy, sizeof(legacy)),
+                   "P2TouchLayout.pad") && !legacy[0]);
+    rt_touch_layout_store_key(RT_IOS_LAYOUT_L4D2, 1, key, sizeof(key), legacy, sizeof(legacy));
+    assert(!strcmp(key, "P2TouchLayout.pad.l4d2") && !strcmp(legacy, "P2TouchLayout.pad"));
+    rt_touch_layout_store_key(RT_IOS_LAYOUT_L4D2, 0, other, sizeof(other), legacy, sizeof(legacy));
+    assert(!strcmp(other, "P2TouchLayout.phone.l4d2") && !strcmp(legacy, "P2TouchLayout.phone"));
+    for (int a = 0; a < RT_IOS_LAYOUT_COUNT; ++a)
+        for (int b = 0; b < RT_IOS_LAYOUT_COUNT; ++b)
+            for (int pa = 0; pa < 2; ++pa)
+                for (int pb = 0; pb < 2; ++pb) {
+                    rt_touch_layout_store_key((rt_ios_layout)a, pa, key, sizeof(key), NULL, 0);
+                    rt_touch_layout_store_key((rt_ios_layout)b, pb, other, sizeof(other), NULL, 0);
+                    assert((strcmp(key, other) == 0) == (a == b && pa == pb));
+                }
+    assert(!strcmp(rt_touch_layout_id(RT_IOS_LAYOUT_HL2), "hl2"));
 }
