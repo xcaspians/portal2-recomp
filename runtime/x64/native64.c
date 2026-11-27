@@ -163,7 +163,24 @@ int rt64_win_native_set_vtable_sig(uint64_t object, int slot, const char *slots,
     return vtable && rt64_win_native_set_sig(((const uint64_t *)(uintptr_t)vtable)[slot], slots, hidden);
 }
 
+static struct { uint64_t fn; rt64_shim shim; } win_overrides[64];
+static int win_override_count;
+int rt64_win_native_set_override(uint64_t fn, rt64_shim shim) {
+    pthread_mutex_lock(&win_sig_lock);
+    int i = 0;
+    while (i < win_override_count && win_overrides[i].fn != fn) ++i;
+    int ok = i < (int)(sizeof win_overrides / sizeof *win_overrides);
+    if (ok) { win_overrides[i].fn = fn; win_overrides[i].shim = shim; if (i == win_override_count) win_override_count++; }
+    pthread_mutex_unlock(&win_sig_lock);
+    return ok;
+}
+
 void rt64_native_call_win(CPU64 *c, uint64_t fn) {
+    rt64_shim override = NULL;
+    pthread_mutex_lock(&win_sig_lock);
+    for (int i = 0; i < win_override_count; ++i) if (win_overrides[i].fn == fn) override = win_overrides[i].shim;
+    pthread_mutex_unlock(&win_sig_lock);
+    if (override) { override(c); return; }
 #if defined(__aarch64__)
     char slots[RT64_WIN_SIG_MAX + 1] = "pppppppppppp";      // no signature: 12 64-bit slots
     int hidden = -1;

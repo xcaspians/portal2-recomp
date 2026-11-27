@@ -300,6 +300,11 @@ int rt64_is_native(uint64_t address);   // an address in a dyld-loaded (native) 
 int rt64_win_native_set_sig(uint64_t fn, const char *slots, int hidden);
 int rt64_win_native_set_vtable_sig(uint64_t object, int slot, const char *slots, int hidden);
 void rt64_native_call_win(CPU64 *c, uint64_t fn);
+// A host function that stands in for one native function when Windows code
+// calls it (a structure whose layout differs between Windows and the Mac):
+// it reads the Windows arguments itself and sets rax, like an import shim.
+typedef void (*rt64_shim)(CPU64 *c);
+int rt64_win_native_set_override(uint64_t fn, rt64_shim shim);
 void rt64_syscall(CPU64 *c);                        // the SYSCALL instruction (posix64.c)
 RT64_ALWAYS_INLINE uint64_t rt64_get_rflags(CPU64 *c, const FL64 *f) {
     return f->cf | ((uint64_t)parity64(f->pf) << 2) | (f->af << 4) | (f->zf << 6) | (f->sf << 7) | ((uint64_t)c->df << 10)
@@ -323,7 +328,6 @@ void rt64_fpu_state(CPU64 *c, uint64_t address, int kind);
 // runtime/x64/<domain>64.c file per domain registers its table with
 // RT64_SHIMS(table); a data import (stdout, environ...) is a host object
 // whose address the guest reads through its GOT (RT64_DATA(table)).
-typedef void (*rt64_shim)(CPU64 *c);
 typedef struct { const char *name; rt64_shim fn; } RT64Shim;
 typedef struct { const char *name; void *address; } RT64Data;
 typedef struct RT64ShimTable { const RT64Shim *shims; const RT64Data *data; struct RT64ShimTable *next; } RT64ShimTable;
