@@ -249,7 +249,12 @@ P2CE_SYSTEMS ?= bin/linux64/shaderapiempty.so bin/linux64/inputsystem.so bin/lin
 	bin/linux64/localize.so bin/linux64/scenefilecache.so bin/linux64/vgui2.so \
 	bin/linux64/video_services.so bin/linux64/richpresence.so bin/linux64/toolframework.so bin/linux64/vguimatsurface.so \
 	bin/linux64/workshop.so bin/linux64/panorama.so bin/linux64/panoramauiclient.so \
-	bin/linux64/libfreetype.so.6 bin/linux64/libfontconfig.so.1 bin/linux64/devui.so
+	bin/linux64/libfreetype.so.6 bin/linux64/libfontconfig.so.1 bin/linux64/devui.so \
+	bin/linux64/libvideo.so bin/linux64/libavcodec.so.57 bin/linux64/libavformat.so.57 bin/linux64/libavresample.so.3 \
+	bin/linux64/libavutil.so.55 bin/linux64/libswscale.so.4 bin/linux64/libbz2.so.1.0
+# libvideo.so links the system's libstdc++ (the other modules carry theirs in
+# libmimalloc.so): Debian's x86-64 copy, downloaded by tools/fetch_debian_amd64.sh.
+P2CE_SYSTEM_LIBS ?= libstdc++.so.6 libgcc_s.so.1
 P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/libtier0.so \
 	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/launcher.so \
 	bin/linux64/filesystem_stdio.so bin/linux64/engine.so $(P2CE_SYSTEMS)
@@ -272,8 +277,10 @@ p2ce-moltenvk-features: tools/moltenvk_features.c
 .PHONY: p2ce-launch
 p2ce-launch: $(X64_RUNTIME) runtime/x64/rt64.h src/main64.c tools/run64.py
 	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-launch: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
-	set -e; $(PYTHON) tools/build64.py --out build/p2ce/lib --opt $(P2CE_OPT) --registry build/p2ce/registry.c \
-		$(foreach m,$(P2CE_LAUNCH_MODULES),"$(P2CE_ROOT)/$(m)"); \
+	set -e; SYSLIB=$$(tools/fetch_debian_amd64.sh); \
+	$(PYTHON) tools/build64.py --out build/p2ce/lib --opt $(P2CE_OPT) --registry build/p2ce/registry.c \
+		$(foreach m,$(P2CE_LAUNCH_MODULES),"$(P2CE_ROOT)/$(m)") \
+		$(foreach m,$(P2CE_SYSTEM_LIBS),"$$SYSLIB/$(m)"); \
 	$(PYTHON) tools/link64.py --out build/p2ce/dylib --exe build/p2ce/p2ce-run --main src/main64.c \
 		--registry build/p2ce/registry.c \
 		$$(sed -n 's/^extern const RT64Module \(m_[a-z0-9_]*\);/build\/p2ce\/lib\/\1\/lib\1.a/p' build/p2ce/registry.c); \
