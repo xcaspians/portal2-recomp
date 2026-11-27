@@ -34,6 +34,9 @@ uint64_t rt64_win_peb(void);
 // and every loaded PE module's TLS block. Returns the TEB's address.
 uint64_t rt64_win_thread(CPU64 *c, uint64_t stack_low, uint64_t stack_high);
 uint32_t rt64_win_thread_id(const CPU64 *c);
+// Calls fn(teb, arg) for the TEB of every thread made by rt64_win_thread, under
+// the runtime's lock (TlsFree clears a slot in every thread, as Windows does).
+void rt64_win_each_teb(void (*fn)(uint64_t teb, void *arg), void *arg);
 // Host -> guest call with the Windows convention: args[0..3] in rcx, rdx,
 // r8, r9, the rest on the stack above the shadow area. Returns rax; every
 // other register is left as it was.
