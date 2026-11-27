@@ -109,6 +109,7 @@ int main(void) {
     rt64_win_native_set_override((uintptr_t)native_sum10, host_sum5);
     CHECK(call(c, "pe_native_sum10", 1, (const uint64_t[]){(uintptr_t)native_sum10}) == 54321,
           "a host override stands in for a native function");
+    CHECK(call(c, "pe_lea_call", 0, NULL) == 77, "a function only a lea reaches, its start swallowed by the sweep");
     CHECK(call(c, "pe_import_twice", 1, (const uint64_t[]){21}) == 42, "import by name");
     CHECK(call(c, "pe_import_sum5", 0, NULL) == 54321, "import with a stack argument");
     CHECK(call(c, "pe_import_ordinal", 0, NULL) == 7, "import by ordinal");
