@@ -81,3 +81,25 @@ class Exceptions(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LiftCacheTest(unittest.TestCase):
+    def test_key_follows_the_module_the_lifter_and_the_options(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            module = os.path.join(tmp, 'libx.so')
+            with open(module, 'wb') as f:
+                f.write(b'one')
+            key = build64.lift_key(module, None, 100, 'm_x')
+            self.assertEqual(key, build64.lift_key(module, None, 100, 'm_x'))
+            self.assertNotEqual(key, build64.lift_key(module, ['Export'], 100, 'm_x'))
+            self.assertNotEqual(key, build64.lift_key(module, None, 200, 'm_x'))
+            with open(module, 'wb') as f:
+                f.write(b'two')
+            self.assertNotEqual(key, build64.lift_key(module, None, 100, 'm_x'))
+        # The lifter's own sources are part of it (a lifter fix relifts everything).
+        self.assertIn('lift64.py', build64.LIFTER)
+        self.assertIn('simd64.py', build64.LIFTER)
+
+
+if __name__ == '__main__':
+    unittest.main()

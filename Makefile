@@ -97,10 +97,11 @@ test: build/tier0-smoke build/abi-smoke
 	./build/abi-smoke
 
 # What CI runs (make -j check): Python tests and the runtime against generated fixtures, no game files needed.
-check: build/abi-smoke build/x64-check
+check: build/abi-smoke build/x64-check build/x64-dylib-check
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
 	./build/abi-smoke
 	./build/x64-check
+	./build/x64-dylib-check
 
 clean:
 	rm -rf build
@@ -167,6 +168,17 @@ build/x64/second.c: build/x64/libx64second.so tools/elfprep64.py tools/lift64.py
 	$(PYTHON) tools/lift64.py --layout build/x64/libx64second.so.layout.json --all --symbol x64_second --out $@
 build/x64-check: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c build/x64/second.c tests/x64_checks.c
 	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) build/x64/fixture.c build/x64/second.c tests/x64_checks.c $(X64_LIBS) -o $@
+# The same checks with each lifted module in its own dylib and the runtime in
+# librt64.dylib (tools/link64.py), as make p2ce-launch links P2CE since round 28.
+build/x64-dylib-check: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c build/x64/second.c tests/x64_checks.c tools/link64.py
+	@mkdir -p build/x64-dylib
+	$(CC) -O1 -g0 -w -Iruntime -c build/x64/fixture.c -o build/x64-dylib/fixture.o
+	$(CC) -O1 -g0 -w -Iruntime -c build/x64/second.c -o build/x64-dylib/second.o
+	rm -f build/x64-dylib/libm_x64_fixture.a build/x64-dylib/libm_x64_second.a
+	ar rcs build/x64-dylib/libm_x64_fixture.a build/x64-dylib/fixture.o
+	ar rcs build/x64-dylib/libm_x64_second.a build/x64-dylib/second.o
+	$(PYTHON) tools/link64.py --out build/x64-dylib --exe $@ --main tests/x64_checks.c \
+		build/x64-dylib/libm_x64_fixture.a build/x64-dylib/libm_x64_second.a
 
 # Live milestone (needs P2CE's depot 440005, never part of `make check`):
 # lifts P2CE's own libtier0.so into build/p2ce-tier0 and calls some of its
@@ -229,30 +241,83 @@ p2ce-modules-check: $(X64_RUNTIME) runtime/x64/rt64.h tests/x64_modules_live.c t
 # Round 28: video_services (the launcher stops without it). The launcher also
 # loads richpresence, toolframework, vguimatsurface, workshop, panorama and
 # panoramauiclient: they lift, but one executable holding them all no longer
-# links (arm64 branches reach +/-128 MB), so they wait for a split into
-# libraries (docs/fork/P2CE_PLAN.md).
+# links (arm64 branches reach +/-128 MB). Since then each module is its own
+# dylib (tools/link64.py: build/p2ce/dylib), with the runtime in librt64.dylib.
 P2CE_SYSTEMS ?= bin/linux64/shaderapiempty.so bin/linux64/inputsystem.so bin/linux64/materialsystem.so \
 	bin/linux64/datacache.so bin/linux64/studiorender.so bin/linux64/vphysics.so bin/linux64/vphysics_jolt.so \
 	bin/linux64/engineaudio.so bin/linux64/soundemittersystem.so bin/linux64/scriptsystem.so bin/linux64/vscript.so \
 	bin/linux64/localize.so bin/linux64/scenefilecache.so bin/linux64/vgui2.so \
-	bin/linux64/video_services.so
+	bin/linux64/video_services.so bin/linux64/richpresence.so bin/linux64/toolframework.so bin/linux64/vguimatsurface.so \
+	bin/linux64/workshop.so bin/linux64/panorama.so bin/linux64/panoramauiclient.so \
+	bin/linux64/libfreetype.so.6 bin/linux64/libfontconfig.so.1 bin/linux64/devui.so \
+	bin/linux64/libvideo.so bin/linux64/libavcodec.so.57 bin/linux64/libavformat.so.57 bin/linux64/libavresample.so.3 \
+	bin/linux64/libavutil.so.55 bin/linux64/libswscale.so.4 bin/linux64/libbz2.so.1.0
+# libvideo.so links the system's libstdc++ (the other modules carry theirs in
+# libmimalloc.so): Debian's x86-64 copy, downloaded by tools/fetch_debian_amd64.sh.
+P2CE_SYSTEM_LIBS ?= libstdc++.so.6 libgcc_s.so.1
+# Round 28 (plan round E): SDL is the Mac's own SDL2, not P2CE's Linux copy
+# lifted: its imports and dlopen/dlsym go to the native library
+# (runtime/x64/native_libs64.h), so windows, the keyboard and the mouse are
+# Cocoa's. The host-library bundle's, else Homebrew's.
+P2CE_SDL2 ?= $(firstword $(wildcard deps/p2-host-deps-1-macos-arm64/lib/libSDL2-2.0.0.dylib /opt/homebrew/lib/libSDL2-2.0.0.dylib))
+P2CE_NATIVE_LIBS ?= libSDL2-2.0.so.0=$(CURDIR)/$(P2CE_SDL2)
 P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/libtier0.so \
-	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/launcher.so \
+	bin/linux64/libvstdlib.so bin/linux64/launcher.so \
 	bin/linux64/filesystem_stdio.so bin/linux64/engine.so $(P2CE_SYSTEMS)
 P2CE_STEAM_API ?= $(CURDIR)/deps/steamworks-2024.8.0/steam_api.bundle/Contents/MacOS/libsteam_api.dylib
 P2CE_APPID ?= 440000
-P2CE_ARGS ?= -game p2ce -textmode -novid -nosound -shaderapi shaderapiempty
+P2CE_ARGS ?= -game p2ce -textmode -novid -nosound -shaderapi shaderapiempty -nominidumps -nobreakpad -nocrashdialog
 P2CE_CONTENT ?= $(subst depot_440005,depot_440002,$(P2CE_ROOT))
 P2CE_TIMEOUT ?= 120
 # -O0 by default: engine.so is 170 C files; -O1 takes about 2 GB and minutes per file.
 P2CE_OPT ?= 0
+# build64 waits while the Mac's used swap is above this (macOS keeps swap after memory frees up).
+P2CE_MAX_SWAP_GB ?= 6
+# Round 28: which Vulkan features DXVK needs and MoltenVK lacks (MoltenVK built in
+# deps/moltenvk-src, DXVK's headers in deps/dxvk-src; never part of make check).
+MOLTENVK_LIB ?= deps/moltenvk-src/Package/Release/MoltenVK/dynamic/dylib/macOS
+.PHONY: p2ce-moltenvk-features
+p2ce-moltenvk-features: tools/moltenvk_features.c
+	@mkdir -p build/p2ce
+	$(CC) -Ideps/dxvk-src/include/vulkan/include tools/moltenvk_features.c $(MOLTENVK_LIB)/libMoltenVK.dylib \
+		"-Wl,-rpath,$(CURDIR)/$(MOLTENVK_LIB)" -o build/p2ce/moltenvk-features
+	./build/p2ce/moltenvk-features 2>/dev/null
+# Round 28 (plan round F): DXVK 1.10 native on MoltenVK, built by
+# tools/build_dxvk_macos.sh, clears an SDL window and reads the colour back.
+# Never part of make check (fetches and builds DXVK, MoltenVK, glslang).
+P2CE_DXVK ?= deps/dxvk-macos
+.PHONY: p2ce-dxvk-clear
+p2ce-dxvk-clear: tools/dxvk_clear_test.cpp tools/build_dxvk_macos.sh
+	tools/build_dxvk_macos.sh >/dev/null
+	@mkdir -p build/p2ce
+	clang++ -std=c++17 -w -DDXVK_NATIVE -Ideps/dxvk-macos-src/include/native/windows \
+		-Ideps/dxvk-macos-src/include/native/directx -Ideps/dxvk-macos-src/include/native -Ideps/dxvk-macos-src/include \
+		-I$(dir $(P2CE_SDL2))../include/SDL2 tools/dxvk_clear_test.cpp $(P2CE_DXVK)/libdxvk_d3d11.dylib \
+		$(P2CE_DXVK)/libdxvk_dxgi.dylib $(P2CE_SDL2) "-Wl,-rpath,$(CURDIR)/$(P2CE_DXVK)" \
+		"-Wl,-rpath,$(CURDIR)/$(dir $(P2CE_SDL2))" -o build/p2ce/dxvk-clear
+	SDL_VULKAN_LIBRARY="$(CURDIR)/$(P2CE_DXVK)/libMoltenVK.dylib" ./build/p2ce/dxvk-clear 1
+# The renderer path (plan rounds E and F): P2CE's shaderapidx11.so lifted,
+# DXVK (tools/build_dxvk_macos.sh) and the Mac's SDL2 as native libraries,
+# SDL's Vulkan from MoltenVK, a window instead of -textmode. Round 28 stops
+# at Panorama's first V8 call (plan round G), before the window opens.
+P2CE_DX11_SYSTEMS = $(P2CE_SYSTEMS) bin/linux64/shaderapidx11.so bin/linux64/stdshader_dx11.so
+P2CE_DX11_NATIVE = $(P2CE_NATIVE_LIBS);libdxvk_d3d11.so.0=$(CURDIR)/$(P2CE_DXVK)/libdxvk_d3d11.dylib;libdxvk_dxgi.so.0=$(CURDIR)/$(P2CE_DXVK)/libdxvk_dxgi.dylib
+P2CE_DX11_ARGS ?= -game p2ce -novid -nosound -shaderapi shaderapidx11 -windowed -w 1280 -h 720 -nominidumps -nobreakpad -nocrashdialog
+.PHONY: p2ce-launch-dx11
+p2ce-launch-dx11:
+	tools/build_dxvk_macos.sh >/dev/null
+	SDL_VULKAN_LIBRARY="$(CURDIR)/$(P2CE_DXVK)/libMoltenVK.dylib" $(MAKE) p2ce-launch \
+		P2CE_SYSTEMS="$(P2CE_DX11_SYSTEMS)" P2CE_NATIVE_LIBS="$(P2CE_DX11_NATIVE)" P2CE_ARGS="$(P2CE_DX11_ARGS)"
 .PHONY: p2ce-launch
 p2ce-launch: $(X64_RUNTIME) runtime/x64/rt64.h src/main64.c tools/run64.py
 	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-launch: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
-	set -e; $(PYTHON) tools/build64.py --out build/p2ce/lib --opt $(P2CE_OPT) --registry build/p2ce/registry.c \
-		$(foreach m,$(P2CE_LAUNCH_MODULES),"$(P2CE_ROOT)/$(m)"); \
-	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) src/main64.c build/p2ce/registry.c \
-		$$(ls build/p2ce/lib/*/lib*.a) $(X64_LIBS) -o build/p2ce/p2ce-run; \
-	P2_STEAM_API_DYLIB="$(P2CE_STEAM_API)" P2_STEAM_APPID=$(P2CE_APPID) \
+	set -e; SYSLIB=$$(tools/fetch_debian_amd64.sh); \
+	$(PYTHON) tools/build64.py --out build/p2ce/lib --opt $(P2CE_OPT) --max-swap-gb $(P2CE_MAX_SWAP_GB) --registry build/p2ce/registry.c \
+		$(foreach m,$(P2CE_LAUNCH_MODULES),"$(P2CE_ROOT)/$(m)") \
+		$(foreach m,$(P2CE_SYSTEM_LIBS),"$$SYSLIB/$(m)"); \
+	$(PYTHON) tools/link64.py --out build/p2ce/dylib --exe build/p2ce/p2ce-run --main src/main64.c \
+		--registry build/p2ce/registry.c \
+		$$(sed -n 's/^extern const RT64Module \(m_[a-z0-9_]*\);/build\/p2ce\/lib\/\1\/lib\1.a/p' build/p2ce/registry.c); \
+	P2_STEAM_API_DYLIB="$(P2CE_STEAM_API)" P2_STEAM_APPID=$(P2CE_APPID) RT64_NATIVE_LIBS="$(P2CE_NATIVE_LIBS)" \
 	$(PYTHON) tools/run64.py --depot "$(P2CE_ROOT)" --depot "$(P2CE_CONTENT)" --mirror build/p2ce/game --timeout $(P2CE_TIMEOUT) \
 		build/p2ce/p2ce-run $(P2CE_ARGS)

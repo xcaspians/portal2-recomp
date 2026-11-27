@@ -261,6 +261,39 @@ x64_switch_o0:
 7:  mov eax, -3
     ret
 
+# Round 28 (P2CE's shaderapidx11.so): the table's lea hoisted out of a loop
+# into r12, far (more than 40 instructions) from the jump; the index is the
+# loop counter, with no bound check before the table; xorps between the add
+# and the jmp. Sums 1 + 10 + 100 over the three cases.
+.globl x64_switch_hoisted
+.type x64_switch_hoisted, @function
+x64_switch_hoisted:
+    push r12
+    push r15
+    lea r12, [rip + .Ltable4]
+    xor r15d, r15d
+    xor eax, eax
+    .rept 48
+    nop
+    .endr
+1:  mov ecx, r15d
+    movsxd rcx, dword ptr [r12 + 4*rcx]
+    add rcx, r12
+    xorps xmm0, xmm0
+    xorps xmm1, xmm1
+    jmp rcx
+.Lh0: add eax, 1
+    jmp 2f
+.Lh1: add eax, 10
+    jmp 2f
+.Lh2: add eax, 100
+2:  inc r15d
+    cmp r15d, 3
+    jne 1b
+    pop r15
+    pop r12
+    ret
+
 .globl x64_callptr
 .type x64_callptr, @function
 x64_callptr:
@@ -546,6 +579,10 @@ x64_f4b: .float 2.0, -3.0, 3.0, 1.0
     .long .Lgap0 - .Ltable2
     .long .Lgap1 - .Ltable2
     .long .Lgap2 - .Ltable2
+.Ltable4:
+    .long .Lh0 - .Ltable4
+    .long .Lh1 - .Ltable4
+    .long .Lh2 - .Ltable4
 
 .data
 x64_once_outer_ctl: .long 0

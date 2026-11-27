@@ -3,9 +3,11 @@
 // tools/elfprep64.py and lifted by tools/lift64.py, run through the 64-bit
 // runtime (runtime/x64). Expected values come from the architecture manuals.
 #include "x64/rt64.h"
+#include "x64/native_libs64.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <poll.h>
 #include <unistd.h>
 
 extern const RT64Module x64_fixture, x64_second;
@@ -67,6 +69,8 @@ static uint64_t out(int offset) { return R64(sym("x64_out") + offset); }
 static uint8_t out8(int offset) { return (uint8_t)R8(sym("x64_out") + offset); }
 
 int main(void) {
+    // Before anything resolves an import: the Mac's zlib stands in for Linux's (native_libs64.h).
+    setenv("RT64_NATIVE_LIBS", "libz.so.1=/usr/lib/libz.1.dylib", 1);
     if (rt64_load(&x64_fixture, NULL)) return 1;
     EXPECT(CALL("x64_sum8", 1, 2, 3, 4, 5, 6, 700, 8000) == 8721);
 
@@ -113,6 +117,7 @@ int main(void) {
     // Round 23: instructions between the add and the jmp (P2CE's launcher.so).
     EXPECT(CALL("x64_switch_gap", 0) == 20 && CALL("x64_switch_gap", 1) == 21 && CALL("x64_switch_gap", 2) == 22);
     EXPECT((uint32_t)CALL("x64_switch_gap", 3) == 0xfffffffeu);
+    EXPECT(CALL0("x64_switch_hoisted") == 111);   // a table base hoisted far from its jump (round 28)
     EXPECT(CALL("x64_callptr", 0, 21) == 42);
     EXPECT(CALL("x64_callptr", 1, 12) == 144);
     EXPECT(CALL("x64_tail", 6) == 49);
@@ -248,6 +253,147 @@ int main(void) {
     cpu.r[RDI] = 440000;
     rt64_find_shim("SteamAPI_RestartAppIfNecessary")(&cpu);
     EXPECT(cpu.r[RAX] == 0);
+
+    // epoll on kqueue (epoll64.c, round 28): a pipe's read end, Linux's packed 12-byte epoll_event.
+    {
+        int fds[2];
+        EXPECT(pipe(fds) == 0);
+        rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+        cpu.r[RDI] = 1;
+        rt64_find_shim("epoll_create")(&cpu);
+        int ep = (int)cpu.r[RAX];
+        EXPECT(ep >= 0);
+        uint8_t ev[12] = {0}, out[2 * 12] = {0};
+        uint32_t in = 0x001;
+        uint64_t data = 0x1122334455667788ull;
+        memcpy(ev, &in, 4);
+        memcpy(ev + 4, &data, 8);
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = 1; cpu.r[RDX] = (uint64_t)fds[0]; cpu.r[RCX] = (uint64_t)(uintptr_t)ev;
+        rt64_find_shim("epoll_ctl")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = (uint64_t)(uintptr_t)out; cpu.r[RDX] = 2; cpu.r[RCX] = 0;
+        rt64_find_shim("epoll_wait")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);   // nothing to read yet, no wait
+        EXPECT(write(fds[1], "x", 1) == 1);
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = (uint64_t)(uintptr_t)out; cpu.r[RDX] = 2; cpu.r[RCX] = 1000;
+        rt64_find_shim("epoll_wait")(&cpu);
+        uint32_t got_events;
+        uint64_t got_data;
+        memcpy(&got_events, out, 4);
+        memcpy(&got_data, out + 4, 8);
+        EXPECT(cpu.r[RAX] == 1 && (got_events & 0x001) && got_data == data);
+        close(fds[1]);   // the writer gone: EPOLLHUP
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = (uint64_t)(uintptr_t)out; cpu.r[RDX] = 2; cpu.r[RCX] = 1000;
+        rt64_find_shim("epoll_wait")(&cpu);
+        memcpy(&got_events, out, 4);
+        EXPECT(cpu.r[RAX] == 1 && (got_events & 0x010));
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = 2; cpu.r[RDX] = (uint64_t)fds[0]; cpu.r[RCX] = 0;
+        rt64_find_shim("epoll_ctl")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = (uint64_t)(uintptr_t)out; cpu.r[RDX] = 2; cpu.r[RCX] = 0;
+        rt64_find_shim("epoll_wait")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);   // removed: nothing reported
+        close(fds[0]);
+        close(ep);
+        // eventfd: one descriptor, a counter; readable while non-zero (libvideo's completion ports).
+        cpu.r[RDI] = 0; cpu.r[RSI] = 04000;   // EFD_NONBLOCK
+        rt64_find_shim("eventfd")(&cpu);
+        int efd = (int)cpu.r[RAX];
+        EXPECT(efd >= 0);
+        uint64_t value = 0;
+        cpu.r[RDI] = (uint64_t)efd; cpu.r[RSI] = (uint64_t)(uintptr_t)&value; cpu.r[RDX] = 8;
+        rt64_find_shim("read")(&cpu);
+        EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 11);   // EAGAIN: counter at zero
+        value = 3;
+        rt64_find_shim("write")(&cpu);
+        value = 4;
+        rt64_find_shim("write")(&cpu);
+        EXPECT(cpu.r[RAX] == 8);
+        struct pollfd pfd = {efd, POLLIN, 0};
+        EXPECT(poll(&pfd, 1, 1000) == 1);
+        value = 0;
+        rt64_find_shim("read")(&cpu);
+        EXPECT(cpu.r[RAX] == 8 && value == 7);   // the sum, then reset
+        pfd.revents = 0;
+        EXPECT(poll(&pfd, 1, 0) == 0);   // drained: not readable any more
+        cpu.r[RDI] = (uint64_t)efd;
+        rt64_find_shim("close")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);
+        // timerfd: ENOSYS (Linux 38), so asio's reactor times out through epoll_wait.
+        cpu.r[RDI] = 0; cpu.r[RSI] = 0;
+        rt64_find_shim("timerfd_create")(&cpu);
+        EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 38);
+    }
+
+    // faccessat with Linux's AT_FDCWD (-100) and AT_EACCESS (0x200): P2CE's libvideo.
+    cpu.r[RDI] = (uint64_t)-100; cpu.r[RSI] = (uint64_t)(uintptr_t)"/bin/sh"; cpu.r[RDX] = 4; cpu.r[RCX] = 0x200;
+    rt64_find_shim("faccessat")(&cpu);
+    EXPECT(cpu.r[RAX] == 0);
+    cpu.r[RSI] = (uint64_t)(uintptr_t)"/no/such/file";
+    rt64_find_shim("faccessat")(&cpu);
+    EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 2);
+
+    // Linux's CA certificate bundles open the Mac's (/etc/ssl/cert.pem): OpenSSL in P2CE's libvideo.
+    cpu.r[RDI] = (uint64_t)(uintptr_t)"/etc/ssl/certs/ca-certificates.crt"; cpu.r[RSI] = (uint64_t)(uintptr_t)"r";
+    rt64_find_shim("fopen")(&cpu);
+    EXPECT(cpu.r[RAX] != 0);
+    if (cpu.r[RAX]) fclose((FILE *)(uintptr_t)cpu.r[RAX]);
+    cpu.r[RDI] = (uint64_t)(uintptr_t)"/etc/pki/tls/cert.pem"; cpu.r[RSI] = 4;
+    rt64_find_shim("access")(&cpu);
+    EXPECT(cpu.r[RAX] == 0);
+
+    // fcntl record locks with Linux's struct flock (P2CE's single-instance lock file).
+    {
+        char lockpath[] = "/tmp/rt64-lock-XXXXXX";
+        int fd = mkstemp(lockpath);
+        EXPECT(fd >= 0);
+        uint8_t fl[32] = {0};   // l_type F_WRLCK (1), l_whence SEEK_SET, l_start 0, l_len 0: the whole file
+        fl[0] = 1;
+        cpu.r[RDI] = (uint64_t)fd; cpu.r[RSI] = 6; cpu.r[RDX] = (uint64_t)(uintptr_t)fl;   // F_SETLK
+        rt64_find_shim("fcntl")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);
+        memset(fl, 0, sizeof fl); fl[0] = 1;
+        cpu.r[RDI] = (uint64_t)fd; cpu.r[RSI] = 5; cpu.r[RDX] = (uint64_t)(uintptr_t)fl;   // F_GETLK: our own lock doesn't conflict
+        rt64_find_shim("fcntl")(&cpu);
+        EXPECT(cpu.r[RAX] == 0 && fl[0] == 2);   // F_UNLCK in Linux's numbering
+        close(fd);
+        unlink(lockpath);
+    }
+
+    // Sentry's crash dump consent (P2CE's libtier0): answered "No" by the runtime, never shown.
+    {
+        struct { uint32_t flags; int32_t buttonid; const char *text; } buttons[2] = {{1, 7, "Yes"}, {2, 3, "No"}};
+        struct { uint32_t flags; void *window; const char *title; const char *message; int32_t n; void *b; void *colors; }
+            box = {0, NULL, "Consent for Crash Dump Upload", "Allow automatic upload of crash dumps?", 2, buttons, NULL};
+        int32_t chosen = 99;
+        cpu.r[RDI] = (uint64_t)(uintptr_t)&box; cpu.r[RSI] = (uint64_t)(uintptr_t)&chosen;
+        rt64_find_shim("SDL_ShowMessageBox")(&cpu);
+        EXPECT(cpu.r[RAX] == 0 && chosen == 3);
+        buttons[1].text = "Don't allow";   // no recognisable text: the Escape default
+        chosen = 99;
+        rt64_find_shim("SDL_ShowMessageBox")(&cpu);
+        EXPECT(cpu.r[RAX] == 0 && chosen == 3);
+    }
+
+    // Native libraries standing in for Linux ones (round 28: P2CE's SDL2, then DXVK).
+    EXPECT(rt64_native_library("libz.so.1") == 0 && rt64_native_library("/usr/lib/x86_64-linux-gnu/libz.so.1") == 0);
+    EXPECT(rt64_native_library("libz.so") == 0 && rt64_native_library("libzz.so.1") == -1);
+    uint64_t version = rt64_native_symbol("zlibVersion");
+    EXPECT(version && rt64_is_native(version) && !rt64_native_symbol("no_such_function_anywhere"));
+    rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+    rt64_native_call(&cpu, version);
+    EXPECT(cpu.r[RAX] && ((const char *)(uintptr_t)cpu.r[RAX])[0] == '1');
+    // The guest's dlopen/dlsym reach it too.
+    cpu.r[RDI] = (uint64_t)(uintptr_t)"libz.so.1";
+    rt64_find_shim("dlopen")(&cpu);
+    uint64_t handle = cpu.r[RAX];
+    EXPECT(handle == 0x100);
+    cpu.r[RDI] = handle; cpu.r[RSI] = (uint64_t)(uintptr_t)"zlibVersion";
+    rt64_find_shim("dlsym")(&cpu);
+    EXPECT(cpu.r[RAX] == version);
+    cpu.r[RDI] = handle; cpu.r[RSI] = (uint64_t)(uintptr_t)"snprintf";   // variadic: the shim wins
+    rt64_find_shim("dlsym")(&cpu);
+    EXPECT(cpu.r[RAX] && !rt64_is_native(cpu.r[RAX]));
 
     if (failures) { fprintf(stderr, "x64-check: %d of %d checks failed\n", failures, checks); return 1; }
     printf("x64-check: PASS, %d checks (System V calls, 16 registers, RIP-relative data, "

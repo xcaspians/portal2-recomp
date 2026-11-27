@@ -212,12 +212,14 @@ static void s_fread(CPU64 *c) { RET(c, fread(PTR(c, 0), (size_t)ARG(c, 1), (size
 static void s_fflush(CPU64 *c) { RET(c, fflush(FILEP(0))); }
 int rt64_proc_open(const char *path);
 void rt64_prepare_write(const char *path);
+const char *rt64_host_path(const char *path);   // posix64.c: Linux paths with a macOS counterpart
 static void s_fopen(CPU64 *c) {
     int proc = rt64_proc_open(STR(0));
     if (proc != -2) { RET(c, proc < 0 ? 0 : (uintptr_t)fdopen(proc, "r")); if (proc < 0) rt64_set_errno(ENOENT); return; }
     if (strpbrk(STR(1), "wa+")) rt64_prepare_write(STR(0));
-    FILE *f = fopen(STR(0), STR(1));
+    FILE *f = fopen(rt64_host_path(STR(0)), STR(1));
     if (!f) rt64_set_errno(errno);
+    if (getenv("RT64_TRACE_PATHS")) fprintf(stderr, "rt64: fopen(%s, %s) -> %p (errno %d)\n", STR(0), STR(1), (void *)f, f ? 0 : errno);
     RET(c, (uintptr_t)f);
 }
 static void s_fdopen(CPU64 *c) { RET(c, (uintptr_t)fdopen((int)ARG(c, 0), STR(1))); }

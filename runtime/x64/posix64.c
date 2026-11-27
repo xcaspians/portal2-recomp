@@ -117,19 +117,52 @@ static void copy_on_write(const char *path) {
 }
 void rt64_prepare_write(const char *path) { copy_on_write(path); }
 
+// Linux paths with a macOS counterpart elsewhere: the trusted CA certificates
+// (OpenSSL, in P2CE's libvideo.so, tries the distributions' bundles; macOS
+// keeps the same PEM bundle at /etc/ssl/cert.pem). Other paths pass as they are.
+const char *rt64_host_path(const char *path);
+const char *rt64_host_path(const char *path) {
+    static const char *const ca_bundles[] = {"/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt",
+                                             "/etc/pki/tls/cert.pem", "/etc/ssl/ca-bundle.pem", "/usr/local/ssl/cert.pem",
+                                             "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", NULL};
+    if (!path) return path;
+    static int trace = -1;   // RT64_TRACE_PATHS=1: every path the guest opens or checks, on stderr
+    if (trace < 0) trace = getenv("RT64_TRACE_PATHS") != NULL;
+    if (trace) fprintf(stderr, "rt64: path %s\n", path);
+    for (int i = 0; ca_bundles[i]; ++i)
+        if (!strcmp(path, ca_bundles[i])) return getenv("RT64_CA_BUNDLE") ? getenv("RT64_CA_BUNDLE") : "/etc/ssl/cert.pem";
+    return path;
+}
+#define HP(i) rt64_host_path(S(i))
+
 static void s_open(CPU64 *c) {
     int proc = rt64_proc_open(S(0));
     if (proc != -2) { if (proc < 0) rt64_set_errno(ENOENT); RET(c, proc); return; }
     if (I(1) & 3) copy_on_write(S(0));
-    CHECK(c, open(S(0), host_open_flags(I(1)), (mode_t)ARG(c, 2)));
+    int fd = open(HP(0), host_open_flags(I(1)), (mode_t)ARG(c, 2));
+    if (getenv("RT64_TRACE_PATHS")) fprintf(stderr, "rt64: open(%s, 0x%x) -> %d (errno %d)\n", S(0), I(1), fd, fd < 0 ? errno : 0);
+    CHECK(c, fd);
 }
 static void s_openat(CPU64 *c) {
     int dir = I(0) == -100 ? AT_FDCWD : I(0);
-    CHECK(c, openat(dir, S(1), host_open_flags(I(2)), (mode_t)ARG(c, 3)));
+    CHECK(c, openat(dir, HP(1), host_open_flags(I(2)), (mode_t)ARG(c, 3)));
 }
-static void s_close(CPU64 *c) { CHECK(c, close(I(0))); }
-static void s_read(CPU64 *c) { CHECK(c, read(I(0), PTR(c, 1), (size_t)ARG(c, 2))); }
-static void s_write(CPU64 *c) { CHECK(c, write(I(0), PTR(c, 1), (size_t)ARG(c, 2))); }
+// An eventfd (epoll64.c) answers read, write and close itself: 1 when fd is
+// one and the operation (0 read, 1 write, 2 close) was done, its result in
+// *result. Declared here, not in rt64.h, whose hash keys every lifted
+// module's compile cache.
+int rt64_eventfd_io(int fd, int op, void *buf, size_t n, int64_t *result);
+static void s_close(CPU64 *c) { int64_t r; if (rt64_eventfd_io(I(0), 2, NULL, 0, &r)) { RET(c, r); return; } CHECK(c, close(I(0))); }
+static void s_read(CPU64 *c) {
+    int64_t r;
+    if (rt64_eventfd_io(I(0), 0, PTR(c, 1), (size_t)ARG(c, 2), &r)) { RET(c, r); return; }
+    CHECK(c, read(I(0), PTR(c, 1), (size_t)ARG(c, 2)));
+}
+static void s_write(CPU64 *c) {
+    int64_t r;
+    if (rt64_eventfd_io(I(0), 1, PTR(c, 1), (size_t)ARG(c, 2), &r)) { RET(c, r); return; }
+    CHECK(c, write(I(0), PTR(c, 1), (size_t)ARG(c, 2)));
+}
 static void s_pread(CPU64 *c) { CHECK(c, pread(I(0), PTR(c, 1), (size_t)ARG(c, 2), (off_t)ARG(c, 3))); }
 static void s_pwrite(CPU64 *c) { CHECK(c, pwrite(I(0), PTR(c, 1), (size_t)ARG(c, 2), (off_t)ARG(c, 3))); }
 static void s_writev(CPU64 *c) { CHECK(c, writev(I(0), PTR(c, 1), I(2))); }   // struct iovec: same layout
@@ -138,7 +171,13 @@ static void s_dup(CPU64 *c) { CHECK(c, dup(I(0))); }
 static void s_dup2(CPU64 *c) { CHECK(c, dup2(I(0), I(1))); }
 static void s_pipe(CPU64 *c) { CHECK(c, pipe(PTR(c, 0))); }
 static void s_isatty(CPU64 *c) { RET(c, isatty(I(0))); }
-static void s_access(CPU64 *c) { CHECK(c, access(S(0), I(1))); }
+static void s_access(CPU64 *c) { CHECK(c, access(HP(0), I(1))); }
+// Linux AT_FDCWD is -100; AT_EACCESS 0x200 and AT_SYMLINK_NOFOLLOW 0x100 (macOS: 0x10, 0x20).
+static void s_faccessat(CPU64 *c) {
+    int dir = I(0) == -100 ? AT_FDCWD : I(0), lf = I(3);
+    int flags = (lf & 0x200 ? AT_EACCESS : 0) | (lf & 0x100 ? AT_SYMLINK_NOFOLLOW : 0);
+    CHECK(c, faccessat(dir, HP(1), I(2), flags));
+}
 static void s_unlink(CPU64 *c) { CHECK(c, unlink(S(0))); }
 static void s_rmdir(CPU64 *c) { CHECK(c, rmdir(S(0))); }
 static void s_mkdir(CPU64 *c) { CHECK(c, mkdir(S(0), (mode_t)ARG(c, 1))); }
@@ -170,13 +209,40 @@ static void s_getcwd(CPU64 *c) {
 }
 static void s_realpath(CPU64 *c) {
     char buffer[PATH_MAX];
-    if (!realpath(S(0), buffer)) { rt64_set_errno(errno); RET(c, 0); return; }
+    if (!realpath(HP(0), buffer)) { rt64_set_errno(errno); RET(c, 0); return; }
     if (!ARG(c, 1)) { RET(c, rt64_guest_strdup(c, buffer)); return; }
     strcpy(PTR(c, 1), buffer);
     RET(c, ARG(c, 1));
 }
+// struct flock on Linux x86-64: short l_type, short l_whence, off_t l_start
+// (at 8), off_t l_len (16), pid_t l_pid (24); 32 bytes. Its l_type values
+// are F_RDLCK 0, F_WRLCK 1, F_UNLCK 2 (macOS: 1, 3, 2), and its fields come
+// in another order than macOS's.
+static int fcntl_lock(int fd, int host_cmd, uint64_t at) {
+    static const short to_host[] = {F_RDLCK, F_WRLCK, F_UNLCK};
+    struct flock fl = {0};
+    short type = (short)R16(at);
+    fl.l_type = type >= 0 && type <= 2 ? to_host[type] : F_UNLCK;
+    fl.l_whence = (short)R16(at + 2);
+    fl.l_start = (off_t)R64(at + 8);
+    fl.l_len = (off_t)R64(at + 16);
+    int r = fcntl(fd, host_cmd, &fl);
+    if (r == 0 && host_cmd == F_GETLK) {
+        W16(at, fl.l_type == F_RDLCK ? 0 : fl.l_type == F_WRLCK ? 1 : 2);
+        W16(at + 2, (uint16_t)fl.l_whence);
+        W64(at + 8, (uint64_t)fl.l_start);
+        W64(at + 16, (uint64_t)fl.l_len);
+        W32(at + 24, (uint32_t)fl.l_pid);
+    }
+    return r;
+}
+
 static void s_fcntl(CPU64 *c) {
     switch (I(1)) {
+    // F_GETLK, F_SETLK, F_SETLKW, and the OFD locks (36-38) as POSIX ones (P2CE's single-instance lock).
+    case 5: case 36: CHECK(c, fcntl_lock(I(0), F_GETLK, ARG(c, 2))); break;
+    case 6: case 37: CHECK(c, fcntl_lock(I(0), F_SETLK, ARG(c, 2))); break;
+    case 7: case 38: CHECK(c, fcntl_lock(I(0), F_SETLKW, ARG(c, 2))); break;
     case 1: CHECK(c, fcntl(I(0), F_GETFD)); break;
     case 2: CHECK(c, fcntl(I(0), F_SETFD, I(2))); break;
     case 3: { int f = fcntl(I(0), F_GETFL); if (f < 0) { CHECK(c, f); break; }
@@ -207,11 +273,11 @@ static void stat_result(CPU64 *c, int r, const struct stat *st, uint64_t out) {
     put_stat(out, st);
     RET(c, 0);
 }
-static void s_stat(CPU64 *c) { struct stat st; stat_result(c, stat(S(0), &st), &st, ARG(c, 1)); }
-static void s_lstat(CPU64 *c) { struct stat st; stat_result(c, lstat(S(0), &st), &st, ARG(c, 1)); }
+static void s_stat(CPU64 *c) { struct stat st; stat_result(c, stat(HP(0), &st), &st, ARG(c, 1)); }
+static void s_lstat(CPU64 *c) { struct stat st; stat_result(c, lstat(HP(0), &st), &st, ARG(c, 1)); }
 static void s_fstat(CPU64 *c) { struct stat st; stat_result(c, fstat(I(0), &st), &st, ARG(c, 1)); }
-static void s_xstat(CPU64 *c) { struct stat st; stat_result(c, stat(S(1), &st), &st, ARG(c, 2)); }
-static void s_lxstat(CPU64 *c) { struct stat st; stat_result(c, lstat(S(1), &st), &st, ARG(c, 2)); }
+static void s_xstat(CPU64 *c) { struct stat st; stat_result(c, stat(HP(1), &st), &st, ARG(c, 2)); }
+static void s_lxstat(CPU64 *c) { struct stat st; stat_result(c, lstat(HP(1), &st), &st, ARG(c, 2)); }
 static void s_fxstat(CPU64 *c) { struct stat st; stat_result(c, fstat(I(1), &st), &st, ARG(c, 2)); }
 static void s_fstatat(CPU64 *c) {
     struct stat st;
@@ -407,7 +473,7 @@ static const RT64Shim shims[] = {
     {"open", s_open}, {"open64", s_open}, {"__open_2", s_open}, {"openat", s_openat}, {"close", s_close},
     {"read", s_read}, {"write", s_write}, {"pread", s_pread}, {"pread64", s_pread}, {"pwrite", s_pwrite},
     {"pwrite64", s_pwrite}, {"writev", s_writev}, {"lseek", s_lseek}, {"lseek64", s_lseek}, {"dup", s_dup},
-    {"dup2", s_dup2}, {"pipe", s_pipe}, {"isatty", s_isatty}, {"access", s_access}, {"unlink", s_unlink},
+    {"dup2", s_dup2}, {"pipe", s_pipe}, {"isatty", s_isatty}, {"access", s_access}, {"faccessat", s_faccessat}, {"unlink", s_unlink},
     {"rmdir", s_rmdir}, {"mkdir", s_mkdir}, {"chdir", s_chdir}, {"chmod", s_chmod}, {"fchmod", s_fchmod},
     {"symlink", s_symlink}, {"link", s_link}, {"truncate", s_truncate}, {"ftruncate", s_ftruncate},
     {"ftruncate64", s_ftruncate}, {"fsync", s_fsync}, {"readlink", s_readlink}, {"getcwd", s_getcwd},

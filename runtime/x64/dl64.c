@@ -4,6 +4,7 @@
 // constructors); a system library (libc.so.6, libm.so.6...) opens as a
 // handle whose symbols are the runtime's shims.
 #include "rt64.h"
+#include "native_libs64.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,7 @@
 
 #define HANDLE_MAIN UINT64_C(0x1)          // dlopen(NULL)
 #define HANDLE_SYSTEM UINT64_C(0x2)        // a library the runtime replaces with shims
+#define HANDLE_NATIVE UINT64_C(0x100)      // + index: a native library standing in (native_libs64.h)
 
 static _Thread_local char error_text[256];
 static _Thread_local int error_pending;
@@ -38,6 +40,8 @@ static void s_dlopen(CPU64 *c) {
     RT64Loaded *l = rt64_open(c, name);
     if (l) { RET(c, (uintptr_t)l); return; }
     if (is_system_library(name)) { RET(c, HANDLE_SYSTEM); return; }
+    int native = rt64_native_library(name);
+    if (native >= 0) { RET(c, HANDLE_NATIVE + (uint64_t)native); return; }
     set_error("%s: cannot open shared object file: not a lifted module", name);
     RET(c, 0);
 }
@@ -46,6 +50,13 @@ static void s_dlsym(CPU64 *c) {
     uint64_t handle = ARG(c, 0);
     const char *name = PTR(c, 1);
     uint64_t address = 0;
+    if (handle >= HANDLE_NATIVE && handle < HANDLE_NATIVE + 16) {
+        // A native library: a shim of that name first (variadic functions), else its own symbol.
+        address = rt64_find_shim(name) ? rt64_dynamic_import(name) : rt64_native_library_symbol((int)(handle - HANDLE_NATIVE), name);
+        if (!address) set_error("undefined symbol: %s", name);
+        RET(c, address);
+        return;
+    }
     if (handle != HANDLE_SYSTEM && handle != HANDLE_MAIN && handle != 0 && handle != UINT64_MAX) {
         // A lifted module (an RT64Loaded, whose first field is its module):
         // its own exports, then the global scope (its dependencies).

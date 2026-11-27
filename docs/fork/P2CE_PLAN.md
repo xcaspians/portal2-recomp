@@ -79,3 +79,12 @@ by one:
   own .so files) and resolve calls between them through the existing module table, or split the text into
   separately linked groups. Then continue to the console banner.
 
+
+**Later in round 28** ([P2CE_ROUND28_NOTES.md](P2CE_ROUND28_NOTES.md)):
+- **The split is done**: one dylib per lifted module.
+- **Round E has started**: the Mac's SDL2 stands in for P2CE's, and SDL runs on Cocoa.
+- **Round F's renderer builds**: DXVK 1.10 native on MoltenVK clears a window and reads the colour back.
+- **Not reached yet: P2CE's own window.**
+  - The windowed path stops at Panorama's first V8 call (round G).
+  - The dedicated path stops at OpenSSL in libvideo.so failing to read the CA certificates, most likely a
+    lifter error.
