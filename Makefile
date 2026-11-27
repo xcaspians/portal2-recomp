@@ -113,6 +113,9 @@ clean:
 installer-dmg:
 	tools/build_installer.sh --dmg
 
+installer-release:
+	tools/build_installer.sh --release
+
 .PHONY: progress sanitize game installer-dmg
 # Whole game: every known function, C split and compiled in parallel with an
 # object cache (build/game/obj; build/hl2/obj for GAME=hl2). GAME_OPT=0 for a

@@ -8,14 +8,18 @@
 # first release's.
 #   build/installer/Natif-Installer-<version>.dmg   (with --dmg: open it, drag
 #   the app to Applications; `make installer-dmg`)
-# usage: tools/build_installer.sh [--dmg] [version]   (default: git describe)
+# usage: tools/build_installer.sh [--dmg | --release] [version]   (default: git describe)
+#   --release: the DMG of a GitHub release (`make installer-release`). HEAD
+#   must be a clean, tagged commit; it stops unless the app and the DMG are
+#   signed with a Developer ID, notarized, stapled and accepted by spctl, so a
+#   release never ships ad hoc (no Open Anyway step for users).
 # Needs only the Xcode command line tools. The snapshot is `git archive HEAD`:
 # uncommitted changes are not in it.
 #
 # Signing: with a "Developer ID Application" certificate in the keychain (or
 # P2_SIGN_IDENTITY naming one), the app is signed with the hardened runtime
 # and a timestamp; with a notarytool profile too (P2_NOTARY_PROFILE, default
-# p2-notary, made once by `xcrun notarytool store-credentials`), the zip is
+# sauce-notary, made once by `xcrun notarytool store-credentials`), the zip is
 # notarized and the app stapled, so Gatekeeper opens it without a warning.
 # Without a certificate: ad hoc signature, users click Open Anyway once.
 # P2_SIGN_IDENTITY=- forces ad hoc. See docs/usage.md#releases.
@@ -23,7 +27,17 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"
 DMG=0
-[ "${1:-}" = --dmg ] && { DMG=1; shift; }
+RELEASE=0
+case "${1:-}" in
+    --dmg) DMG=1; shift ;;
+    --release) DMG=1; RELEASE=1; shift ;;
+esac
+fail() { echo "error: $*" >&2; exit 1; }
+if [ $RELEASE = 1 ]; then
+    git diff --quiet HEAD -- && [ -z "$(git status --porcelain --untracked-files=no)" ] \
+        || fail "--release: commit first (the app embeds git archive HEAD)"
+    git describe --tags --exact-match HEAD >/dev/null 2>&1 || fail "--release: tag HEAD first (git tag vX.Y.Z)"
+fi
 VERSION="${1:-$(git describe --tags --always --dirty)}"
 # Bundle versions must be numbers (0.2.0); the full description goes in P2SourceVersion.
 NUMERIC=$(printf '%s' "${VERSION#v}" | sed -E 's/^([0-9]+(\.[0-9]+){0,2}).*/\1/')
@@ -31,7 +45,12 @@ case "$NUMERIC" in [0-9]*) ;; *) NUMERIC=0.0.0 ;; esac
 IDENTITY="${P2_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
     | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)}"
 IDENTITY="${IDENTITY:--}"
-PROFILE="${P2_NOTARY_PROFILE:-p2-notary}"
+PROFILE="${P2_NOTARY_PROFILE:-sauce-notary}"
+if [ $RELEASE = 1 ]; then
+    [ "$IDENTITY" != - ] || fail "--release: no Developer ID Application certificate in the keychain (docs/usage.md#releases)"
+    xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1 \
+        || fail "--release: notarytool profile $PROFILE missing or rejected (docs/usage.md#releases)"
+fi
 OUT="$REPO/build/installer"
 INSTALLER_NAME="Natif Installer"
 APP="$OUT/$INSTALLER_NAME.app"
@@ -119,3 +138,10 @@ if [ "$IDENTITY" = - ]; then
 fi
 shasum -a 256 "$(PACKAGE)"
 du -h "$(PACKAGE)"
+if [ $RELEASE = 1 ]; then   # what users' Gatekeeper checks, once more on the final files
+    xcrun stapler validate "$DMG_FILE"
+    spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_FILE"
+    spctl --assess --type execute --verbose=2 "$APP"
+    codesign --display --verbose=2 "$APP" 2>&1 | grep -q 'flags=0x10000(runtime)' || fail "--release: no hardened runtime on the app"
+    echo "release: $DMG_FILE signed ($IDENTITY), notarized, stapled, accepted by Gatekeeper"
+fi

@@ -24,6 +24,18 @@ class PackagingTests(unittest.TestCase):
         self.assertRegex(SCRIPT, r'notarytool submit "\$DMG_FILE"')
         self.assertIn('stapler staple "$DMG_FILE"', SCRIPT)
 
+    def test_release_is_never_ad_hoc(self):
+        # --release stops unless signed with a Developer ID, notarized, stapled and accepted by spctl.
+        self.assertIn('installer-release:\n\ttools/build_installer.sh --release', (ROOT / 'Makefile').read_text())
+        self.assertIn('PROFILE="${P2_NOTARY_PROFILE:-sauce-notary}"', SCRIPT)
+        self.assertIn('[ "$IDENTITY" != - ] || fail "--release: no Developer ID', SCRIPT)
+        self.assertIn('xcrun stapler validate "$DMG_FILE"', SCRIPT)
+        self.assertIn("flags=0x10000(runtime)", SCRIPT)
+        self.assertIn('--options runtime --timestamp', SCRIPT)
+        # The published notes have no Open Anyway step.
+        for notes in (ROOT / 'docs/fork/releases').glob('v*.md'):
+            self.assertNotIn('Open Anyway', notes.read_text(), notes.name)
+
     def test_no_secret_in_the_script(self):
         # The notary password lives in the keychain profile only.
         self.assertNotRegex(SCRIPT, r'--password\s')
