@@ -25,8 +25,13 @@ HOST="$DEPS/p2-host-deps-1-macos-arm64"
 log() { echo "==> $*" >&2; }
 
 command -v cmake >/dev/null && command -v ninja >/dev/null || { echo "needs cmake and ninja (brew install cmake ninja)" >&2; exit 1; }
-SDL_INC="$HOST/include"; SDL_LIB="$HOST/lib"
-[ -f "$SDL_INC/SDL2/SDL.h" ] || { SDL_INC=/opt/homebrew/include; SDL_LIB=/opt/homebrew/lib; }
+# SDL2: SDL_PREFIX when given (a prefix with include/SDL2 and lib, as a
+# project building its own SDL passes), else the host-deps bundle, else Homebrew.
+if [ -n "${SDL_PREFIX:-}" ]; then SDL_INC="$SDL_PREFIX/include"; SDL_LIB="$SDL_PREFIX/lib"
+else
+    SDL_INC="$HOST/include"; SDL_LIB="$HOST/lib"
+    [ -f "$SDL_INC/SDL2/SDL.h" ] || { SDL_INC=/opt/homebrew/include; SDL_LIB=/opt/homebrew/lib; }
+fi
 [ -f "$SDL_INC/SDL2/SDL.h" ] || { echo "needs SDL2 (./setup.sh's host libraries, or brew install sdl2)" >&2; exit 1; }
 
 # glslang
