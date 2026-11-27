@@ -93,6 +93,12 @@ uint64_t rt64_win_thread(CPU64 *c, uint64_t stack_low, uint64_t stack_high) {
     return teb;
 }
 
+void rt64_win_each_teb(void (*fn)(uint64_t teb, void *arg), void *arg) {
+    pthread_mutex_lock(&pe_lock);
+    for (size_t i = 0; i < teb_count; ++i) fn(tebs[i], arg);
+    pthread_mutex_unlock(&pe_lock);
+}
+
 uint32_t rt64_win_thread_id(const CPU64 *c) {
     return c->gs_base ? (uint32_t)R64(c->gs_base + TEB_THREAD_ID) : 0;
 }

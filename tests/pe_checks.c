@@ -66,6 +66,13 @@ static uint64_t call(CPU64 *c, const char *name, int argc, const uint64_t *args)
     return rt64_win_call(c, fn(name), argc, args);
 }
 
+// rt64_win_each_teb's callback: counts the TEBs, and how often it sees the one asked for.
+static void pe_count_teb(uint64_t t, void *arg) {
+    struct { size_t *seen, *found; uint64_t teb; } *walk = arg;
+    ++*walk->seen;
+    if (t == walk->teb) ++*walk->found;
+}
+
 int main(void) {
     if (rt64_load(&pe_fixture, NULL)) { fprintf(stderr, "pe-check: cannot load pefix.dll\n"); return 1; }
     uint64_t base = 0;
@@ -82,6 +89,12 @@ int main(void) {
     CHECK(R64(base + pe_header + 24 + 24) == base, "ImageBase field holds the load address");
     CHECK(call(c, "pe_add5", 5, (const uint64_t[]){1, 20, 300, 4000, 50000}) == 54321, "five Windows arguments");
     CHECK(call(c, "pe_teb_self", 0, NULL) == teb, "gs:[0x30] is the TEB");
+    {
+        size_t seen = 0, found = 0;
+        struct { size_t *seen, *found; uint64_t teb; } walk = {&seen, &found, teb};
+        rt64_win_each_teb(pe_count_teb, &walk);
+        CHECK(seen >= 1 && found == 1, "rt64_win_each_teb visits every TEB, this one once");
+    }
     CHECK(R64(teb + TEB_STACK_BASE) == (uint64_t)(uintptr_t)(stack + stack_size), "TEB stack base");
     CHECK(call(c, "pe_tls_bump", 0, NULL) == 42, "static TLS from the template");
     CHECK(call(c, "pe_tls_bump", 0, NULL) == 43, "static TLS keeps its value");
