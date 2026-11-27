@@ -1,0 +1,4448 @@
+diff --git a/include/vulkan/vulkan_native.h b/include/vulkan/vulkan_native.h
+new file mode 100644
+index 00000000..58f008cb
+--- /dev/null
++++ b/include/vulkan/vulkan_native.h
+@@ -0,0 +1,91 @@
++#ifndef VULKAN_NATIVE_H_
++#define VULKAN_NATIVE_H_ 1
++
++#include <cstdint>
++#include <windows.h>
++
++/* This definitions in this file are an extract of vulkan_win32.h
++ * under the following license: */
++/*
++** Copyright (c) 2015-2019 The Khronos Group Inc.
++**
++** Licensed under the Apache License, Version 2.0 (the "License");
++** you may not use this file except in compliance with the License.
++** You may obtain a copy of the License at
++**
++**     http://www.apache.org/licenses/LICENSE-2.0
++**
++** Unless required by applicable law or agreed to in writing, software
++** distributed under the License is distributed on an "AS IS" BASIS,
++** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++** See the License for the specific language governing permissions and
++** limitations under the License.
++*/
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#define VK_EXT_full_screen_exclusive 1
++#define VK_EXT_FULL_SCREEN_EXCLUSIVE_SPEC_VERSION 4
++#define VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME "VK_EXT_full_screen_exclusive"
++
++typedef enum VkFullScreenExclusiveEXT {
++    VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT = 0,
++    VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT = 1,
++    VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT = 2,
++    VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT = 3,
++    VK_FULL_SCREEN_EXCLUSIVE_BEGIN_RANGE_EXT = VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT,
++    VK_FULL_SCREEN_EXCLUSIVE_END_RANGE_EXT = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT,
++    VK_FULL_SCREEN_EXCLUSIVE_RANGE_SIZE_EXT = (VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT - VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT + 1),
++    VK_FULL_SCREEN_EXCLUSIVE_MAX_ENUM_EXT = 0x7FFFFFFF
++} VkFullScreenExclusiveEXT;
++typedef struct VkSurfaceFullScreenExclusiveInfoEXT {
++    VkStructureType             sType;
++    void*                       pNext;
++    VkFullScreenExclusiveEXT    fullScreenExclusive;
++} VkSurfaceFullScreenExclusiveInfoEXT;
++
++typedef struct VkSurfaceCapabilitiesFullScreenExclusiveEXT {
++    VkStructureType    sType;
++    void*              pNext;
++    VkBool32           fullScreenExclusiveSupported;
++} VkSurfaceCapabilitiesFullScreenExclusiveEXT;
++
++typedef struct VkSurfaceFullScreenExclusiveWin32InfoEXT {
++    VkStructureType    sType;
++    const void*        pNext;
++    HMONITOR           hmonitor;
++} VkSurfaceFullScreenExclusiveWin32InfoEXT;
++
++typedef VkResult (VKAPI_PTR *PFN_vkGetPhysicalDeviceSurfacePresentModes2EXT)(VkPhysicalDevice physicalDevice, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, uint32_t* pPresentModeCount, VkPresentModeKHR* pPresentModes);
++typedef VkResult (VKAPI_PTR *PFN_vkAcquireFullScreenExclusiveModeEXT)(VkDevice device, VkSwapchainKHR swapchain);
++typedef VkResult (VKAPI_PTR *PFN_vkReleaseFullScreenExclusiveModeEXT)(VkDevice device, VkSwapchainKHR swapchain);
++typedef VkResult (VKAPI_PTR *PFN_vkGetDeviceGroupSurfacePresentModes2EXT)(VkDevice device, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, VkDeviceGroupPresentModeFlagsKHR* pModes);
++
++#ifndef VK_NO_PROTOTYPES
++VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceSurfacePresentModes2EXT(
++    VkPhysicalDevice                            physicalDevice,
++    const VkPhysicalDeviceSurfaceInfo2KHR*      pSurfaceInfo,
++    uint32_t*                                   pPresentModeCount,
++    VkPresentModeKHR*                           pPresentModes);
++
++VKAPI_ATTR VkResult VKAPI_CALL vkAcquireFullScreenExclusiveModeEXT(
++    VkDevice                                    device,
++    VkSwapchainKHR                              swapchain);
++
++VKAPI_ATTR VkResult VKAPI_CALL vkReleaseFullScreenExclusiveModeEXT(
++    VkDevice                                    device,
++    VkSwapchainKHR                              swapchain);
++
++VKAPI_ATTR VkResult VKAPI_CALL vkGetDeviceGroupSurfacePresentModes2EXT(
++    VkDevice                                    device,
++    const VkPhysicalDeviceSurfaceInfo2KHR*      pSurfaceInfo,
++    VkDeviceGroupPresentModeFlagsKHR*           pModes);
++#endif
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif
+\ No newline at end of file
+diff --git a/meson.build b/meson.build
+index ca7124d7..5c97d3d0 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1,23 +1,31 @@
+ project('dxvk', ['c', 'cpp'], version : 'v1.10.3', meson_version : '>= 0.49', default_options : [ 'cpp_std=c++17' ])
+ 
++# DXVK 1.10.x (Gcenx/DXVK-macOS) with dxvk-native's 1.x non-Windows build
++# carried over: Windows builds as before; anything else builds natively,
++# with SDL2 for windows and the Vulkan library given by -Dnative_vulkan_lib
++# (MoltenVK on macOS, for P2CE: docs/fork/P2CE_RENDERER_DECISION.md).
++
+ cpu_family = target_machine.cpu_family()
+ platform   = target_machine.system()
+ 
+ cpp = meson.get_compiler('cpp')
+ cc = meson.get_compiler('c')
++dxvk_compiler = cpp
+ dxvk_is_msvc = cpp.get_id() == 'msvc'
++dxvk_cpp_std = 'c++17'
++dxvk_native = platform != 'windows'
+ 
+ compiler_args = [
+-  '-msse',
+-  '-msse2',
+-  '-msse3',
+-  '-mfpmath=sse',
+   '-Wimplicit-fallthrough',
+   # clang
+   '-Wno-unused-private-field',
+   '-Wno-microsoft-exception-spec',
+ ]
+ 
++if cpu_family == 'x86' or cpu_family == 'x86_64'
++  compiler_args += [ '-msse', '-msse2', '-msse3', '-mfpmath=sse' ]
++endif
++
+ link_args = []
+ 
+ if get_option('build_id')
+@@ -26,6 +34,8 @@ if get_option('build_id')
+   ]
+ endif
+ 
++dxvk_extradep = [ ]
++
+ if platform == 'windows'
+   compiler_args += [
+     '-DNOMINMAX',
+@@ -84,9 +94,31 @@ if platform == 'windows'
+   endif
+ 
+   dxvk_include_path = include_directories('./include')
+-
+-  dxvk_wsi = 'win32'
++  dxvk_wsi      = 'win32'
++  dxvk_platform = 'windows'
++  so_prefix     = ''
++  lib_vulkan    = []
++  lib_sdl2      = []
+   compiler_args += ['-DDXVK_WSI_WIN32']
++else
++  # Native (dxvk-native 1.x): Windows types and DirectX headers from
++  # include/native, SDL2 windows, the Vulkan library linked directly.
++  compiler_args += [ '-DDXVK_NATIVE', '-DDXVK_WSI_SDL2', '-DDXVK_PLATFORM_' + platform.to_upper() ]
++  dxvk_include_path = include_directories('./include', './include/native/', './include/native/windows', './include/native/directx')
++  dxvk_wsi      = 'sdl2'
++  dxvk_platform = platform
++  so_prefix     = 'libdxvk_'
++  lib_vulkan    = cpp.find_library(get_option('native_vulkan_lib'))
++  lib_sdl2      = cpp.find_library('SDL2')
++  lib_dxgi      = []
++  res_ext       = ''
++  wrc = find_program('echo')
++  wrc_generator = generator(wrc,
++    output    : [ '@BASENAME@_ignored.h' ],
++    arguments : [ 'Ignoring: ', '@INPUT@' ])
++  if platform == 'linux'
++    dxvk_extradep += [ cpp.find_library('dl') ]
++  endif
+ endif
+ 
+ add_project_arguments(cpp.get_supported_arguments(compiler_args), language: 'cpp')
+@@ -98,7 +130,7 @@ exe_ext = ''
+ dll_ext = ''
+ def_spec_ext = '.def'
+ 
+-glsl_compiler = find_program('glslangValidator')
++glsl_compiler = find_program('glslangValidator', 'glslang')
+ glsl_args = [ '--target-env', 'vulkan1.2', '--vn', '@BASENAME@', '@INPUT@', '-o', '@OUTPUT@' ]
+ if run_command(glsl_compiler, [ '--quiet', '--version' ], check : false).returncode() == 0
+     glsl_args += [ '--quiet' ]
+@@ -113,8 +145,10 @@ dxvk_version = vcs_tag(
+   output: 'version.h',
+ )
+ 
+-if platform != 'windows'
+-  error('Non-Windows platforms not supported... yet.')
+-endif
+-
+ subdir('src')
++
++enable_tests = get_option('enable_tests')
++
++if enable_tests
++  subdir('tests')
++endif
+diff --git a/meson_options.txt b/meson_options.txt
+index 36fd0136..fe77dd8f 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -1,5 +1,7 @@
++option('enable_tests', type : 'boolean', value : false)
+ option('enable_dxgi',  type : 'boolean', value : true, description: 'Build DXGI')
+ option('enable_d3d9',  type : 'boolean', value : true, description: 'Build D3D9')
+ option('enable_d3d10', type : 'boolean', value : true, description: 'Build D3D10')
+ option('enable_d3d11', type : 'boolean', value : true, description: 'Build D3D11')
+ option('build_id',     type : 'boolean', value : false)
++option('native_vulkan_lib', type : 'string', value : 'vulkan', description: 'Vulkan library a native build links (MoltenVK on macOS)')
+diff --git a/package-native-steamrt.sh b/package-native-steamrt.sh
+new file mode 100755
+index 00000000..d72056a8
+--- /dev/null
++++ b/package-native-steamrt.sh
+@@ -0,0 +1,3 @@
++#!/bin/bash
++
++CC="gcc-9" CXX="g++-9" ./package-native.sh "$@"
+diff --git a/src/d3d11/d3d11_annotation.cpp b/src/d3d11/d3d11_annotation.cpp
+index 7c74b7ad..3df5e35e 100644
+--- a/src/d3d11/d3d11_annotation.cpp
++++ b/src/d3d11/d3d11_annotation.cpp
+@@ -12,6 +12,11 @@ namespace dxvk {
+     static const int16_t RegisterOrdinal = 28257;
+     static const int16_t UnregisterOrdinal = 28258;
+ 
++#ifndef _WIN32
++    // Native: no d3d9.dll to share annotations with.
++    (void)annotation; (void)RegisterOrdinal; (void)UnregisterOrdinal;
++    return;
++#else
+     HMODULE d3d9Module = ::LoadLibraryA("d3d9.dll");
+     if (!d3d9Module) {
+       Logger::info("Unable to find d3d9, some annotations may be missed.");
+@@ -28,6 +33,7 @@ namespace dxvk {
+     }
+ 
+     registrationFunction(annotation);
++#endif
+   }
+ 
+   D3D11UserDefinedAnnotation::D3D11UserDefinedAnnotation(D3D11DeviceContext* ctx)
+diff --git a/src/d3d11/d3d11_context_imm.cpp b/src/d3d11/d3d11_context_imm.cpp
+index 0c5bd613..a4685a2b 100644
+--- a/src/d3d11/d3d11_context_imm.cpp
++++ b/src/d3d11/d3d11_context_imm.cpp
+@@ -808,6 +808,7 @@ namespace dxvk {
+ 
+ 
+   void D3D11ImmediateContext::SignalEvent(HANDLE hEvent) {
++#ifndef DXVK_NATIVE
+     uint64_t value = ++m_eventCount;
+ 
+     if (m_eventSignal == nullptr)
+@@ -823,6 +824,7 @@ namespace dxvk {
+     ] (DxvkContext* ctx) {
+       ctx->signal(cSignal, cValue);
+     });
++#endif
+   }
+   
+ }
+diff --git a/src/d3d11/d3d11_context_imm.h b/src/d3d11/d3d11_context_imm.h
+index 9a5ba21f..8300de7f 100644
+--- a/src/d3d11/d3d11_context_imm.h
++++ b/src/d3d11/d3d11_context_imm.h
+@@ -2,7 +2,9 @@
+ 
+ #include "../util/util_time.h"
+ 
++#ifndef DXVK_NATIVE
+ #include "../util/sync/sync_signal.h"
++#endif
+ 
+ #include "d3d11_context.h"
+ #include "d3d11_state_object.h"
+@@ -121,7 +123,9 @@ namespace dxvk {
+     uint64_t                m_csSeqNum = 0ull;
+     bool                    m_csIsBusy = false;
+ 
++#ifndef DXVK_NATIVE
+     Rc<sync::CallbackFence> m_eventSignal;
++#endif
+     uint64_t                m_eventCount = 0ull;
+     uint32_t                m_mappedImageCount = 0u;
+ 
+diff --git a/src/d3d11/d3d11_device.cpp b/src/d3d11/d3d11_device.cpp
+index a2524376..ee7ae40d 100644
+--- a/src/d3d11/d3d11_device.cpp
++++ b/src/d3d11/d3d11_device.cpp
+@@ -3090,7 +3090,7 @@ namespace dxvk {
+     // Make sure the back buffer size is not zero
+     DXGI_SWAP_CHAIN_DESC1 desc = *pDesc;
+     
+-    GetWindowClientSize(hWnd,
++    wsi::getWindowSize(hWnd,
+       desc.Width  ? nullptr : &desc.Width,
+       desc.Height ? nullptr : &desc.Height);
+     
+diff --git a/src/d3d11/d3d11_fence.cpp b/src/d3d11/d3d11_fence.cpp
+index e3c7688b..f0c6c75b 100644
+--- a/src/d3d11/d3d11_fence.cpp
++++ b/src/d3d11/d3d11_fence.cpp
+@@ -17,7 +17,11 @@ namespace dxvk {
+       fenceInfo.sharedType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_D3D11_FENCE_BIT;
+       if (hFence == nullptr)
+         hFence = INVALID_HANDLE_VALUE;
++#ifdef _WIN32
+       fenceInfo.sharedHandle = hFence;
++#else
++      Logger::warn("D3D11Fence: shared fences aren't supported in native builds");
++#endif
+     }
+ 
+     if (Flags & ~D3D11_FENCE_FLAG_SHARED)
+diff --git a/src/d3d11/d3d11_gdi.cpp b/src/d3d11/d3d11_gdi.cpp
+index 0958886e..83e0618d 100644
+--- a/src/d3d11/d3d11_gdi.cpp
++++ b/src/d3d11/d3d11_gdi.cpp
+@@ -2,7 +2,9 @@
+ #include "d3d11_device.h"
+ #include "d3d11_gdi.h"
+ 
++#ifndef DXVK_NATIVE
+ #include "../util/util_gdi.h"
++#endif
+ 
+ namespace dxvk {
+   
+diff --git a/src/d3d11/d3d11_options.cpp b/src/d3d11/d3d11_options.cpp
+index 4eccc0ea..0802ed59 100644
+--- a/src/d3d11/d3d11_options.cpp
++++ b/src/d3d11/d3d11_options.cpp
+@@ -41,7 +41,11 @@ namespace dxvk {
+ 
+     auto cachedDynamicResources = config.getOption<std::string>("d3d11.cachedDynamicResources", std::string());
+ 
++#ifdef _WIN32
+     if (::GetModuleHandle("dxgitrace.dll")) {
++#else
++    if (false) {
++#endif
+       // apitrace reads back all mapped resources on the CPU, so
+       // allocating everything in cached memory is necessary to
+       // achieve acceptable performance
+diff --git a/src/d3d11/d3d11_shader.cpp b/src/d3d11/d3d11_shader.cpp
+index 800bdea8..0bd31a9f 100644
+--- a/src/d3d11/d3d11_shader.cpp
++++ b/src/d3d11/d3d11_shader.cpp
+@@ -27,8 +27,13 @@ namespace dxvk {
+     const std::string dumpPath = env::getEnvVar("DXVK_SHADER_DUMP_PATH");
+     
+     if (dumpPath.size() != 0) {
++#ifdef _WIN32
+       reader.store(std::ofstream(str::tows(str::format(dumpPath, "/", name, ".dxbc").c_str()).c_str(),
+         std::ios_base::binary | std::ios_base::trunc));
++#else
++      reader.store(std::ofstream(str::format(dumpPath, "/", name, ".dxbc").c_str(),
++        std::ios_base::binary | std::ios_base::trunc));
++#endif
+     }
+     
+     // Decide whether we need to create a pass-through
+@@ -46,9 +51,15 @@ namespace dxvk {
+     m_shader->setShaderKey(*pShaderKey);
+     
+     if (dumpPath.size() != 0) {
++#ifdef _WIN32
+       std::ofstream dumpStream(
+         str::tows(str::format(dumpPath, "/", name, ".spv").c_str()).c_str(),
+         std::ios_base::binary | std::ios_base::trunc);
++#else
++      std::ofstream dumpStream(
++        str::format(dumpPath, "/", name, ".spv").c_str(),
++        std::ios_base::binary | std::ios_base::trunc);
++#endif
+       
+       m_shader->dump(dumpStream);
+     }
+diff --git a/src/d3d11/d3d11_swapchain.cpp b/src/d3d11/d3d11_swapchain.cpp
+index 29ff1fbc..666b3058 100644
+--- a/src/d3d11/d3d11_swapchain.cpp
++++ b/src/d3d11/d3d11_swapchain.cpp
+@@ -179,6 +179,7 @@ namespace dxvk {
+     if (MaxLatency == 0 || MaxLatency > DXGI_MAX_SWAP_CHAIN_BUFFERS)
+       return DXGI_ERROR_INVALID_CALL;
+ 
++#ifdef _WIN32
+     if (m_frameLatencyEvent) {
+       // Windows DXGI does not seem to handle the case where the new maximum
+       // latency is less than the current value, and some games relying on
+@@ -187,6 +188,7 @@ namespace dxvk {
+       if (MaxLatency > m_frameLatency)
+         ReleaseSemaphore(m_frameLatencyEvent, MaxLatency - m_frameLatency, nullptr);
+     }
++#endif
+ 
+     m_frameLatency = MaxLatency;
+     return S_OK;
+@@ -375,8 +377,13 @@ namespace dxvk {
+   void D3D11SwapChain::CreateFrameLatencyEvent() {
+     m_frameLatencySignal = new sync::CallbackFence(m_frameId);
+ 
+-    if (m_desc.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT)
+-      m_frameLatencyEvent = CreateSemaphore(nullptr, m_frameLatency, DXGI_MAX_SWAP_CHAIN_BUFFERS, nullptr);
++    if (m_desc.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) {
++#ifndef DXVK_NATIVE
++      m_frameLatencyEvent = CreateEvent(nullptr, false, true, nullptr);
++#else
++      throw DxvkError("DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT not supported on this platform.");
++#endif
++    }
+   }
+ 
+ 
+@@ -543,7 +550,9 @@ namespace dxvk {
+ 
+ 
+   void D3D11SwapChain::DestroyFrameLatencyEvent() {
++#ifndef DXVK_NATIVE
+     CloseHandle(m_frameLatencyEvent);
++#endif
+   }
+ 
+ 
+@@ -551,11 +560,13 @@ namespace dxvk {
+     // Wait for the sync event so that we respect the maximum frame latency
+     m_frameLatencySignal->wait(m_frameId - GetActualFrameLatency());
+ 
++#ifndef DXVK_NATIVE
+     if (m_frameLatencyEvent) {
+       m_frameLatencySignal->setCallback(m_frameId, [cFrameLatencyEvent = m_frameLatencyEvent] () {
+         ReleaseSemaphore(cFrameLatencyEvent, 1, nullptr);
+       });
+     }
++#endif
+   }
+ 
+ 
+diff --git a/src/d3d11/d3d11_texture.cpp b/src/d3d11/d3d11_texture.cpp
+index 08b6351d..e1eeaf7c 100644
+--- a/src/d3d11/d3d11_texture.cpp
++++ b/src/d3d11/d3d11_texture.cpp
+@@ -54,7 +54,11 @@ namespace dxvk {
+       imageInfo.sharing.type = m_desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE
+         ? VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT
+         : VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT;
++#ifdef _WIN32
+       imageInfo.sharing.handle = hSharedHandle;
++#else
++      Logger::warn("D3D11: shared resources aren't supported in native builds");
++#endif
+     }
+ 
+     if (!pDevice->GetOptions()->disableMsaa)
+@@ -726,14 +730,18 @@ namespace dxvk {
+   : m_resource  (pResource),
+     m_texture   (pTexture),
+     m_gdiSurface(nullptr) {
++#ifndef DXVK_NATIVE
+     if (pTexture->Desc()->MiscFlags & D3D11_RESOURCE_MISC_GDI_COMPATIBLE)
+       m_gdiSurface = new D3D11GDISurface(m_resource, 0);
++#endif
+   }
+ 
+   
+   D3D11DXGISurface::~D3D11DXGISurface() {
++#ifndef DXVK_NATIVE
+     if (m_gdiSurface)
+       delete m_gdiSurface;
++#endif
+   }
+ 
+   
+@@ -862,19 +870,23 @@ namespace dxvk {
+   HRESULT STDMETHODCALLTYPE D3D11DXGISurface::GetDC(
+           BOOL                    Discard,
+           HDC*                    phdc) {
+-    if (!m_gdiSurface)
+-      return DXGI_ERROR_INVALID_CALL;
++#ifndef DXVK_NATIVE
++    if (m_gdiSurface)
++      return m_gdiSurface->Acquire(Discard, phdc);
++#endif
+     
+-    return m_gdiSurface->Acquire(Discard, phdc);
++    return DXGI_ERROR_INVALID_CALL;
+   }
+ 
+ 
+   HRESULT STDMETHODCALLTYPE D3D11DXGISurface::ReleaseDC(
+           RECT*                   pDirtyRect) {
+-    if (!m_gdiSurface)
+-      return DXGI_ERROR_INVALID_CALL;
++#ifndef DXVK_NATIVE
++    if (m_gdiSurface)
++      return m_gdiSurface->Release(pDirtyRect);
++#endif
+ 
+-    return m_gdiSurface->Release(pDirtyRect);
++    return DXGI_ERROR_INVALID_CALL;
+   }
+ 
+   
+diff --git a/src/d3d11/meson.build b/src/d3d11/meson.build
+index 85fe7807..f445a0ff 100644
+--- a/src/d3d11/meson.build
++++ b/src/d3d11/meson.build
+@@ -38,7 +38,6 @@ d3d11_src = [
+   'd3d11_device.cpp',
+   'd3d11_enums.cpp',
+   'd3d11_fence.cpp',
+-  'd3d11_gdi.cpp',
+   'd3d11_initializer.cpp',
+   'd3d11_input_layout.cpp',
+   'd3d11_interop.cpp',
+@@ -66,10 +65,20 @@ d3d11_shaders = files([
+   'shaders/d3d11_video_blit_vert.vert',
+ ])
+ 
+-d3d11_dll = shared_library('d3d11'+dll_ext, dxgi_common_src + d3d11_src + d3d10_src,
++if not dxvk_native
++  # We don't want to allow GDI interop on *any* native builds
++  # because the idea is for you to write once and run anywhere.
++  d3d11_src += 'd3d11_gdi.cpp'
++endif
++
++if dxvk_native
++  lib_dxgi = dxgi_dep
++endif
++
++d3d11_dll = shared_library(so_prefix+'d3d11'+dll_ext, dxgi_common_src + d3d11_src + d3d10_src,
+     glsl_generator.process(d3d11_shaders), d3d11_res,
+   name_prefix         : '',
+-  dependencies        : [ lib_dxgi, dxbc_dep, dxvk_dep ],
++  dependencies        : [ lib_dxgi, dxbc_dep, dxvk_dep, wsi_dep ],
+   include_directories : dxvk_include_path,
+   install             : true,
+   vs_module_defs      : 'd3d11'+def_spec_ext,
+diff --git a/src/d3d9/d3d9_config.h b/src/d3d9/d3d9_config.h
+new file mode 100644
+index 00000000..4a882e9c
+--- /dev/null
++++ b/src/d3d9/d3d9_config.h
+@@ -0,0 +1,13 @@
++#pragma once
++
++namespace dxvk::config {
++
++    constexpr bool FullValidation = false;
++    constexpr bool FloatEmulationByDefault = false;
++    constexpr bool FixedFunctionEnabled = true;
++    constexpr bool HazardTrackingEnabled = false;
++    constexpr bool ManagedUploadTrackingEnabled = true;
++    constexpr bool MipGenTrackingEnabled = false;
++    constexpr bool SWVPEnabled = false;
++
++}
+\ No newline at end of file
+diff --git a/src/d3d9/d3d9_cursor.cpp b/src/d3d9/d3d9_cursor.cpp
+index 408268c1..510bbbc9 100644
+--- a/src/d3d9/d3d9_cursor.cpp
++++ b/src/d3d9/d3d9_cursor.cpp
+@@ -5,6 +5,7 @@
+ 
+ namespace dxvk {
+ 
++#ifndef DXVK_NATIVE
+   void D3D9Cursor::UpdateCursor(int X, int Y) {
+     POINT currentPos = { };
+     if (::GetCursorPos(&currentPos) && currentPos == POINT{ X, Y })
+@@ -43,5 +44,24 @@ namespace dxvk {
+ 
+     return D3D_OK;
+   }
++#else
++  void D3D9Cursor::UpdateCursor(int X, int Y) { 
++    Logger::warn("D3D9Cursor::UpdateCursor: Not supported on native");
++  }
++
++
++  BOOL D3D9Cursor::ShowCursor(BOOL bShow) {
++    Logger::warn("D3D9Cursor::ShowCursor: Not supported on native");
++
++    return std::exchange(m_visible, bShow);
++  }
++
++
++  HRESULT D3D9Cursor::SetHardwareCursor(UINT XHotSpot, UINT YHotSpot, const CursorBitmap& bitmap) {
++    Logger::warn("D3D9Cursor::SetHardwareCursor: Not supported on native");
++
++    return D3DERR_INVALIDCALL;
++  }
++#endif
+ 
+ }
+\ No newline at end of file
+diff --git a/src/d3d9/d3d9_cursor.h b/src/d3d9/d3d9_cursor.h
+index 32645d26..1b541d14 100644
+--- a/src/d3d9/d3d9_cursor.h
++++ b/src/d3d9/d3d9_cursor.h
+@@ -26,7 +26,9 @@ namespace dxvk {
+ 
+     BOOL    m_visible       = FALSE;
+ 
++#ifndef DXVK_NATIVE
+     HCURSOR m_hCursor       = nullptr;
++#endif
+ 
+   };
+ 
+diff --git a/src/d3d9/d3d9_device.cpp b/src/d3d9/d3d9_device.cpp
+index 23b0a6fd..8618fa39 100644
+--- a/src/d3d9/d3d9_device.cpp
++++ b/src/d3d9/d3d9_device.cpp
+@@ -2415,10 +2415,10 @@ namespace dxvk {
+           UINT             PrimitiveCount) {
+     D3D9DeviceLock lock = LockDevice();
+ 
+-    if (unlikely(m_state.vertexDecl == nullptr))
++    if (unlikely(config::FullValidation && m_state.vertexDecl == nullptr))
+       return D3DERR_INVALIDCALL;
+ 
+-    if (unlikely(!PrimitiveCount))
++    if (unlikely(config::FullValidation && !PrimitiveCount))
+       return S_OK;
+ 
+     PrepareDraw(PrimitiveType);
+@@ -2451,10 +2451,10 @@ namespace dxvk {
+           UINT             PrimitiveCount) {
+     D3D9DeviceLock lock = LockDevice();
+ 
+-    if (unlikely(m_state.vertexDecl == nullptr))
++    if (unlikely(config::FullValidation && m_state.vertexDecl == nullptr))
+       return D3DERR_INVALIDCALL;
+ 
+-    if (unlikely(!PrimitiveCount))
++    if (unlikely(config::FullValidation && !PrimitiveCount))
+       return S_OK;
+ 
+     PrepareDraw(PrimitiveType);
+@@ -2487,10 +2487,10 @@ namespace dxvk {
+           UINT             VertexStreamZeroStride) {
+     D3D9DeviceLock lock = LockDevice();
+ 
+-    if (unlikely(m_state.vertexDecl == nullptr))
++    if (unlikely(config::FullValidation && m_state.vertexDecl == nullptr))
+       return D3DERR_INVALIDCALL;
+ 
+-    if (unlikely(!PrimitiveCount))
++    if (unlikely(config::FullValidation && !PrimitiveCount))
+       return S_OK;
+ 
+     PrepareDraw(PrimitiveType);
+@@ -2540,10 +2540,10 @@ namespace dxvk {
+           UINT             VertexStreamZeroStride) {
+     D3D9DeviceLock lock = LockDevice();
+ 
+-    if (unlikely(m_state.vertexDecl == nullptr))
++    if (unlikely(config::FullValidation && m_state.vertexDecl == nullptr))
+         return D3DERR_INVALIDCALL;
+ 
+-    if (unlikely(!PrimitiveCount))
++    if (unlikely(config::FullValidation && !PrimitiveCount))
+       return S_OK;
+ 
+     PrepareDraw(PrimitiveType);
+@@ -5290,6 +5290,9 @@ namespace dxvk {
+ 
+ 
+   inline void D3D9DeviceEx::UpdateActiveRTs(uint32_t index) {
++    if (!config::HazardTrackingEnabled)
++      return;
++
+     const uint32_t bit = 1 << index;
+ 
+     m_activeRTs &= ~bit;
+@@ -5304,40 +5307,52 @@ namespace dxvk {
+ 
+ 
+   inline void D3D9DeviceEx::UpdateActiveTextures(uint32_t index, DWORD combinedUsage) {
++    if (!config::ManagedUploadTrackingEnabled && !config::HazardTrackingEnabled && !config::MipGenTrackingEnabled)
++      return;
++
+     const uint32_t bit = 1 << index;
+ 
+-    m_activeRTTextures       &= ~bit;
+-    m_activeDSTextures       &= ~bit;
++    if (config::HazardTrackingEnabled) {
++      m_activeRTTextures       &= ~bit;
++      m_activeDSTextures       &= ~bit;
++    }
+     m_activeTextures         &= ~bit;
+-    m_activeTexturesToUpload &= ~bit;
+-    m_activeTexturesToGen    &= ~bit;
++    if (config::ManagedUploadTrackingEnabled)
++      m_activeTexturesToUpload &= ~bit;
++    if (config::MipGenTrackingEnabled)
++      m_activeTexturesToGen    &= ~bit;
+ 
+     auto tex = GetCommonTexture(m_state.textures[index]);
+     if (tex != nullptr) {
+       m_activeTextures |= bit;
+ 
+-      if (unlikely(tex->IsRenderTarget()))
++      if (unlikely(config::HazardTrackingEnabled && tex->IsRenderTarget()))
+         m_activeRTTextures |= bit;
+ 
+-      if (unlikely(tex->IsDepthStencil()))
++      if (unlikely(config::HazardTrackingEnabled && tex->IsDepthStencil()))
+         m_activeDSTextures |= bit;
+ 
+-      if (unlikely(tex->NeedsAnyUpload()))
++      if (unlikely(config::ManagedUploadTrackingEnabled && tex->NeedsAnyUpload()))
+         m_activeTexturesToUpload |= bit;
+ 
+-      if (unlikely(tex->NeedsMipGen()))
++      if (unlikely(config::MipGenTrackingEnabled && tex->NeedsMipGen()))
+         m_activeTexturesToGen |= bit;
+     }
+ 
+-    if (unlikely(combinedUsage & D3DUSAGE_RENDERTARGET))
+-      UpdateActiveHazardsRT(UINT32_MAX);
++    if (config::HazardTrackingEnabled) {
++      if (unlikely(combinedUsage & D3DUSAGE_RENDERTARGET))
++        UpdateActiveHazardsRT(UINT32_MAX);
+ 
+-    if (unlikely(combinedUsage & D3DUSAGE_DEPTHSTENCIL))
+-      UpdateActiveHazardsDS(bit);
++      if (unlikely(combinedUsage & D3DUSAGE_DEPTHSTENCIL))
++        UpdateActiveHazardsDS(bit);
++    }
+   }
+ 
+ 
+   inline void D3D9DeviceEx::UpdateActiveHazardsRT(uint32_t rtMask) {
++    if (!config::HazardTrackingEnabled)
++      return;
++
+     auto masks = m_psShaderMasks;
+     masks.rtMask      &= m_activeRTs & rtMask;
+     masks.samplerMask &= m_activeRTTextures;
+@@ -5365,6 +5380,9 @@ namespace dxvk {
+ 
+ 
+   inline void D3D9DeviceEx::UpdateActiveHazardsDS(uint32_t texMask) {
++    if (!config::HazardTrackingEnabled)
++      return;
++
+     m_activeHazardsDS = m_activeHazardsDS & (~texMask);
+     if (m_state.depthStencil != nullptr &&
+         m_state.depthStencil->GetBaseTexture() != nullptr) {
+@@ -5383,6 +5401,9 @@ namespace dxvk {
+ 
+ 
+   void D3D9DeviceEx::MarkRenderHazards() {
++    if (!config::HazardTrackingEnabled)
++      return;
++
+     for (uint32_t rtIdx : bit::BitMask(m_activeHazardsRT)) {
+       // Guaranteed to not be nullptr...
+       auto tex = m_state.renderTargets[rtIdx]->GetCommonTexture();
+@@ -5408,6 +5429,9 @@ namespace dxvk {
+ 
+ 
+   void D3D9DeviceEx::UploadManagedTextures(uint32_t mask) {
++    if (!config::ManagedUploadTrackingEnabled)
++      return;
++
+     // Guaranteed to not be nullptr...
+     for (uint32_t texIdx : bit::BitMask(mask))
+       UploadManagedTexture(GetCommonTexture(m_state.textures[texIdx]));
+@@ -5432,6 +5456,9 @@ namespace dxvk {
+ 
+ 
+   void D3D9DeviceEx::MarkTextureMipsDirty(D3D9CommonTexture* pResource) {
++    if (!config::MipGenTrackingEnabled)
++      return;
++
+     pResource->SetNeedsMipGen(true);
+     pResource->MarkAllNeedReadback();
+ 
+@@ -5449,6 +5476,9 @@ namespace dxvk {
+ 
+ 
+   void D3D9DeviceEx::MarkTextureMipsUnDirty(D3D9CommonTexture* pResource) {
++    if (!config::MipGenTrackingEnabled)
++      return;
++
+     pResource->SetNeedsMipGen(false);
+ 
+     for (uint32_t i : bit::BitMask(m_activeTextures)) {
+@@ -5462,6 +5492,9 @@ namespace dxvk {
+ 
+ 
+   void D3D9DeviceEx::MarkTextureUploaded(D3D9CommonTexture* pResource) {
++    if (!config::ManagedUploadTrackingEnabled)
++      return;
++
+     for (uint32_t i : bit::BitMask(m_activeTextures)) {
+       // Guaranteed to not be nullptr...
+       auto texInfo = GetCommonTexture(m_state.textures[i]);
+@@ -6110,18 +6143,20 @@ namespace dxvk {
+ 
+ 
+   void D3D9DeviceEx::PrepareDraw(D3DPRIMITIVETYPE PrimitiveType) {
+-    if (unlikely(m_activeHazardsRT != 0)) {
+-      EmitCs([](DxvkContext* ctx) {
+-        ctx->emitRenderTargetReadbackBarrier();
+-      });
++    if (config::HazardTrackingEnabled) {
++      if (unlikely(m_activeHazardsRT != 0)) {
++        EmitCs([](DxvkContext* ctx) {
++          ctx->emitRenderTargetReadbackBarrier();
++        });
+ 
+-      if (m_d3d9Options.generalHazards)
+-        MarkRenderHazards();
+-    }
++        if (m_d3d9Options.generalHazards)
++          MarkRenderHazards();
++      }
+ 
+-    if (unlikely((m_lastHazardsDS == 0) != (m_activeHazardsDS == 0))) {
+-      m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+-      m_lastHazardsDS = m_activeHazardsDS;
++      if (unlikely((m_lastHazardsDS == 0) != (m_activeHazardsDS == 0))) {
++        m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
++        m_lastHazardsDS = m_activeHazardsDS;
++      }
+     }
+ 
+     for (uint32_t i = 0; i < caps::MaxStreams; i++) {
+@@ -6133,13 +6168,17 @@ namespace dxvk {
+     const uint32_t usedSamplerMask = m_psShaderMasks.samplerMask | m_vsShaderMasks.samplerMask;
+     const uint32_t usedTextureMask = m_activeTextures & usedSamplerMask;
+ 
+-    const uint32_t texturesToUpload = m_activeTexturesToUpload & usedTextureMask;
+-    if (unlikely(texturesToUpload != 0))
+-      UploadManagedTextures(texturesToUpload);
++    if (config::ManagedUploadTrackingEnabled) {
++      const uint32_t texturesToUpload = m_activeTexturesToUpload & usedTextureMask;
++      if (unlikely(texturesToUpload != 0))
++        UploadManagedTextures(texturesToUpload);
++    }
+ 
+-    const uint32_t texturesToGen = m_activeTexturesToGen & usedTextureMask;
+-    if (unlikely(texturesToGen != 0))
+-      GenerateTextureMips(texturesToGen);
++    if (config::MipGenTrackingEnabled) {
++      const uint32_t texturesToGen = m_activeTexturesToGen & usedTextureMask;
++      if (unlikely(texturesToGen != 0))
++        GenerateTextureMips(texturesToGen);
++    }
+ 
+     auto* ibo = GetCommonBuffer(m_state.indices);
+     if (ibo != nullptr && ibo->NeedsUpload())
+@@ -6252,7 +6291,7 @@ namespace dxvk {
+     if (depthTextureMask != m_lastSamplerDepthMode)
+       UpdateSamplerDepthModeSpecConstant(depthTextureMask);
+ 
+-    if (m_flags.test(D3D9DeviceFlag::DirtySharedPixelShaderData)) {
++    if (m_flags.test(D3D9DeviceFlag::DirtySharedPixelShaderData) && config::FixedFunctionEnabled) {
+       m_flags.clr(D3D9DeviceFlag::DirtySharedPixelShaderData);
+ 
+       DxvkBufferSliceHandle slice = m_psShared->allocSlice();
+@@ -6899,6 +6938,9 @@ namespace dxvk {
+ 
+ 
+   bool D3D9DeviceEx::UseProgrammableVS() {
++    if (!config::FixedFunctionEnabled)
++      return true;
++
+     return m_state.vertexShader != nullptr
+       && m_state.vertexDecl != nullptr
+       && !m_state.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasPositionT);
+@@ -6906,6 +6948,9 @@ namespace dxvk {
+ 
+ 
+   bool D3D9DeviceEx::UseProgrammablePS() {
++    if (!config::FixedFunctionEnabled)
++      return true;
++
+     return m_state.pixelShader != nullptr;
+   }
+ 
+diff --git a/src/d3d9/d3d9_device.h b/src/d3d9/d3d9_device.h
+index cec48291..4700e8b6 100644
+--- a/src/d3d9/d3d9_device.h
++++ b/src/d3d9/d3d9_device.h
+@@ -22,6 +22,7 @@
+ #include "d3d9_sampler.h"
+ #include "d3d9_fixed_function.h"
+ #include "d3d9_swvp_emu.h"
++#include "d3d9_config.h"
+ 
+ #include "d3d9_shader_permutations.h"
+ 
+@@ -955,6 +956,9 @@ namespace dxvk {
+     }
+ 
+     bool CanSWVP() {
++      if (!config::SWVPEnabled)
++        return false;
++
+       return m_behaviorFlags & (D3DCREATE_MIXED_VERTEXPROCESSING | D3DCREATE_SOFTWARE_VERTEXPROCESSING);
+     }
+ 
+diff --git a/src/d3d9/d3d9_fixed_function.cpp b/src/d3d9/d3d9_fixed_function.cpp
+index 8ed8062a..9774f0d0 100644
+--- a/src/d3d9/d3d9_fixed_function.cpp
++++ b/src/d3d9/d3d9_fixed_function.cpp
+@@ -2401,9 +2401,15 @@ namespace dxvk {
+     const std::string dumpPath = env::getEnvVar("DXVK_SHADER_DUMP_PATH");
+ 
+     if (dumpPath.size() != 0) {
++#ifdef _WIN32
+       std::ofstream dumpStream(
+         str::tows(str::format(dumpPath, "/", Name, ".spv").c_str()).c_str(),
+         std::ios_base::binary | std::ios_base::trunc);
++#else
++      std::ofstream dumpStream(
++        str::format(dumpPath, "/", Name, ".spv").c_str(),
++        std::ios_base::binary | std::ios_base::trunc);
++#endif
+       
+       m_shader->dump(dumpStream);
+     }
+diff --git a/src/d3d9/d3d9_include.h b/src/d3d9/d3d9_include.h
+index 8762265a..99a233d1 100644
+--- a/src/d3d9/d3d9_include.h
++++ b/src/d3d9/d3d9_include.h
+@@ -11,7 +11,7 @@
+ #include <d3d9.h>
+ 
+ //for some reason we need to specify __declspec(dllexport) for MinGW
+-#if defined(__WINE__)
++#if defined(__WINE__) || (defined(DXVK_NATIVE) && !defined(_WIN32))
+ #define DLLEXPORT __attribute__((visibility("default")))
+ #else
+ #define DLLEXPORT
+diff --git a/src/d3d9/d3d9_interface.cpp b/src/d3d9/d3d9_interface.cpp
+index 43f14e89..dd141333 100644
+--- a/src/d3d9/d3d9_interface.cpp
++++ b/src/d3d9/d3d9_interface.cpp
+@@ -12,6 +12,8 @@ namespace dxvk {
+     : m_instance    ( new DxvkInstance() )
+     , m_extended    ( bExtended ) 
+     , m_d3d9Options ( nullptr, m_instance->config() ) {
++
++#ifndef DXVK_NATIVE
+     // D3D9 doesn't enumerate adapters like physical adapters...
+     // only as connected displays.
+ 
+@@ -44,6 +46,7 @@ namespace dxvk {
+       }
+     }
+     else
++#endif
+     {
+       const uint32_t adapterCount = m_instance->adapterCount();
+       m_adapters.reserve(adapterCount);
+@@ -52,10 +55,12 @@ namespace dxvk {
+         m_adapters.emplace_back(this, m_instance->enumAdapters(i), i, 0);
+     }
+ 
++#ifndef DXVK_NATIVE
+     if (m_d3d9Options.dpiAware) {
+       Logger::info("Process set as DPI aware");
+       SetProcessDPIAware();
+     }
++#endif
+   }
+ 
+ 
+diff --git a/src/d3d9/d3d9_monitor.cpp b/src/d3d9/d3d9_monitor.cpp
+index 51167afd..edab8593 100644
+--- a/src/d3d9/d3d9_monitor.cpp
++++ b/src/d3d9/d3d9_monitor.cpp
+@@ -2,6 +2,9 @@
+ 
+ #include "d3d9_format.h"
+ 
++#include "../wsi/wsi_window.h"
++#include "../wsi/wsi_monitor.h"
++
+ namespace dxvk {
+ 
+   uint32_t GetMonitorFormatBpp(D3D9Format Format) {
+diff --git a/src/d3d9/d3d9_multithread.cpp b/src/d3d9/d3d9_multithread.cpp
+index 0e10a093..603d4b6b 100644
+--- a/src/d3d9/d3d9_multithread.cpp
++++ b/src/d3d9/d3d9_multithread.cpp
+@@ -6,4 +6,4 @@ namespace dxvk {
+           BOOL                  Protected)
+     : m_protected( Protected ) { }
+ 
+-}
+\ No newline at end of file
++}
+diff --git a/src/d3d9/d3d9_shader.cpp b/src/d3d9/d3d9_shader.cpp
+index 8b5bb8bd..24076a96 100644
+--- a/src/d3d9/d3d9_shader.cpp
++++ b/src/d3d9/d3d9_shader.cpp
+@@ -6,6 +6,42 @@
+ 
+ namespace dxvk {
+ 
++#ifndef DXVK_NATIVE
++  typedef HRESULT (STDMETHODCALLTYPE *D3DXDisassembleShader) (
++    const void*      pShader, 
++          BOOL       EnableColorCode, 
++          char*      pComments, 
++          ID3DBlob** ppDisassembly); // ppDisassembly is actually a D3DXBUFFER, but it has the exact same vtable as a ID3DBlob at the start.
++
++  D3DXDisassembleShader g_pfnDisassembleShader = nullptr;
++
++  HRESULT DisassembleShader(
++    const void*      pShader, 
++          BOOL       EnableColorCode, 
++          char*      pComments, 
++          ID3DBlob** ppDisassembly) {
++    if (g_pfnDisassembleShader == nullptr) {
++      HMODULE d3d9x = LoadLibraryA("d3dx9.dll");
++
++      if (d3d9x == nullptr)
++        d3d9x = LoadLibraryA("d3dx9_43.dll");
++
++      g_pfnDisassembleShader = 
++        reinterpret_cast<D3DXDisassembleShader>(GetProcAddress(d3d9x, "D3DXDisassembleShader"));
++    }
++
++    if (g_pfnDisassembleShader == nullptr)
++      return D3DERR_INVALIDCALL;
++
++    return g_pfnDisassembleShader(
++      pShader,
++      EnableColorCode,
++      pComments,
++      ppDisassembly);
++  }
++#endif
++
++
+   D3D9CommonShader::D3D9CommonShader() {}
+ 
+   D3D9CommonShader::D3D9CommonShader(
+@@ -23,10 +59,10 @@ namespace dxvk {
+     const std::string name = Key.toString();
+     Logger::debug(str::format("Compiling shader ", name));
+     
++    const std::string dumpPath = env::getEnvVar("DXVK_SHADER_DUMP_PATH");
++#ifndef DXVK_NATIVE
+     // If requested by the user, dump both the raw DXBC
+     // shader and the compiled SPIR-V module to a file.
+-    const std::string dumpPath = env::getEnvVar("DXVK_SHADER_DUMP_PATH");
+-    
+     if (dumpPath.size() != 0) {
+       DxsoReader reader(
+         reinterpret_cast<const char*>(pShaderBytecode));
+@@ -49,6 +85,7 @@ namespace dxvk {
+           blob->GetBufferSize());
+       }
+     }
++#endif
+     
+     // Decide whether we need to create a pass-through
+     // geometry shader for vertex shader stream output
+@@ -79,11 +116,17 @@ namespace dxvk {
+       // Lets lie about the shader key type for the state cache.
+       m_shaders[1]->setShaderKey({ VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT, Key.sha1() });
+     }
+-    
++
+     if (dumpPath.size() != 0) {
++#ifdef _WIN32
+       std::ofstream dumpStream(
+         str::tows(str::format(dumpPath, "/", name, ".spv").c_str()).c_str(),
+         std::ios_base::binary | std::ios_base::trunc);
++#else
++      std::ofstream dumpStream(
++        str::format(dumpPath, "/", name, ".spv").c_str(),
++        std::ios_base::binary | std::ios_base::trunc);
++#endif
+       
+       m_shaders[0]->dump(dumpStream);
+     }
+diff --git a/src/d3d9/d3d9_surface.cpp b/src/d3d9/d3d9_surface.cpp
+index 300782e9..417a08c9 100644
+--- a/src/d3d9/d3d9_surface.cpp
++++ b/src/d3d9/d3d9_surface.cpp
+@@ -136,6 +136,7 @@ namespace dxvk {
+   }
+ 
+   HRESULT STDMETHODCALLTYPE D3D9Surface::GetDC(HDC *phDC) {
++#ifndef DXVK_NATIVE
+     if (phDC == nullptr)
+       return D3DERR_INVALIDCALL;
+ 
+@@ -169,9 +170,17 @@ namespace dxvk {
+ 
+     *phDC = m_dcDesc.hDC;
+     return D3D_OK;
++#else
++    if (phDC != nullptr)
++      *phDC = nullptr;
++
++    Logger::warn("D3D9Surface::GetDC: GDI interop not supported on native");
++    return D3DERR_INVALIDCALL;
++#endif
+   }
+ 
+   HRESULT STDMETHODCALLTYPE D3D9Surface::ReleaseDC(HDC hDC) {
++#ifndef DXVK_NATIVE
+     if (m_dcDesc.hDC == nullptr || m_dcDesc.hDC != hDC)
+       return D3DERR_INVALIDCALL;
+ 
+@@ -182,6 +191,10 @@ namespace dxvk {
+       return hr;
+ 
+     return D3D_OK;
++#else
++    Logger::warn("D3D9Surface::ReleaseDC: GDI interop not supported on native");
++    return D3DERR_INVALIDCALL;
++#endif
+   }
+ 
+ 
+diff --git a/src/d3d9/d3d9_swapchain.h b/src/d3d9/d3d9_swapchain.h
+index 150578ca..88953b2a 100644
+--- a/src/d3d9/d3d9_swapchain.h
++++ b/src/d3d9/d3d9_swapchain.h
+@@ -7,6 +7,9 @@
+ #include "../dxvk/hud/dxvk_hud.h"
+ 
+ #include "../dxvk/dxvk_swapchain_blitter.h"
++#include "../wsi/wsi_mode.h"
++#include "../wsi/wsi_window.h"
++#include "../wsi/wsi_monitor.h"
+ 
+ #include "../util/sync/sync_signal.h"
+ 
+@@ -85,13 +88,6 @@ namespace dxvk {
+       Gamma = 1,
+     };
+ 
+-    
+-    struct WindowState {
+-      LONG style   = 0;
+-      LONG exstyle = 0;
+-      RECT rect    = { 0, 0, 0, 0 };
+-    };
+-
+     D3DPRESENT_PARAMETERS     m_presentParams;
+     D3DGAMMARAMP              m_ramp;
+ 
+@@ -126,7 +122,7 @@ namespace dxvk {
+     HWND                      m_window   = nullptr;
+     HMONITOR                  m_monitor  = nullptr;
+ 
+-    WindowState               m_windowState;
++    wsi::DxvkWindowState      m_windowState;
+ 
+     double                    m_displayRefreshRate = 0.0;
+ 
+@@ -180,9 +176,8 @@ namespace dxvk {
+     
+     HRESULT ChangeDisplayMode(
+             D3DPRESENT_PARAMETERS*  pPresentParams,
+-      const D3DDISPLAYMODEEX*       pFullscreenDisplayMode);
+-    
+-    HRESULT RestoreDisplayMode(HMONITOR hMonitor);
++      const D3DDISPLAYMODEEX*       pFullscreenDisplayMode,
++            bool                    EnteringFullscreen);
+ 
+     bool    UpdatePresentRegion(const RECT* pSourceRect, const RECT* pDestRect);
+ 
+@@ -194,4 +189,4 @@ namespace dxvk {
+ 
+   };
+ 
+-}
+\ No newline at end of file
++}
+diff --git a/src/d3d9/d3d9_util.cpp b/src/d3d9/d3d9_util.cpp
+index b5d24f44..510c3975 100644
+--- a/src/d3d9/d3d9_util.cpp
++++ b/src/d3d9/d3d9_util.cpp
+@@ -2,40 +2,6 @@
+ 
+ namespace dxvk {
+ 
+-  typedef HRESULT (STDMETHODCALLTYPE *D3DXDisassembleShader) (
+-    const void*      pShader, 
+-          BOOL       EnableColorCode, 
+-          char*      pComments, 
+-          ID3DBlob** ppDisassembly); // ppDisassembly is actually a D3DXBUFFER, but it has the exact same vtable as a ID3DBlob at the start.
+-
+-  D3DXDisassembleShader g_pfnDisassembleShader = nullptr;
+-
+-  HRESULT DisassembleShader(
+-    const void*      pShader, 
+-          BOOL       EnableColorCode, 
+-          char*      pComments, 
+-          ID3DBlob** ppDisassembly) {
+-    if (g_pfnDisassembleShader == nullptr) {
+-      HMODULE d3d9x = LoadLibraryA("d3dx9.dll");
+-
+-      if (d3d9x == nullptr)
+-        d3d9x = LoadLibraryA("d3dx9_43.dll");
+-
+-      g_pfnDisassembleShader = 
+-        reinterpret_cast<D3DXDisassembleShader>(GetProcAddress(d3d9x, "D3DXDisassembleShader"));
+-    }
+-
+-    if (g_pfnDisassembleShader == nullptr)
+-      return D3DERR_INVALIDCALL;
+-
+-    return g_pfnDisassembleShader(
+-      pShader,
+-      EnableColorCode,
+-      pComments,
+-      ppDisassembly);
+-  }
+-
+-
+   HRESULT DecodeMultiSampleType(
+     const Rc<DxvkDevice>&           pDevice,
+           D3DMULTISAMPLE_TYPE       MultiSample,
+diff --git a/src/d3d9/d3d9_util.h b/src/d3d9/d3d9_util.h
+index aea73e6d..454dee91 100644
+--- a/src/d3d9/d3d9_util.h
++++ b/src/d3d9/d3d9_util.h
+@@ -88,12 +88,6 @@ namespace dxvk {
+     AddRef ? castedPtr->AddRefPrivate() : castedPtr->ReleasePrivate();
+   }
+ 
+-  HRESULT DisassembleShader(
+-    const void*      pShader, 
+-          BOOL       EnableColorCode, 
+-          char*      pComments, 
+-          ID3DBlob** ppDisassembly);
+-
+   HRESULT DecodeMultiSampleType(
+     const Rc<DxvkDevice>&           pDevice,
+           D3DMULTISAMPLE_TYPE       MultiSample,
+diff --git a/src/d3d9/meson.build b/src/d3d9/meson.build
+index 2cd8951e..54874c80 100644
+--- a/src/d3d9/meson.build
++++ b/src/d3d9/meson.build
+@@ -42,9 +42,9 @@ d3d9_src = [
+   'd3d9_annotation.cpp'
+ ]
+ 
+-d3d9_dll = shared_library('d3d9'+dll_ext, d3d9_src, glsl_generator.process(d3d9_shaders), d3d9_res,
++d3d9_dll = shared_library(so_prefix+'d3d9'+dll_ext, d3d9_src, glsl_generator.process(d3d9_shaders), d3d9_res,
+   name_prefix         : '',
+-  dependencies        : [ dxso_dep, dxvk_dep ],
++  dependencies        : [ dxso_dep, dxvk_dep, wsi_dep ],
+   include_directories : dxvk_include_path,
+   install             : true,
+   vs_module_defs      : 'd3d9'+def_spec_ext,
+diff --git a/src/dxgi/dxgi_adapter.cpp b/src/dxgi/dxgi_adapter.cpp
+index 3e8f6307..038a8213 100644
+--- a/src/dxgi/dxgi_adapter.cpp
++++ b/src/dxgi/dxgi_adapter.cpp
+@@ -10,6 +10,7 @@
+ #include "dxgi_options.h"
+ #include "dxgi_output.h"
+ 
++#include "../wsi/wsi_monitor.h"
+ #include "../util/util_luid.h"
+ 
+ namespace dxvk {
+@@ -142,19 +143,15 @@ namespace dxvk {
+     
+     if (ppOutput == nullptr)
+       return E_INVALIDARG;
++
++    HMONITOR monitor = wsi::enumMonitors(Output);
+     
+-    MonitorEnumInfo info;
+-    info.iMonitorId = Output;
+-    info.oMonitor   = nullptr;
+-    
+-    ::EnumDisplayMonitors(
+-      nullptr, nullptr, &MonitorEnumProc,
+-      reinterpret_cast<LPARAM>(&info));
+-    
+-    if (info.oMonitor == nullptr)
++    if (!monitor) {
++      *ppOutput = nullptr;
+       return DXGI_ERROR_NOT_FOUND;
+-    
+-    *ppOutput = ref(new DxgiOutput(m_factory, this, info.oMonitor));
++    }
++
++    *ppOutput = ref(new DxgiOutput(m_factory, this, monitor));
+     return S_OK;
+   }
+   
+@@ -403,6 +400,7 @@ namespace dxvk {
+   HRESULT STDMETHODCALLTYPE DxgiAdapter::RegisterVideoMemoryBudgetChangeNotificationEvent(
+           HANDLE                        hEvent,
+           DWORD*                        pdwCookie) {
++  #ifndef DXVK_NATIVE
+     if (!hEvent || !pdwCookie)
+       return DXGI_ERROR_INVALID_CALL;
+ 
+@@ -420,6 +418,9 @@ namespace dxvk {
+ 
+     *pdwCookie = cookie;
+     return S_OK;
++  #else
++    return E_NOTIMPL;
++  #endif
+   }
+   
+ 
+@@ -447,6 +448,7 @@ namespace dxvk {
+ 
+ 
+   void DxgiAdapter::runEventThread() {
++#ifndef DXVK_NATIVE
+     env::setThreadName(str::format("dxvk-adapter-", m_index));
+ 
+     std::unique_lock<dxvk::mutex> lock(m_mutex);
+@@ -474,21 +476,7 @@ namespace dxvk {
+           SetEvent(pair.second);
+       }
+     }
+-  }
+-  
+-  
+-  BOOL CALLBACK DxgiAdapter::MonitorEnumProc(
+-          HMONITOR                  hmon,
+-          HDC                       hdc,
+-          LPRECT                    rect,
+-          LPARAM                    lp) {
+-    auto data = reinterpret_cast<MonitorEnumInfo*>(lp);
+-    
+-    if (data->iMonitorId--)
+-      return TRUE; /* continue */
+-    
+-    data->oMonitor = hmon;
+-    return FALSE; /* stop */
++#endif
+   }
+   
+ }
+diff --git a/src/dxgi/dxgi_adapter.h b/src/dxgi/dxgi_adapter.h
+index a9a0d2df..ef17d7ff 100644
+--- a/src/dxgi/dxgi_adapter.h
++++ b/src/dxgi/dxgi_adapter.h
+@@ -124,17 +124,6 @@ namespace dxvk {
+ 
+     void runEventThread();
+     
+-    struct MonitorEnumInfo {
+-      UINT      iMonitorId;
+-      HMONITOR  oMonitor;
+-    };
+-    
+-    static BOOL CALLBACK MonitorEnumProc(
+-            HMONITOR                  hmon,
+-            HDC                       hdc,
+-            LPRECT                    rect,
+-            LPARAM                    lp);
+-    
+   };
+ 
+ }
+diff --git a/src/dxgi/dxgi_include.h b/src/dxgi/dxgi_include.h
+index 14dc138a..c1a18e56 100644
+--- a/src/dxgi/dxgi_include.h
++++ b/src/dxgi/dxgi_include.h
+@@ -1,7 +1,7 @@
+ #pragma once
+ 
+ //for some reason we need to specify __declspec(dllexport) for MinGW
+-#if defined(__WINE__)
++#if defined(__WINE__) || (defined(DXVK_NATIVE) && !defined(_WIN32))
+   #define DLLEXPORT __attribute__((visibility("default")))
+ #elif defined(_MSC_VER)
+   #define DLLEXPORT
+diff --git a/src/dxgi/dxgi_monitor.cpp b/src/dxgi/dxgi_monitor.cpp
+index 09959a62..16b376fa 100644
+--- a/src/dxgi/dxgi_monitor.cpp
++++ b/src/dxgi/dxgi_monitor.cpp
+@@ -90,5 +90,22 @@ namespace dxvk {
+         return 32;
+     }
+   }
+-  
++
++  DXGI_FORMAT GetBppMonitorFormat(uint32_t bpp) {
++    switch (bpp) {
++      case 32:
++        return DXGI_FORMAT_R8G8B8A8_UNORM;
++      
++      case 64:
++        return DXGI_FORMAT_R16G16B16A16_FLOAT;
++      
++      default:
++        Logger::warn(str::format(
++          "GetBppMonitorFormat: Unknown bpp: ",
++          bpp));
++        return DXGI_FORMAT_R8G8B8A8_UNORM;
++    }
++  }
++
++
+ }
+\ No newline at end of file
+diff --git a/src/dxgi/dxgi_monitor.h b/src/dxgi/dxgi_monitor.h
+index 0c70101b..ebeabf9b 100644
+--- a/src/dxgi/dxgi_monitor.h
++++ b/src/dxgi/dxgi_monitor.h
+@@ -5,6 +5,8 @@
+ 
+ #include "dxgi_interfaces.h"
+ 
++#include "../wsi/wsi_mode.h"
++
+ namespace dxvk {
+ 
+   class DxgiSwapChain;
+@@ -55,4 +57,41 @@ namespace dxvk {
+   uint32_t GetMonitorFormatBpp(
+           DXGI_FORMAT             Format);
+ 
++  /**
++   * \brief Queries bits per pixel for a format
++   *
++   * \param [in] Bits per pixel to query
++   * \returns Format The DXGI format
++   */
++  DXGI_FORMAT GetBppMonitorFormat(
++          uint32_t                bpp);
++  
++  /**
++   * \brief Converts two display modes
++   */
++  inline void ConvertDisplayMode(
++    const wsi::WsiMode&          WsiMode,
++          DXGI_MODE_DESC1*       pDxgiMode) {
++    pDxgiMode->Width            = WsiMode.width;
++    pDxgiMode->Height           = WsiMode.height;
++    pDxgiMode->RefreshRate      = DXGI_RATIONAL{ WsiMode.refreshRate.numerator, WsiMode.refreshRate.denominator };
++    pDxgiMode->Format           = GetBppMonitorFormat(WsiMode.bitsPerPixel);
++    pDxgiMode->ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_PROGRESSIVE;
++    pDxgiMode->Scaling          = DXGI_MODE_SCALING_UNSPECIFIED;
++    pDxgiMode->Stereo           = FALSE;
++  }
++
++  /**
++   * \brief Converts two display modes
++   */
++  inline void ConvertDisplayMode(
++    const DXGI_MODE_DESC1&        DxgiMode,
++          wsi::WsiMode*           pWsiMode) {
++    pWsiMode->width        = DxgiMode.Width;
++    pWsiMode->height       = DxgiMode.Height;
++    pWsiMode->refreshRate  = wsi::WsiRational{ DxgiMode.RefreshRate.Numerator, DxgiMode.RefreshRate.Denominator };
++    pWsiMode->bitsPerPixel = GetMonitorFormatBpp(DxgiMode.Format);
++    pWsiMode->interlaced   = false;
++  }
++
+ }
+\ No newline at end of file
+diff --git a/src/dxgi/dxgi_output.cpp b/src/dxgi/dxgi_output.cpp
+index ffa5b5dc..e4fcfe2a 100644
+--- a/src/dxgi/dxgi_output.cpp
++++ b/src/dxgi/dxgi_output.cpp
+@@ -12,6 +12,7 @@
+ #include "dxgi_output.h"
+ #include "dxgi_swapchain.h"
+ 
++#include "../wsi/wsi_mode.h"
+ #include "../dxvk/dxvk_format.h"
+ 
+ namespace dxvk {
+@@ -121,20 +122,12 @@ namespace dxvk {
+     // Both or neither must be zero
+     if ((pModeToMatch->Width == 0) ^ (pModeToMatch->Height == 0))
+       return DXGI_ERROR_INVALID_CALL;
++    
++    wsi::WsiMode activeWsiMode = { };
++    wsi::getCurrentDisplayMode(m_monitor, &activeWsiMode);
+ 
+-    DEVMODEW devMode;
+-    devMode.dmSize = sizeof(devMode);
+-
+-    if (!GetMonitorDisplayMode(m_monitor, ENUM_CURRENT_SETTINGS, &devMode))
+-      return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+-
+-    DXGI_MODE_DESC activeMode = { };
+-    activeMode.Width            = devMode.dmPelsWidth;
+-    activeMode.Height           = devMode.dmPelsHeight;
+-    activeMode.RefreshRate      = { devMode.dmDisplayFrequency, 1 };
+-    activeMode.Format           = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; // FIXME
+-    activeMode.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_PROGRESSIVE;
+-    activeMode.Scaling          = DXGI_MODE_SCALING_UNSPECIFIED;
++    DXGI_MODE_DESC1 activeMode = { };
++    ConvertDisplayMode(activeWsiMode, &activeMode);
+ 
+     DXGI_MODE_DESC1 defaultMode;
+     defaultMode.Width            = 0;
+@@ -221,18 +214,17 @@ namespace dxvk {
+           DXGI_OUTPUT_DESC1*    pDesc) {
+     if (pDesc == nullptr)
+       return DXGI_ERROR_INVALID_CALL;
+-    
+-    ::MONITORINFOEXW monInfo;
+-    monInfo.cbSize = sizeof(monInfo);
+ 
+-    if (!::GetMonitorInfoW(m_monitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
+-      Logger::err("DXGI: Failed to query monitor info");
++    if (!wsi::getDesktopCoordinates(m_monitor, &pDesc->DesktopCoordinates)) {
++      Logger::err("DXGI: Failed to query monitor coords");
+       return E_FAIL;
+     }
+-    
+-    std::memcpy(pDesc->DeviceName, monInfo.szDevice, std::size(pDesc->DeviceName));
+-    
+-    pDesc->DesktopCoordinates = monInfo.rcMonitor;
++
++    if (!wsi::getDisplayName(m_monitor, pDesc->DeviceName)) {
++      Logger::err("DXGI: Failed to query monitor name");
++      return E_FAIL;
++    }
++
+     pDesc->AttachedToDesktop  = 1;
+     pDesc->Rotation           = DXGI_MODE_ROTATION_UNSPECIFIED;
+     pDesc->Monitor            = m_monitor;
+@@ -300,28 +292,27 @@ namespace dxvk {
+ 
+     // Walk over all modes that the display supports and
+     // return those that match the requested format etc.
+-    DEVMODEW devMode = { };
+-    devMode.dmSize = sizeof(DEVMODEW);
++    wsi::WsiMode devMode = { };
+     
+     uint32_t srcModeId = 0;
+     uint32_t dstModeId = 0;
+     
+     std::vector<DXGI_MODE_DESC1> modeList;
+     
+-    while (GetMonitorDisplayMode(m_monitor, srcModeId++, &devMode)) {
++    while (wsi::getDisplayMode(m_monitor, srcModeId++, &devMode)) {
+       // Skip interlaced modes altogether
+-      if (devMode.dmDisplayFlags & DM_INTERLACED)
++      if (devMode.interlaced)
+         continue;
+       
+       // Skip modes with incompatible formats
+-      if (devMode.dmBitsPerPel != GetMonitorFormatBpp(EnumFormat))
++      if (devMode.bitsPerPixel != GetMonitorFormatBpp(EnumFormat))
+         continue;
+       
+       if (pDesc != nullptr) {
+         DXGI_MODE_DESC1 mode;
+-        mode.Width            = devMode.dmPelsWidth;
+-        mode.Height           = devMode.dmPelsHeight;
+-        mode.RefreshRate      = { devMode.dmDisplayFrequency * 1000, 1000 };
++        mode.Width            = devMode.width;
++        mode.Height           = devMode.height;
++        mode.RefreshRate      = { devMode.refreshRate.numerator, devMode.refreshRate.denominator };
+         mode.Format           = EnumFormat;
+         mode.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_PROGRESSIVE;
+         mode.Scaling          = DXGI_MODE_SCALING_UNSPECIFIED;
+diff --git a/src/dxgi/dxgi_swapchain.cpp b/src/dxgi/dxgi_swapchain.cpp
+index 09ebd697..c49b9355 100644
+--- a/src/dxgi/dxgi_swapchain.cpp
++++ b/src/dxgi/dxgi_swapchain.cpp
+@@ -30,7 +30,7 @@ namespace dxvk {
+   
+   
+   DxgiSwapChain::~DxgiSwapChain() {
+-    RestoreDisplayMode(m_monitor);
++    wsi::restoreDisplayMode(m_monitor);
+ 
+     // Decouple swap chain from monitor if necessary
+     DXGI_VK_MONITOR_DATA* monitorInfo = nullptr;
+@@ -91,23 +91,15 @@ namespace dxvk {
+   HRESULT STDMETHODCALLTYPE DxgiSwapChain::GetContainingOutput(IDXGIOutput** ppOutput) {
+     InitReturnPtr(ppOutput);
+     
+-    if (!IsWindow(m_window))
++    if (!wsi::isWindow(m_window))
+       return DXGI_ERROR_INVALID_CALL;
+     
+     if (m_target != nullptr) {
+       *ppOutput = m_target.ref();
+       return S_OK;
+     }
+-
+-    RECT windowRect = { 0, 0, 0, 0 };
+-    ::GetWindowRect(m_window, &windowRect);
+-    
+-    HMONITOR monitor = ::MonitorFromPoint(
+-      { (windowRect.left + windowRect.right) / 2,
+-        (windowRect.top + windowRect.bottom) / 2 },
+-      MONITOR_DEFAULTTOPRIMARY);
+     
+-    return GetOutputFromMonitor(monitor, ppOutput);
++    return GetOutputFromMonitor(wsi::getWindowMonitor(m_window), ppOutput);
+   }
+   
+   
+@@ -179,7 +171,9 @@ namespace dxvk {
+     pStats->PresentCount = m_presentCount;
+     pStats->PresentRefreshCount = 0;
+     pStats->SyncRefreshCount = 0;
++#ifdef _WIN32
+     QueryPerformanceCounter(&pStats->SyncQPCTime);
++#endif
+     pStats->SyncGPUTime.QuadPart = 0;
+     return S_OK;
+   }
+@@ -188,6 +182,9 @@ namespace dxvk {
+   HRESULT STDMETHODCALLTYPE DxgiSwapChain::GetFullscreenState(
+           BOOL*         pFullscreen,
+           IDXGIOutput** ppTarget) {
++    if (!wsi::isWindow(m_window))
++      return DXGI_ERROR_INVALID_CALL;
++    
+     HRESULT hr = S_OK;
+     
+     if (pFullscreen != nullptr)
+@@ -255,8 +252,7 @@ namespace dxvk {
+           UINT                      SyncInterval,
+           UINT                      PresentFlags,
+     const DXGI_PRESENT_PARAMETERS*  pPresentParameters) {
+-
+-    if (!IsWindow(m_window))
++    if (!wsi::isWindow(m_window))
+       return S_OK;
+     
+     if (SyncInterval > 4)
+@@ -283,7 +279,7 @@ namespace dxvk {
+           UINT        Height,
+           DXGI_FORMAT NewFormat,
+           UINT        SwapChainFlags) {
+-    if (!IsWindow(m_window))
++    if (!wsi::isWindow(m_window))
+       return DXGI_ERROR_INVALID_CALL;
+ 
+     constexpr UINT PreserveFlags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+@@ -295,7 +291,7 @@ namespace dxvk {
+     m_desc.Width  = Width;
+     m_desc.Height = Height;
+     
+-    GetWindowClientSize(m_window,
++    wsi::getWindowSize(m_window,
+       m_desc.Width  ? nullptr : &m_desc.Width,
+       m_desc.Height ? nullptr : &m_desc.Height);
+     
+@@ -333,7 +329,7 @@ namespace dxvk {
+     if (pNewTargetParameters == nullptr)
+       return DXGI_ERROR_INVALID_CALL;
+     
+-    if (!IsWindow(m_window))
++    if (!wsi::isWindow(m_window))
+       return DXGI_ERROR_INVALID_CALL;
+ 
+     // Update the swap chain description
+@@ -344,19 +340,10 @@ namespace dxvk {
+     m_descFs.Scaling          = pNewTargetParameters->Scaling;
+     
+     if (m_descFs.Windowed) {
+-      // Adjust window position and size
+-      RECT newRect = { 0, 0, 0, 0 };
+-      RECT oldRect = { 0, 0, 0, 0 };
+-      
+-      ::GetWindowRect(m_window, &oldRect);
+-      ::SetRect(&newRect, 0, 0, pNewTargetParameters->Width, pNewTargetParameters->Height);
+-      ::AdjustWindowRectEx(&newRect,
+-        ::GetWindowLongW(m_window, GWL_STYLE), FALSE,
+-        ::GetWindowLongW(m_window, GWL_EXSTYLE));
+-      ::SetRect(&newRect, 0, 0, newRect.right - newRect.left, newRect.bottom - newRect.top);
+-      ::OffsetRect(&newRect, oldRect.left, oldRect.top);    
+-      ::MoveWindow(m_window, newRect.left, newRect.top,
+-          newRect.right - newRect.left, newRect.bottom - newRect.top, TRUE);
++      wsi::resizeWindow(
++        m_window, &m_windowState,
++        pNewTargetParameters->Width,
++        pNewTargetParameters->Height);
+     } else {
+       Com<IDXGIOutput> output;
+       
+@@ -367,18 +354,9 @@ namespace dxvk {
+       
+       // If the swap chain allows it, change the display mode
+       if (m_desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH) {
+-        ChangeDisplayMode(output.ptr(), pNewTargetParameters);
++        ChangeDisplayMode(output.ptr(), pNewTargetParameters, false);
+         NotifyModeChange(m_monitor, FALSE);
+       }
+-      
+-      // Resize and reposition the window to 
+-      DXGI_OUTPUT_DESC desc;
+-      output->GetDesc(&desc);
+-      
+-      RECT newRect = desc.DesktopCoordinates;
+-      
+-      ::MoveWindow(m_window, newRect.left, newRect.top,
+-          newRect.right - newRect.left, newRect.bottom - newRect.top, TRUE);
+     }
+     
+     return S_OK;
+@@ -555,7 +533,7 @@ namespace dxvk {
+   HRESULT DxgiSwapChain::EnterFullscreenMode(IDXGIOutput* pTarget) {
+     Com<IDXGIOutput> output = pTarget;
+ 
+-    if (!IsWindow(m_window))
++    if (!wsi::isWindow(m_window))
+       return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+     
+     if (output == nullptr) {
+@@ -564,11 +542,10 @@ namespace dxvk {
+         return E_FAIL;
+       }
+     }
++
++    const bool modeSwitch = m_desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+     
+-    // Find a display mode that matches what we need
+-    ::GetWindowRect(m_window, &m_windowState.rect);
+-    
+-    if (m_desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH) {
++    if (modeSwitch) {
+       DXGI_MODE_DESC displayMode;
+       displayMode.Width            = m_desc.Width;
+       displayMode.Height           = m_desc.Height;
+@@ -579,7 +556,7 @@ namespace dxvk {
+       displayMode.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+       displayMode.Scaling          = DXGI_MODE_SCALING_UNSPECIFIED;
+       
+-      if (FAILED(ChangeDisplayMode(output.ptr(), &displayMode))) {
++      if (FAILED(ChangeDisplayMode(output.ptr(), &displayMode, true))) {
+         Logger::err("DXGI: EnterFullscreenMode: Failed to change display mode");
+         return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+       }
+@@ -587,29 +564,15 @@ namespace dxvk {
+     
+     // Update swap chain description
+     m_descFs.Windowed = FALSE;
+-    
+-    // Change the window flags to remove the decoration etc.
+-    LONG style   = ::GetWindowLongW(m_window, GWL_STYLE);
+-    LONG exstyle = ::GetWindowLongW(m_window, GWL_EXSTYLE);
+-    
+-    m_windowState.style = style;
+-    m_windowState.exstyle = exstyle;
+-    
+-    style   &= ~WS_OVERLAPPEDWINDOW;
+-    exstyle &= ~WS_EX_OVERLAPPEDWINDOW;
+-    
+-    ::SetWindowLongW(m_window, GWL_STYLE, style);
+-    ::SetWindowLongW(m_window, GWL_EXSTYLE, exstyle);
+-    
++
+     // Move the window so that it covers the entire output
+     DXGI_OUTPUT_DESC desc;
+     output->GetDesc(&desc);
+-    
+-    const RECT rect = desc.DesktopCoordinates;
+-    
+-    ::SetWindowPos(m_window, HWND_TOPMOST,
+-      rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+-      SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE);
++
++    if (!wsi::enterFullscreenMode(desc.Monitor, m_window, &m_windowState, modeSwitch)) {
++        Logger::err("DXGI: EnterFullscreenMode: Failed to enter fullscreen mode");
++        return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
++    }
+     
+     m_monitor = desc.Monitor;
+     m_target  = std::move(output);
+@@ -631,7 +594,7 @@ namespace dxvk {
+   
+   
+   HRESULT DxgiSwapChain::LeaveFullscreenMode() {
+-    if (FAILED(RestoreDisplayMode(m_monitor)))
++    if (!wsi::restoreDisplayMode(m_monitor))
+       Logger::warn("DXGI: LeaveFullscreenMode: Failed to restore display mode");
+     
+     // Reset gamma control and decouple swap chain from monitor
+@@ -652,27 +615,14 @@ namespace dxvk {
+     m_monitor = nullptr;
+     m_target  = nullptr;
+     
+-    if (!IsWindow(m_window))
++    if (!wsi::isWindow(m_window))
+       return S_OK;
+     
+-    // Only restore the window style if the application hasn't
+-    // changed them. This is in line with what native DXGI does.
+-    LONG curStyle   = ::GetWindowLongW(m_window, GWL_STYLE) & ~WS_VISIBLE;
+-    LONG curExstyle = ::GetWindowLongW(m_window, GWL_EXSTYLE) & ~WS_EX_TOPMOST;
+-    
+-    if (curStyle == (m_windowState.style & ~(WS_VISIBLE | WS_OVERLAPPEDWINDOW))
+-     && curExstyle == (m_windowState.exstyle & ~(WS_EX_TOPMOST | WS_EX_OVERLAPPEDWINDOW))) {
+-      ::SetWindowLongW(m_window, GWL_STYLE,   m_windowState.style);
+-      ::SetWindowLongW(m_window, GWL_EXSTYLE, m_windowState.exstyle);
++    if (!wsi::leaveFullscreenMode(m_window, &m_windowState)) {
++      Logger::err("DXGI: LeaveFullscreenMode: Failed to exit fullscreen mode");
++      return DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+     }
+     
+-    // Restore window position and apply the style
+-    const RECT rect = m_windowState.rect;
+-    
+-    ::SetWindowPos(m_window, (m_windowState.exstyle & WS_EX_TOPMOST) ? HWND_TOPMOST : HWND_NOTOPMOST,
+-      rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+-      SWP_FRAMECHANGED | SWP_NOACTIVATE);
+-    
+     NotifyModeChange(monitor, TRUE);
+     return S_OK;
+   }
+@@ -680,7 +630,8 @@ namespace dxvk {
+   
+   HRESULT DxgiSwapChain::ChangeDisplayMode(
+           IDXGIOutput*            pOutput,
+-    const DXGI_MODE_DESC*         pDisplayMode) {
++    const DXGI_MODE_DESC*         pDisplayMode,
++          BOOL                    EnteringFullscreen) {
+     if (!pOutput)
+       return DXGI_ERROR_INVALID_CALL;
+     
+@@ -705,31 +656,20 @@ namespace dxvk {
+           "@", preferredMode.RefreshRate.Numerator / preferredMode.RefreshRate.Denominator));
+       return hr;
+     }
+-    
+-    DEVMODEW devMode = { };
+-    devMode.dmSize       = sizeof(devMode);
+-    devMode.dmFields     = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL;
+-    devMode.dmPelsWidth  = selectedMode.Width;
+-    devMode.dmPelsHeight = selectedMode.Height;
+-    devMode.dmBitsPerPel = GetMonitorFormatBpp(selectedMode.Format);
+-    
+-    if (selectedMode.RefreshRate.Numerator != 0)  {
+-      devMode.dmFields |= DM_DISPLAYFREQUENCY;
+-      devMode.dmDisplayFrequency = selectedMode.RefreshRate.Numerator
+-                                 / selectedMode.RefreshRate.Denominator;
+-    }
+ 
+-    return SetMonitorDisplayMode(outputDesc.Monitor, &devMode)
+-      ? S_OK
+-      : DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+-  }
+-  
+-  
+-  HRESULT DxgiSwapChain::RestoreDisplayMode(HMONITOR hMonitor) {
+-    if (!hMonitor)
+-      return DXGI_ERROR_INVALID_CALL;
+-    
+-    return RestoreMonitorDisplayMode()
++    DXGI_MODE_DESC1 selectedMode1;
++    selectedMode1.Width            = selectedMode.Width;
++    selectedMode1.Height           = selectedMode.Height;
++    selectedMode1.RefreshRate      = selectedMode.RefreshRate;
++    selectedMode1.Format           = selectedMode.Format;
++    selectedMode1.ScanlineOrdering = selectedMode.ScanlineOrdering;
++    selectedMode1.Scaling          = selectedMode.Scaling;
++    selectedMode1.Stereo           = false;
++
++    wsi::WsiMode wsiMode = { };
++    ConvertDisplayMode(selectedMode1, &wsiMode);
++
++    return wsi::setWindowMode(outputDesc.Monitor, m_window, &wsiMode, EnteringFullscreen)
+       ? S_OK
+       : DXGI_ERROR_NOT_CURRENTLY_AVAILABLE;
+   }
+@@ -787,15 +727,13 @@ namespace dxvk {
+   void DxgiSwapChain::NotifyModeChange(
+           HMONITOR                hMonitor,
+           BOOL                    Windowed) {
+-    DEVMODEW devMode = { };
+-    devMode.dmSize       = sizeof(devMode);
+-    devMode.dmFields     = DM_PELSWIDTH | DM_PELSHEIGHT | DM_DISPLAYFREQUENCY;
++    wsi::WsiMode mode;
+ 
+-    if (GetMonitorDisplayMode(hMonitor, ENUM_CURRENT_SETTINGS, &devMode)) {
++    if (wsi::getCurrentDisplayMode(hMonitor, &mode)) {
+       DXGI_MODE_DESC displayMode = { };
+-      displayMode.Width            = devMode.dmPelsWidth;
+-      displayMode.Height           = devMode.dmPelsHeight;
+-      displayMode.RefreshRate      = { devMode.dmDisplayFrequency, 1 };
++      displayMode.Width            = mode.width;
++      displayMode.Height           = mode.height;
++      displayMode.RefreshRate      = { mode.refreshRate.numerator, mode.refreshRate.denominator };
+       displayMode.Format           = m_desc.Format;
+       displayMode.ScanlineOrdering = m_descFs.ScanlineOrdering;
+       displayMode.Scaling          = m_descFs.Scaling;
+diff --git a/src/dxgi/dxgi_swapchain.h b/src/dxgi/dxgi_swapchain.h
+index 62adf0e8..84953b2b 100644
+--- a/src/dxgi/dxgi_swapchain.h
++++ b/src/dxgi/dxgi_swapchain.h
+@@ -13,6 +13,10 @@
+ 
+ #include "../util/util_time.h"
+ 
++#include "../wsi/wsi_window.h"
++#include "../wsi/wsi_monitor.h"
++#include "../wsi/wsi_mode.h"
++
+ namespace dxvk {
+   
+   class DxgiDevice;
+@@ -168,13 +172,7 @@ namespace dxvk {
+       const DXGI_RGB*                 pGammaCurve);
+     
+   private:
+-    
+-    struct WindowState {
+-      LONG style   = 0;
+-      LONG exstyle = 0;
+-      RECT rect    = { 0, 0, 0, 0 };
+-    };
+-    
++
+     dxvk::recursive_mutex           m_lockWindow;
+     dxvk::mutex                     m_lockBuffer;
+ 
+@@ -191,8 +189,8 @@ namespace dxvk {
+     Com<IDXGIVkSwapChain>           m_presenter;
+     
+     HMONITOR                        m_monitor;
+-    WindowState                     m_windowState;
+-    
++    wsi::DxvkWindowState            m_windowState;
++ 
+     HRESULT EnterFullscreenMode(
+             IDXGIOutput             *pTarget);
+     
+@@ -200,10 +198,8 @@ namespace dxvk {
+     
+     HRESULT ChangeDisplayMode(
+             IDXGIOutput*            pOutput,
+-      const DXGI_MODE_DESC*         pDisplayMode);
+-    
+-    HRESULT RestoreDisplayMode(
+-            HMONITOR                hMonitor);
++      const DXGI_MODE_DESC*         pDisplayMode,
++            BOOL                    EnteringFullscreen);
+     
+     HRESULT GetSampleCount(
+             UINT                    Count,
+diff --git a/src/dxgi/meson.build b/src/dxgi/meson.build
+index daa790f4..bd0b5c2d 100644
+--- a/src/dxgi/meson.build
++++ b/src/dxgi/meson.build
+@@ -12,9 +12,9 @@ dxgi_src = [
+   'dxgi_swapchain.cpp',
+ ]
+ 
+-dxgi_dll = shared_library('dxgi'+dll_ext, dxgi_src, dxgi_res,
++dxgi_dll = shared_library(so_prefix+'dxgi'+dll_ext, dxgi_src, dxgi_res,
+   name_prefix         : '',
+-  dependencies        : [ dxvk_dep ],
++  dependencies        : [ dxvk_dep, wsi_dep ],
+   include_directories : dxvk_include_path,
+   install             : true,
+   vs_module_defs      : 'dxgi'+def_spec_ext,
+diff --git a/src/dxvk/dxvk_context.cpp b/src/dxvk/dxvk_context.cpp
+index 1aaf6154..7b7f677c 100644
+--- a/src/dxvk/dxvk_context.cpp
++++ b/src/dxvk/dxvk_context.cpp
+@@ -4357,7 +4357,7 @@ namespace dxvk {
+   
+   
+   template<VkPipelineBindPoint BindPoint>
+-  void DxvkContext::updateShaderDescriptorSetBinding(
++  __attribute__((always_inline)) void DxvkContext::updateShaderDescriptorSetBinding(
+           VkDescriptorSet         set,
+     const DxvkPipelineLayout*     layout) {
+     if (set) {
+diff --git a/src/dxvk/dxvk_extensions.h b/src/dxvk/dxvk_extensions.h
+index 0e2808d1..37e176c6 100644
+--- a/src/dxvk/dxvk_extensions.h
++++ b/src/dxvk/dxvk_extensions.h
+@@ -6,6 +6,14 @@
+ 
+ #include "dxvk_include.h"
+ 
++// Win32-only Vulkan extensions: named everywhere, found only on Windows drivers.
++#ifndef VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME
++#define VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME "VK_KHR_external_memory_win32"
++#endif
++#ifndef VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME
++#define VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME "VK_KHR_external_semaphore_win32"
++#endif
++
+ namespace dxvk {
+   
+   /**
+diff --git a/src/dxvk/dxvk_fence.cpp b/src/dxvk/dxvk_fence.cpp
+index fc795849..f03de150 100644
+--- a/src/dxvk/dxvk_fence.cpp
++++ b/src/dxvk/dxvk_fence.cpp
+@@ -45,6 +45,7 @@ namespace dxvk {
+     if (vr != VK_SUCCESS)
+       throw DxvkError("Failed to create timeline semaphore");
+ 
++#ifdef _WIN32
+     if (info.sharedHandle != INVALID_HANDLE_VALUE) {
+       if (externalFeatures & VK_EXTERNAL_SEMAPHORE_FEATURE_IMPORTABLE_BIT) {
+         VkImportSemaphoreWin32HandleInfoKHR importInfo = { VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_WIN32_HANDLE_INFO_KHR };
+@@ -59,6 +60,7 @@ namespace dxvk {
+         Logger::warn(str::format("Importing semaphores of type ", info.sharedType, " not supported by device"));
+       }
+     }
++#endif
+ 
+     m_thread = dxvk::thread([this] { run(); });
+   }
+@@ -137,6 +139,9 @@ namespace dxvk {
+     if (m_info.sharedType == VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_FLAG_BITS_MAX_ENUM)
+       return INVALID_HANDLE_VALUE;
+ 
++#ifndef _WIN32
++    return INVALID_HANDLE_VALUE;
++#else
+     VkSemaphoreGetWin32HandleInfoKHR win32HandleInfo = { VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR };
+     win32HandleInfo.semaphore = m_semaphore;
+     win32HandleInfo.handleType = m_info.sharedType;
+@@ -148,5 +153,6 @@ namespace dxvk {
+       Logger::err(str::format("Failed to get semaphore handle: ", vr));
+ 
+     return sharedHandle;
++#endif
+   }
+ }
+diff --git a/src/dxvk/dxvk_instance.cpp b/src/dxvk/dxvk_instance.cpp
+index 2f9d8f20..5f29555d 100644
+--- a/src/dxvk/dxvk_instance.cpp
++++ b/src/dxvk/dxvk_instance.cpp
+@@ -20,8 +20,10 @@ namespace dxvk {
+     m_options = DxvkOptions(m_config);
+ 
+     m_extProviders.push_back(&DxvkPlatformExts::s_instance);
++#ifndef DXVK_NATIVE
+     m_extProviders.push_back(&VrInstance::s_instance);
+     m_extProviders.push_back(&DxvkXrProvider::s_instance);
++#endif
+ 
+     Logger::info("Built-in extension providers:");
+     for (const auto& provider : m_extProviders)
+diff --git a/src/dxvk/dxvk_state_cache.cpp b/src/dxvk/dxvk_state_cache.cpp
+index 8a4df379..992d8dec 100644
+--- a/src/dxvk/dxvk_state_cache.cpp
++++ b/src/dxvk/dxvk_state_cache.cpp
+@@ -374,7 +374,11 @@ namespace dxvk {
+   }
+ 
+ 
++#ifdef _WIN32
+     bool DxvkStateCache::realReadCacheFile(std::wstring name) {
++#else
++    bool DxvkStateCache::realReadCacheFile(std::string name) {
++#endif
+     // Open state file and just fail if it doesn't exist
+     std::ifstream ifile(name.c_str(), std::ios_base::binary);
+ 
+@@ -997,7 +1001,9 @@ namespace dxvk {
+ 
+       for (uint32_t i = 0; i < numWorkers; i++) {
+         m_workerThreads.emplace_back([this] () { workerFunc(); });
++#ifndef DXVK_NATIVE
+         m_workerThreads[i].set_priority(ThreadPriority::Lowest);
++#endif
+       }
+     }
+   }
+@@ -1009,7 +1015,11 @@ namespace dxvk {
+   }
+ 
+ 
++#ifdef _WIN32
+   std::wstring DxvkStateCache::getCacheFileName() const {
++#else
++  std::string DxvkStateCache::getCacheFileName() const {
++#endif
+     std::string path = getCacheDir();
+ 
+     if (!path.empty() && *path.rbegin() != '/')
+@@ -1017,10 +1027,19 @@ namespace dxvk {
+     
+     std::string exeName = env::getExeBaseName();
+     path += exeName + ".dxvk-cache";
++
++#ifdef _WIN32
+     return str::tows(path.c_str());
++#else
++    return path;
++#endif
+   }
+ 
++#ifdef _WIN32
+   std::wstring DxvkStateCache::getBaseCacheFileName() const {
++#else
++  std::string DxvkStateCache::getBaseCacheFileName() const {
++#endif
+     std::string path = getCacheDir();
+ 
+     if (!path.empty() && *path.rbegin() != '/')
+@@ -1028,7 +1047,11 @@ namespace dxvk {
+ 
+     std::string exeName = env::getExeBaseName();
+     path += exeName + ".dxvk-cache-base";
++#ifdef _WIN32
+     return str::tows(path.c_str());
++#else
++    return path;
++#endif
+   }
+ 
+ 
+diff --git a/src/dxvk/dxvk_state_cache.h b/src/dxvk/dxvk_state_cache.h
+index 5ab9b262..e31ccc07 100644
+--- a/src/dxvk/dxvk_state_cache.h
++++ b/src/dxvk/dxvk_state_cache.h
+@@ -143,8 +143,13 @@ namespace dxvk {
+     void compilePipelines(
+       const WorkerItem&               item);
+       
++#ifdef _WIN32
+     bool realReadCacheFile(
+             std::wstring               name);
++#else
++    bool realReadCacheFile(
++            std::string                name);
++#endif
+ 
+     bool readCacheFile();
+ 
+@@ -189,9 +194,15 @@ namespace dxvk {
+ 
+     void createWriter();
+ 
++#ifdef _WIN32
+     std::wstring getCacheFileName() const;
+ 
+     std::wstring getBaseCacheFileName() const;
++#else
++    std::string getCacheFileName() const;
++
++    std::string getBaseCacheFileName() const;
++#endif
+ 
+     std::string getCacheDir() const;
+ 
+diff --git a/src/dxvk/meson.build b/src/dxvk/meson.build
+index d5f36434..39648c7d 100644
+--- a/src/dxvk/meson.build
++++ b/src/dxvk/meson.build
+@@ -58,7 +58,7 @@ dxvk_shaders = files([
+   'hud/shaders/hud_text_vert.vert',
+ ])
+ 
+-dxvk_src = files([
++dxvk_src = [
+   'dxvk_adapter.cpp',
+   'dxvk_barrier.cpp',
+   'dxvk_buffer.cpp',
+@@ -87,8 +87,6 @@ dxvk_src = files([
+   'dxvk_meta_mipgen.cpp',
+   'dxvk_meta_pack.cpp',
+   'dxvk_meta_resolve.cpp',
+-  'dxvk_openvr.cpp',
+-  'dxvk_openxr.cpp',
+   'dxvk_options.cpp',
+   'dxvk_pipecache.cpp',
+   'dxvk_pipecompiler.cpp',
+@@ -108,14 +106,29 @@ dxvk_src = files([
+   'dxvk_swapchain_blitter.cpp',
+   'dxvk_unbound.cpp',
+   'dxvk_util.cpp',
+-
+-  'platform/dxvk_win32_exts.cpp',
+-
+   'hud/dxvk_hud.cpp',
+   'hud/dxvk_hud_font.cpp',
+   'hud/dxvk_hud_item.cpp',
+   'hud/dxvk_hud_renderer.cpp',
+-])
++]
++
++dxvk_src_win32 = [
++  'dxvk_openvr.cpp',
++  'dxvk_openxr.cpp',
++  'platform/dxvk_win32_exts.cpp'
++]
++
++dxvk_src_sdl2 = [
++  'platform/dxvk_sdl2_exts.cpp'
++]
++
++if dxvk_wsi == 'win32'
++  dxvk_src += dxvk_src_win32
++elif dxvk_wsi == 'sdl2'
++  dxvk_src += dxvk_src_sdl2
++else
++  error('Unknown platform for dxvk')
++endif
+ 
+ thread_dep = dependency('threads')
+ 
+diff --git a/src/dxvk/platform/dxvk_sdl2_exts.cpp b/src/dxvk/platform/dxvk_sdl2_exts.cpp
+new file mode 100644
+index 00000000..09de7843
+--- /dev/null
++++ b/src/dxvk/platform/dxvk_sdl2_exts.cpp
+@@ -0,0 +1,60 @@
++#include "../dxvk_platform_exts.h"
++
++#include <SDL2/SDL.h>
++#include <SDL2/SDL_vulkan.h>
++
++namespace dxvk {
++
++  DxvkPlatformExts DxvkPlatformExts::s_instance;
++
++  std::string_view DxvkPlatformExts::getName() {
++    return "SDL2 WSI";
++  }
++
++
++  DxvkNameSet DxvkPlatformExts::getInstanceExtensions() {
++    SDL_Window* window = SDL_CreateWindow(
++      "Dummy Window",
++      SDL_WINDOWPOS_UNDEFINED,
++      SDL_WINDOWPOS_UNDEFINED,
++      1, 1,
++      SDL_WINDOW_HIDDEN | SDL_WINDOW_VULKAN);
++
++    if (window == nullptr)
++      throw DxvkError(str::format("SDL2 WSI: Failed to create dummy window. ", SDL_GetError()));
++
++    uint32_t extensionCount = 0;
++    if (!SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, nullptr))
++      throw DxvkError(str::format("SDL2 WSI: Failed to get instance extension count. ", SDL_GetError()));
++
++    auto extensionNames = std::vector<const char *>(extensionCount);
++    if (!SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, extensionNames.data()))
++      throw DxvkError(str::format("SDL2 WSI: Failed to get instance extensions. ", SDL_GetError()));
++
++    DxvkNameSet names;
++    for (const char* name : extensionNames)
++      names.add(name);
++
++    SDL_DestroyWindow(window);
++
++    return names;
++  }
++
++
++  DxvkNameSet DxvkPlatformExts::getDeviceExtensions(
++          uint32_t      adapterId) {
++    return DxvkNameSet();
++  }
++  
++
++  void DxvkPlatformExts::initInstanceExtensions() {
++
++  }
++
++
++  void DxvkPlatformExts::initDeviceExtensions(
++    const DxvkInstance* instance) {
++
++  }
++
++}
+\ No newline at end of file
+diff --git a/src/meson.build b/src/meson.build
+index 5d42446b..895eae2a 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1,36 +1,48 @@
+ subdir('util')
+ subdir('spirv')
++subdir('wsi')
+ subdir('vulkan')
+ subdir('dxvk')
+ 
+-if get_option('enable_dxgi')
+-  if not get_option('enable_d3d11')
++enable_dxgi  = get_option('enable_dxgi')
++enable_d3d9  = get_option('enable_d3d9')
++enable_d3d10 = get_option('enable_d3d10')
++enable_d3d11 = get_option('enable_d3d11')
++enable_tests = get_option('enable_tests')
++
++if enable_d3d10 and dxvk_native
++  warning('Ignoring D3D10... Not supported for DXVK native.')
++  enable_d3d10 = false
++endif
++
++if enable_dxgi
++  if not enable_d3d11
+     error('D3D11 is required for DXGI.')
+   endif
+   subdir('dxgi')
+ endif
+ 
+-if get_option('enable_d3d10') or get_option('enable_d3d11')
++if enable_d3d10 or enable_d3d11 or enable_tests
+   subdir('dxbc')
+ endif
+ 
+-if get_option('enable_d3d11')
++if enable_d3d11
+   subdir('d3d11')
+ endif
+ 
+-if get_option('enable_d3d10')
+-  if not get_option('enable_d3d11')
++if enable_d3d10
++  if not enable_d3d11
+     error('D3D11 is required for D3D10.')
+   endif
+   subdir('d3d10')
+ endif
+ 
+-if get_option('enable_d3d9')
++if enable_d3d9
+   subdir('dxso')
+   subdir('d3d9')
+ endif
+ 
+ # Nothing selected
+-if not get_option('enable_d3d9') and not get_option('enable_d3d10') and not get_option('enable_d3d11')
+-  warning('Nothing selected to be built.?')
++if not enable_d3d9 and not enable_d3d10 and not enable_d3d11 and not enable_tests
++  warning('Nothing selected to be built. Are you missing a frontend or tests?')
+ endif
+diff --git a/src/util/config/config.cpp b/src/util/config/config.cpp
+index 8ae703ae..600cdec3 100644
+--- a/src/util/config/config.cpp
++++ b/src/util/config/config.cpp
+@@ -170,6 +170,12 @@ namespace dxvk {
+     { R"(\\Crysis3Remastered\.exe$)", {{
+       { "d3d11.cachedDynamicResources",     "a"    },
+     }} },
++    /* Crysis 3 Remastered                          *
++     * Apitrace mode helps massively in cpu bound   *
++     * game parts                                   */
++    { R"(\\Crysis3Remastered\.exe$)", {{
++      { "d3d11.apitraceMode",               "True" },
++    }} },
+     /* Atelier series - games try to render video *
+      * with a D3D9 swap chain over the DXGI swap  *
+      * chain, which breaks D3D11 presentation     */
+@@ -1027,7 +1033,11 @@ namespace dxvk {
+       filePath = "dxvk.conf";
+     
+     // Open the file if it exists
++#ifdef _WIN32
+     std::ifstream stream(str::tows(filePath.c_str()).c_str());
++#else
++    std::ifstream stream(filePath.c_str());
++#endif
+ 
+     if (!stream)
+       return config;
+diff --git a/src/util/meson.build b/src/util/meson.build
+index 34da01ee..b0bdc659 100644
+--- a/src/util/meson.build
++++ b/src/util/meson.build
+@@ -1,12 +1,8 @@
+-util_src = files([
++util_src = [
+   'util_env.cpp',
+-  'util_string.cpp',
+   'util_fps_limiter.cpp',
+-  'util_gdi.cpp',
+-  'util_luid.cpp',
+   'util_matrix.cpp',
+   'util_monitor.cpp',
+-  'util_shared_res.cpp',
+ 
+   'thread.cpp',
+ 
+@@ -22,7 +18,29 @@ util_src = files([
+   'sha1/sha1_util.cpp',
+ 
+   'sync/sync_recursive.cpp',
+-])
++]
++
++util_src_win32 = [
++  'util_shared_res.cpp',
++  'util_gdi.cpp',
++
++  'platform/util_luid_win32.cpp',
++  'platform/util_string_win32.cpp'
++]
++
++util_src_linux = [
++  'platform/util_luid_linux.cpp',
++  'platform/util_string_linux.cpp',
++  'platform/thread_native.cpp',
++]
++
++if dxvk_platform == 'windows'
++  util_src += util_src_win32
++elif dxvk_platform == 'linux' or dxvk_platform == 'darwin'
++  util_src += util_src_linux
++else
++  error('Unknown platform for util')
++endif
+ 
+ util_lib = static_library('util', util_src,
+   include_directories : [ dxvk_include_path ],
+diff --git a/src/util/platform/thread_native.cpp b/src/util/platform/thread_native.cpp
+new file mode 100644
+index 00000000..5337afd4
+--- /dev/null
++++ b/src/util/platform/thread_native.cpp
+@@ -0,0 +1,21 @@
++#include "../thread.h"
++#include "../util_likely.h"
++
++#include <atomic>
++
++namespace dxvk::this_thread {
++
++  std::atomic<uint32_t> g_threadCtr = { 0u };
++  thread_local uint32_t g_threadId  = 0u;
++  
++  // This implementation returns thread ids unique to the current instance.
++  // Ie. if you use this across multiple .so's then you might get conflicting ids.
++  // This isn't an issue for us as we only use it in d3d11, but do check if this changes.
++  uint32_t get_id() {
++    if (unlikely(!g_threadId))
++      g_threadId = ++g_threadCtr;
++
++    return g_threadId;
++  }
++
++}
+\ No newline at end of file
+diff --git a/src/util/platform/util_env_linux.cpp b/src/util/platform/util_env_linux.cpp
+new file mode 100644
+index 00000000..fe053409
+--- /dev/null
++++ b/src/util/platform/util_env_linux.cpp
+@@ -0,0 +1,27 @@
++#include "util_env.h"
++
++ #include <array>
++#include <filesystem>
++#include <unistd.h>
++#include <limits.h>
++
++namespace dxvk::env {
++
++  std::string getExePath() {
++    std::array<char, PATH_MAX> exePath = {};
++
++    size_t count = readlink("/proc/self/exe", exePath.data(), exePath.size());
++
++    return std::string(exePath.begin(), exePath.begin() + count);
++  }
++  
++  
++  void setThreadName(const std::string& name) {
++  }
++
++
++  bool createDirectory(const std::string& path) {
++    return std::filesystem::create_directories(path);
++  }
++
++}
+\ No newline at end of file
+diff --git a/src/util/platform/util_env_win32.cpp b/src/util/platform/util_env_win32.cpp
+new file mode 100644
+index 00000000..8b86bccf
+--- /dev/null
++++ b/src/util/platform/util_env_win32.cpp
+@@ -0,0 +1,38 @@
++#include "util_env.h"
++
++#include "./com/com_include.h"
++
++namespace dxvk::env {
++
++  std::string getExePath() {
++    std::vector<WCHAR> exePath;
++    exePath.resize(MAX_PATH + 1);
++
++    DWORD len = ::GetModuleFileNameW(NULL, exePath.data(), MAX_PATH);
++    exePath.resize(len);
++
++    return str::fromws(exePath.data());
++  }
++  
++  
++  void setThreadName(const std::string& name) {
++    using SetThreadDescriptionProc = HRESULT (WINAPI *) (HANDLE, PCWSTR);
++
++    static auto proc = reinterpret_cast<SetThreadDescriptionProc>(
++      ::GetProcAddress(::GetModuleHandleW(L"kernel32.dll"), "SetThreadDescription"));
++
++    if (proc != nullptr) {
++      auto wideName = std::vector<WCHAR>(name.length() + 1);
++      str::tows(name.c_str(), wideName.data(), wideName.size());
++      (*proc)(::GetCurrentThread(), wideName.data());
++    }
++  }
++
++
++  bool createDirectory(const std::string& path) {
++    WCHAR widePath[MAX_PATH];
++    str::tows(path.c_str(), widePath);
++    return !!CreateDirectoryW(widePath, nullptr);
++  }
++
++}
+\ No newline at end of file
+diff --git a/src/util/platform/util_luid_linux.cpp b/src/util/platform/util_luid_linux.cpp
+new file mode 100644
+index 00000000..9c3aa05b
+--- /dev/null
++++ b/src/util/platform/util_luid_linux.cpp
+@@ -0,0 +1,13 @@
++#include "util_luid.h"
++
++#include "./log/log.h"
++
++namespace dxvk {
++
++  LUID GetAdapterLUID(UINT Adapter) {
++    Logger::warn("GetAdapterLUID: native stub");
++
++    return LUID();
++  }
++
++}
+diff --git a/src/util/util_luid.cpp b/src/util/platform/util_luid_win32.cpp
+similarity index 100%
+rename from src/util/util_luid.cpp
+rename to src/util/platform/util_luid_win32.cpp
+diff --git a/src/util/platform/util_string_linux.cpp b/src/util/platform/util_string_linux.cpp
+new file mode 100644
+index 00000000..dbce6458
+--- /dev/null
++++ b/src/util/platform/util_string_linux.cpp
+@@ -0,0 +1,19 @@
++#include "util_string.h"
++
++#include <string>
++#include <algorithm>
++
++namespace dxvk::str {
++
++  std::string fromws(const WCHAR *ws) {
++    size_t count = wcslen(ws);
++
++    return std::string(ws, ws + count);
++  }
++
++
++  void tows(const char* mbs, WCHAR* wcs, size_t wcsLen) {
++    std::mbstowcs(wcs, mbs, wcsLen);
++  }
++
++}
+diff --git a/src/util/util_string.cpp b/src/util/platform/util_string_win32.cpp
+similarity index 100%
+rename from src/util/util_string.cpp
+rename to src/util/platform/util_string_win32.cpp
+diff --git a/src/util/sync/sync_recursive.cpp b/src/util/sync/sync_recursive.cpp
+index 85af6137..180d3f1f 100644
+--- a/src/util/sync/sync_recursive.cpp
++++ b/src/util/sync/sync_recursive.cpp
+@@ -1,5 +1,6 @@
+ #include "sync_recursive.h"
+ #include "sync_spinlock.h"
++#include "../thread.h"
+ 
+ namespace dxvk::sync {
+ 
+diff --git a/src/util/sync/sync_spinlock.h b/src/util/sync/sync_spinlock.h
+index 27157929..9fd11159 100644
+--- a/src/util/sync/sync_spinlock.h
++++ b/src/util/sync/sync_spinlock.h
+@@ -21,7 +21,11 @@ namespace dxvk::sync {
+   void spin(uint32_t spinCount, const Fn& fn) {
+     while (unlikely(!fn())) {
+       for (uint32_t i = 1; i < spinCount; i++) {
++#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+         _mm_pause();
++#elif defined(__aarch64__)
++        __asm__ __volatile__("yield");
++#endif
+         if (fn())
+           return;
+       }
+diff --git a/src/util/thread.h b/src/util/thread.h
+index 66c2bb50..689b3f6c 100644
+--- a/src/util/thread.h
++++ b/src/util/thread.h
+@@ -4,7 +4,9 @@
+ #include <condition_variable>
+ #include <functional>
+ #include <mutex>
++#ifndef _WIN32
+ #include <thread>
++#endif
+ 
+ #include "util_error.h"
+ 
+diff --git a/src/util/util_bit.h b/src/util/util_bit.h
+index 70afccde..bf261e98 100644
+--- a/src/util/util_bit.h
++++ b/src/util/util_bit.h
+@@ -1,22 +1,34 @@
+ #pragma once
+ 
+-#ifndef _MSC_VER
+-#if defined(__WINE__) && defined(__clang__)
+-#pragma push_macro("_WIN32")
+-#undef _WIN32
+-#endif
+-#include <x86intrin.h>
+-#if defined(__WINE__) && defined(__clang__)
+-#pragma pop_macro("_WIN32")
+-#endif
++#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
++  #define DXVK_ARCH_X86
++  #if defined(__x86_64__) || defined(_M_X64)
++    #define DXVK_ARCH_X86_64
++  #endif
++#elif defined(__aarch64__) || defined(_M_ARM64)
++  #define DXVK_ARCH_ARM64
+ #else
+-#include <intrin.h>
++#error "Unknown CPU Architecture"
++#endif
++
++#ifdef DXVK_ARCH_X86
++  #ifndef _MSC_VER
++    #if defined(__WINE__) && defined(__clang__)
++      #pragma push_macro("_WIN32")
++      #undef _WIN32
++    #endif
++    #include <x86intrin.h>
++    #if defined(__WINE__) && defined(__clang__)
++      #pragma pop_macro("_WIN32")
++    #endif
++  #else
++    #include <intrin.h>
++  #endif
+ #endif
+ 
+ #include "util_likely.h"
+ #include "util_math.h"
+ 
+-#include <cstdint>
+ #include <cstring>
+ #include <iterator>
+ #include <type_traits>
+@@ -51,21 +63,49 @@ namespace dxvk::bit {
+     return n;
+   }
+   
++  inline uint32_t bsf(uint32_t n) {
++    #if defined(_MSC_VER) && !defined(__clang__)
++    unsigned long index;
++    _BitScanForward(&index, n);
++    return uint32_t(index);
++    #elif defined(__GNUC__) || defined(__clang__)
++    return __builtin_ctz(n);
++    #else
++    uint32_t r = 31;
++    n &= -n;
++    r -= (n & 0x0000FFFF) ? 16 : 0;
++    r -= (n & 0x00FF00FF) ?  8 : 0;
++    r -= (n & 0x0F0F0F0F) ?  4 : 0;
++    r -= (n & 0x33333333) ?  2 : 0;
++    r -= (n & 0x55555555) ?  1 : 0;
++    return r;
++    #endif
++  }
++
+   inline uint32_t tzcnt(uint32_t n) {
+     #if defined(_MSC_VER) && !defined(__clang__)
+     return _tzcnt_u32(n);
+     #elif defined(__BMI__)
+     return __tzcnt_u32(n);
+-    #elif defined(__GNUC__) || defined(__clang__)
++    #elif defined(DXVK_ARCH_X86) && (defined(__GNUC__) || defined(__clang__))
++    // tzcnt is encoded as rep bsf, so we can use it on all
++    // processors, but the behaviour of zero inputs differs:
++    // - bsf:   zf = 1, cf = ?, result = ?
++    // - tzcnt: zf = 0, cf = 1, result = 32
++    // We'll have to handle this case manually.
+     uint32_t res;
+     uint32_t tmp;
+     asm (
++      "tzcnt %2, %0;"
+       "mov  $32, %1;"
+-      "bsf   %2, %0;"
++      "test  %2, %2;"
+       "cmovz %1, %0;"
+       : "=&r" (res), "=&r" (tmp)
+-      : "r" (n));
++      : "r" (n)
++      : "cc");
+     return res;
++    #elif defined(__GNUC__) || defined(__clang__)
++    return n != 0 ? __builtin_ctz(n) : 32;
+     #else
+     uint32_t r = 31;
+     n &= -n;
+@@ -78,22 +118,33 @@ namespace dxvk::bit {
+     #endif
+   }
+ 
+-  inline uint32_t bsf(uint32_t n) {
+-    #if defined(_MSC_VER) && !defined(__clang__)
+-    unsigned long index;
+-    _BitScanForward(&index, n);
+-    return uint32_t(index);
++  inline uint32_t tzcnt(uint64_t n) {
++    #if defined(DXVK_ARCH_X86_64) && defined(_MSC_VER) && !defined(__clang__)
++    return _tzcnt_u64(n);
++    #elif defined(DXVK_ARCH_X86_64) && defined(__BMI__)
++    return __tzcnt_u64(n);
++    #elif defined(DXVK_ARCH_X86_64) && (defined(__GNUC__) || defined(__clang__))
++    uint64_t res;
++    uint64_t tmp;
++    asm (
++      "tzcnt %2, %0;"
++      "mov  $64, %1;"
++      "test  %2, %2;"
++      "cmovz %1, %0;"
++      : "=&r" (res), "=&r" (tmp)
++      : "r" (n)
++      : "cc");
++    return res;
+     #elif defined(__GNUC__) || defined(__clang__)
+-    return __builtin_ctz(n);
++    return n != 0 ? __builtin_ctzll(n) : 64;
+     #else
+-    uint32_t r = 31;
+-    n &= -n;
+-    r -= (n & 0x0000FFFF) ? 16 : 0;
+-    r -= (n & 0x00FF00FF) ?  8 : 0;
+-    r -= (n & 0x0F0F0F0F) ?  4 : 0;
+-    r -= (n & 0x33333333) ?  2 : 0;
+-    r -= (n & 0x55555555) ?  1 : 0;
+-    return r;
++    uint32_t lo = uint32_t(n);
++    if (lo) {
++      return tzcnt(lo);
++    } else {
++      uint32_t hi = uint32_t(n >> 32);
++      return tzcnt(hi) + 32;
++    }
+     #endif
+   }
+ 
+@@ -145,7 +196,7 @@ namespace dxvk::bit {
+   template<typename T>
+   bool bcmpeq(const T* a, const T* b) {
+     static_assert(alignof(T) >= 16);
+-    #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
++    #if defined(DXVK_ARCH_X86) && (defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER))
+     auto ai = reinterpret_cast<const __m128i*>(a);
+     auto bi = reinterpret_cast<const __m128i*>(b);
+ 
+@@ -288,6 +339,17 @@ namespace dxvk::bit {
+       return get(idx);
+     }
+ 
++    constexpr void setN(uint32_t bits) {
++      uint32_t fullDwords = bits / 32;
++      uint32_t offset = bits % 32;
++
++      for (size_t i = 0; i < fullDwords; i++)
++        m_dwords[i] = std::numeric_limits<uint32_t>::max();
++     
++      if (offset > 0)
++        m_dwords[fullDwords] = (1u << offset) - 1;
++    }
++
+   private:
+ 
+     uint32_t m_dwords[Dwords];
+@@ -321,7 +383,16 @@ namespace dxvk::bit {
+       }
+ 
+       uint32_t operator * () const {
+-        return bsf(m_mask);
++#if (defined(__GNUC__) || defined(__clang__)) && !defined(__BMI__) && defined(DXVK_ARCH_X86)
++        uint32_t res;
++        asm ("tzcnt %1,%0"
++        : "=r" (res)
++        : "r" (m_mask)
++        : "cc");
++        return res;
++#else
++        return tzcnt(m_mask);
++#endif
+       }
+ 
+       bool operator == (iterator other) const { return m_mask == other.m_mask; }
+diff --git a/src/util/util_env.cpp b/src/util/util_env.cpp
+index a998559e..fedbf737 100644
+--- a/src/util/util_env.cpp
++++ b/src/util/util_env.cpp
+@@ -9,6 +9,12 @@
+ #include <limits.h>
+ #endif
+ 
++#ifdef __APPLE__
++#include <limits.h>
++#include <pthread.h>
++#include <mach-o/dyld.h>
++#endif
++
+ #include "util_env.h"
+ 
+ #include "./com/com_include.h"
+@@ -48,7 +54,7 @@ namespace dxvk::env
+     }
+     return;
+ #else
+-    setenv(name, value);
++    setenv(name, value, 1);
+     return;
+ #endif
+   }
+@@ -110,6 +116,14 @@ namespace dxvk::env
+     size_t count = readlink("/proc/self/exe", exePath.data(), exePath.size());
+ 
+     return std::string(exePath.begin(), exePath.begin() + count);
++#elif defined(__APPLE__)
++    std::array<char, PATH_MAX> exePath = {};
++    uint32_t size = exePath.size();
++
++    if (_NSGetExecutablePath(exePath.data(), &size))
++      return std::string();
++
++    return std::string(exePath.data());
+ #endif
+   }
+ 
+@@ -130,7 +144,11 @@ namespace dxvk::env
+ #else
+     std::array<char, 16> posixName = {};
+     dxvk::str::strlcpy(posixName.data(), name.c_str(), 16);
++#ifdef __APPLE__
++    ::pthread_setname_np(posixName.data());   // macOS: names the calling thread only
++#else
+     ::pthread_setname_np(pthread_self(), posixName.data());
++#endif
+ #endif
+   }
+ 
+diff --git a/src/util/util_env.h b/src/util/util_env.h
+index 3e8f03af..04570d07 100644
+--- a/src/util/util_env.h
++++ b/src/util/util_env.h
+@@ -28,6 +28,9 @@ namespace dxvk::env {
+    */
+   std::string getEnvVar(const char* name);
+ 
++#ifndef CDECL
++#define CDECL
++#endif
+   using wineSetUnixEnv_proc = void (CDECL *)(const char *, const char *);
+   
+   /**
+diff --git a/src/util/util_fps_limiter.cpp b/src/util/util_fps_limiter.cpp
+index da980002..263beb70 100644
+--- a/src/util/util_fps_limiter.cpp
++++ b/src/util/util_fps_limiter.cpp
+@@ -121,6 +121,7 @@ namespace dxvk {
+ 
+ 
+   void FpsLimiter::initialize() {
++#ifdef _WIN32
+     HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+ 
+     if (ntdll) {
+@@ -143,7 +144,9 @@ namespace dxvk {
+           m_sleepGranularity = NtTimerDuration(max);
+         }
+       }
+-    } else {
++    } else
++#endif
++    {
+       // Assume 1ms sleep granularity by default
+       m_sleepGranularity = NtTimerDuration(10000);
+     }
+diff --git a/src/util/util_monitor.cpp b/src/util/util_monitor.cpp
+index 69f60d16..7e1b7c6d 100644
+--- a/src/util/util_monitor.cpp
++++ b/src/util/util_monitor.cpp
+@@ -1,110 +1,16 @@
+ #include "util_monitor.h"
+ #include "util_string.h"
+ 
++#include "../wsi/wsi_mode.h"
++#include "../wsi/wsi_monitor.h"
++#include "../wsi/wsi_window.h"
++
+ #include "./log/log.h"
+ 
+ namespace dxvk {
+   
+   HMONITOR GetDefaultMonitor() {
+-    return ::MonitorFromPoint({ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+-  }
+-
+-
+-  BOOL SetMonitorDisplayMode(
+-          HMONITOR                hMonitor,
+-          DEVMODEW*               pMode) {
+-    ::MONITORINFOEXW monInfo;
+-    monInfo.cbSize = sizeof(monInfo);
+-
+-    if (!::GetMonitorInfoW(hMonitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
+-      Logger::err("Failed to query monitor info");
+-      return E_FAIL;
+-    }
+-
+-    Logger::info(str::format("Setting display mode: ",
+-      pMode->dmPelsWidth, "x", pMode->dmPelsHeight, "@",
+-      pMode->dmDisplayFrequency));
+-
+-    DEVMODEW curMode = { };
+-    curMode.dmSize = sizeof(curMode);
+-
+-    if (GetMonitorDisplayMode(hMonitor, ENUM_CURRENT_SETTINGS, &curMode)) {
+-      bool eq = curMode.dmPelsWidth  == pMode->dmPelsWidth
+-             && curMode.dmPelsHeight == pMode->dmPelsHeight
+-             && curMode.dmBitsPerPel == pMode->dmBitsPerPel;
+-
+-      if (pMode->dmFields & DM_DISPLAYFREQUENCY)
+-        eq &= curMode.dmDisplayFrequency == pMode->dmDisplayFrequency;
+-
+-      if (eq)
+-        return true;
+-    }
+-
+-    LONG status = ::ChangeDisplaySettingsExW(monInfo.szDevice,
+-      pMode, nullptr, CDS_FULLSCREEN, nullptr);
+-
+-    if (status != DISP_CHANGE_SUCCESSFUL) {
+-      pMode->dmFields &= ~DM_DISPLAYFREQUENCY;
+-
+-      status = ::ChangeDisplaySettingsExW(monInfo.szDevice,
+-        pMode, nullptr, CDS_FULLSCREEN, nullptr);
+-    }
+-
+-    return status == DISP_CHANGE_SUCCESSFUL;
+-  }
+-
+-
+-  BOOL GetMonitorDisplayMode(
+-          HMONITOR                hMonitor,
+-          DWORD                   modeNum,
+-          DEVMODEW*               pMode) {
+-    ::MONITORINFOEXW monInfo;
+-    monInfo.cbSize = sizeof(monInfo);
+-
+-    if (!::GetMonitorInfoW(hMonitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
+-      Logger::err("Failed to query monitor info");
+-      return false;
+-    }
+-
+-    return ::EnumDisplaySettingsW(monInfo.szDevice, modeNum, pMode);
+-  }
+-
+-
+-  BOOL CALLBACK RestoreMonitorDisplayModeCallback(
+-          HMONITOR                hMonitor,
+-          HDC                     hDC,
+-          LPRECT                  pRect,
+-          LPARAM                  pUserdata) {
+-    auto success = reinterpret_cast<bool*>(pUserdata);
+-
+-    DEVMODEW devMode = { };
+-    devMode.dmSize = sizeof(devMode);
+-
+-    if (!GetMonitorDisplayMode(hMonitor, ENUM_REGISTRY_SETTINGS, &devMode)) {
+-      *success = false;
+-      return false;
+-    }
+-
+-    Logger::info(str::format("Restoring display mode: ",
+-      devMode.dmPelsWidth, "x", devMode.dmPelsHeight, "@",
+-      devMode.dmDisplayFrequency));
+-
+-    if (!SetMonitorDisplayMode(hMonitor, &devMode)) {
+-      *success = false;
+-      return false;
+-    }
+-
+-    return true;
+-  }
+-
+-
+-  BOOL RestoreMonitorDisplayMode() {
+-    bool success = true;
+-    bool result = ::EnumDisplayMonitors(nullptr, nullptr,
+-      &RestoreMonitorDisplayModeCallback,
+-      reinterpret_cast<LPARAM>(&success));
+-
+-    return result && success;
++    return wsi::getDefaultMonitor();
+   }
+ 
+ 
+@@ -112,14 +18,7 @@ namespace dxvk {
+           HWND                    hWnd,
+           UINT*                   pWidth,
+           UINT*                   pHeight) {
+-    RECT rect = { };
+-    ::GetClientRect(hWnd, &rect);
+-    
+-    if (pWidth)
+-      *pWidth = rect.right - rect.left;
+-    
+-    if (pHeight)
+-      *pHeight = rect.bottom - rect.top;
++    wsi::getWindowSize(hWnd, pWidth, pHeight);
+   }
+ 
+ 
+@@ -127,15 +26,12 @@ namespace dxvk {
+           HMONITOR                hMonitor,
+           UINT*                   pWidth,
+           UINT*                   pHeight) {
+-    ::MONITORINFOEXW monInfo;
+-    monInfo.cbSize = sizeof(monInfo);
++    RECT rect;
+ 
+-    if (!::GetMonitorInfoW(hMonitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
+-      Logger::err("Failed to query monitor info");
++    if (!wsi::getDesktopCoordinates(hMonitor, &rect)) {
++      Logger::err("D3D9: Failed to query monitor info");
+       return;
+     }
+-    
+-    auto rect = monInfo.rcMonitor;
+ 
+     if (pWidth)
+       *pWidth = rect.right - rect.left;
+@@ -148,15 +44,8 @@ namespace dxvk {
+   void GetMonitorRect(
+           HMONITOR                hMonitor,
+           RECT*                   pRect) {
+-    ::MONITORINFOEXW monInfo;
+-    monInfo.cbSize = sizeof(monInfo);
+-
+-    if (!::GetMonitorInfoW(hMonitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
+-      Logger::err("Failed to query monitor info");
+-      return;
+-    }
+-
+-    *pRect = monInfo.rcMonitor;
++    if (!wsi::getDesktopCoordinates(hMonitor, pRect))
++      Logger::err("D3D9: Failed to query monitor info");
+   }
+ 
+ }
+diff --git a/src/util/util_monitor.h b/src/util/util_monitor.h
+index 41c6ebee..81d0a587 100644
+--- a/src/util/util_monitor.h
++++ b/src/util/util_monitor.h
+@@ -10,37 +10,6 @@ namespace dxvk {
+    */
+   HMONITOR GetDefaultMonitor();
+ 
+-  /**
+-   * \brief Sets monitor display mode
+-   *
+-   * Note that \c pMode may be altered by this function.
+-   * \param [in] hMonitor The monitor to change
+-   * \param [in] pMode The desired display mode
+-   * \returns \c true on success
+-   */
+-  BOOL SetMonitorDisplayMode(
+-          HMONITOR                hMonitor,
+-          DEVMODEW*               pMode);
+-
+-  /**
+-   * \brief Enumerates monitor display modes
+-   *
+-   * \param [in] hMonitor The monitor to query
+-   * \param [in] modeNum Mode number or enum
+-   * \param [in] pMode The display mode
+-   * \returns \c true on success
+-   */
+-  BOOL GetMonitorDisplayMode(
+-          HMONITOR                hMonitor,
+-          DWORD                   modeNum,
+-          DEVMODEW*               pMode);
+-
+-  /**
+-   * \brief Change display modes to registry settings
+-   * \returns \c true on success
+-   */
+-  BOOL RestoreMonitorDisplayMode();
+-
+   /**
+    * \brief Queries window client size
+    * 
+diff --git a/src/util/util_shared_res.h b/src/util/util_shared_res.h
+index aba742c4..cf36ec3a 100644
+--- a/src/util/util_shared_res.h
++++ b/src/util/util_shared_res.h
+@@ -8,10 +8,17 @@
+ 
+ namespace dxvk {
+ 
++#ifdef _WIN32
+     HANDLE openKmtHandle(HANDLE kmt_handle);
+ 
+     bool setSharedMetadata(HANDLE handle, void *buf, uint32_t bufSize);
+     bool getSharedMetadata(HANDLE handle, void *buf, uint32_t bufSize, uint32_t *metadataSize);
++#else
++    // Native builds: no cross-process sharing (util_shared_res.cpp is Windows-only).
++    inline HANDLE openKmtHandle(HANDLE) { return INVALID_HANDLE_VALUE; }
++    inline bool setSharedMetadata(HANDLE, void *, uint32_t) { return false; }
++    inline bool getSharedMetadata(HANDLE, void *, uint32_t, uint32_t *) { return false; }
++#endif
+ 
+     struct DxvkSharedTextureMetadata {
+       UINT             Width;
+diff --git a/src/util/util_vector.h b/src/util/util_vector.h
+index 77cdf294..ed2511be 100644
+--- a/src/util/util_vector.h
++++ b/src/util/util_vector.h
+@@ -150,12 +150,18 @@ namespace dxvk {
+   static_assert(sizeof(Vector4i) == sizeof(int)   * 4);
+ 
+   inline Vector4 replaceNaN(Vector4 a) {
++    #ifdef DXVK_ARCH_X86
+     Vector4 result;
+     __m128 value = _mm_load_ps(a.data);
+     __m128 mask  = _mm_cmpeq_ps(value, value);
+            value = _mm_and_ps(value, mask);
+     _mm_store_ps(result.data, value);
+     return result;
++    #else
++    for (int i = 0; i < 4; i++)
++      a[i] = std::isnan(a[i]) ? 0.0f : a[i];
++    return a;
++    #endif
+   }
+ 
+ }
+diff --git a/src/vulkan/meson.build b/src/vulkan/meson.build
+index 7fa26c18..acbfaa31 100644
+--- a/src/vulkan/meson.build
++++ b/src/vulkan/meson.build
+@@ -1,15 +1,17 @@
+-vkcommon_src = files([
++vkcommon_src = [
+   'vulkan_loader.cpp',
+   'vulkan_names.cpp',
+   'vulkan_presenter.cpp',
+-])
++]
+ 
+ thread_dep = dependency('threads')
+ 
++vkcommon_deps = [ thread_dep, wsi_dep, lib_vulkan ]
++
+ vkcommon_lib = static_library('vkcommon', vkcommon_src,
+-  dependencies        : [ thread_dep ],
+-  include_directories : [ dxvk_include_path ],
+-)
++  dependencies        : vkcommon_deps,
++  override_options    : ['cpp_std='+dxvk_cpp_std],
++  include_directories : [ dxvk_include_path ])
+ 
+ vkcommon_dep = declare_dependency(
+   link_with           : [ vkcommon_lib ],
+diff --git a/src/vulkan/vulkan_loader.cpp b/src/vulkan/vulkan_loader.cpp
+index bbc3c931..ee19a6ce 100644
+--- a/src/vulkan/vulkan_loader.cpp
++++ b/src/vulkan/vulkan_loader.cpp
+@@ -2,6 +2,7 @@
+ 
+ namespace dxvk::vk {
+ 
++#ifndef DXVK_NATIVE
+   LibraryLoader::LibraryLoader()
+   : m_library(LoadLibraryA("vulkan-1"))
+   , m_getInstanceProcAddr(reinterpret_cast<PFN_vkGetInstanceProcAddr>(
+@@ -11,6 +12,15 @@ namespace dxvk::vk {
+   LibraryLoader::~LibraryLoader() {
+     FreeLibrary(m_library);
+   }
++#else
++  // Native: the Vulkan library is linked (MoltenVK on macOS), so its entry point is ours.
++  LibraryLoader::LibraryLoader()
++  : m_library(nullptr)
++  , m_getInstanceProcAddr(&vkGetInstanceProcAddr) {
++  }
++
++  LibraryLoader::~LibraryLoader() { }
++#endif
+ 
+   PFN_vkVoidFunction LibraryLoader::sym(VkInstance instance, const char* name) const {
+     return m_getInstanceProcAddr(instance, name);
+diff --git a/src/vulkan/vulkan_loader.h b/src/vulkan/vulkan_loader.h
+index 20ce6996..f41683cb 100644
+--- a/src/vulkan/vulkan_loader.h
++++ b/src/vulkan/vulkan_loader.h
+@@ -3,8 +3,13 @@
+ #include "../util/rc/util_rc.h"
+ #include "../util/rc/util_rc_ptr.h"
+ 
++#ifdef _WIN32
+ #define VK_USE_PLATFORM_WIN32_KHR 1
++#endif
+ #include <vulkan/vulkan.h>
++#ifdef DXVK_NATIVE
++#include <vulkan/vulkan_native.h>
++#endif
+ 
+ #define VULKAN_FN(name) \
+   ::PFN_ ## name name = reinterpret_cast<::PFN_ ## name>(sym(#name))
+diff --git a/src/vulkan/vulkan_presenter.cpp b/src/vulkan/vulkan_presenter.cpp
+index 5bd9193b..35917289 100644
+--- a/src/vulkan/vulkan_presenter.cpp
++++ b/src/vulkan/vulkan_presenter.cpp
+@@ -1,6 +1,7 @@
+ #include "vulkan_presenter.h"
+ 
+ #include "../dxvk/dxvk_format.h"
++#include "../wsi/wsi_presenter.h"
+ 
+ namespace dxvk::vk {
+ 
+@@ -11,6 +12,7 @@ namespace dxvk::vk {
+           PresenterDevice device,
+     const PresenterDesc&  desc)
+   : m_vki(vki), m_vkd(vkd), m_device(device), m_window(window) {
++#ifndef DXVK_NATIVE
+     // As of Wine 5.9, winevulkan provides this extension, but does
+     // not filter the pNext chain for VkSwapchainCreateInfoKHR properly
+     // before passing it to the Linux sude, which breaks RenderDoc.
+@@ -18,6 +20,7 @@ namespace dxvk::vk {
+       Logger::warn("winevulkan detected, disabling exclusive fullscreen support");
+       m_device.features.fullScreenExclusive = false;
+     }
++#endif
+ 
+     if (createSurface() != VK_SUCCESS)
+       throw DxvkError("Failed to create surface");
+@@ -448,18 +451,7 @@ namespace dxvk::vk {
+ 
+ 
+   VkResult Presenter::createSurface() {
+-    HINSTANCE instance = reinterpret_cast<HINSTANCE>(
+-      GetWindowLongPtr(m_window, GWLP_HINSTANCE));
+-    
+-    VkWin32SurfaceCreateInfoKHR info;
+-    info.sType      = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+-    info.pNext      = nullptr;
+-    info.flags      = 0;
+-    info.hinstance  = instance;
+-    info.hwnd       = m_window;
+-    
+-    VkResult status = m_vki->vkCreateWin32SurfaceKHR(
+-      m_vki->instance(), &info, nullptr, &m_surface);
++    VkResult status = wsi::createSurface(m_window, m_vki, &m_surface);
+     
+     if (status != VK_SUCCESS)
+       return status;
+diff --git a/src/wsi/meson.build b/src/wsi/meson.build
+new file mode 100644
+index 00000000..6ab147be
+--- /dev/null
++++ b/src/wsi/meson.build
+@@ -0,0 +1,32 @@
++wsi_win32_src = [
++  'win32/wsi_mode_win32.cpp',
++  'win32/wsi_monitor_win32.cpp',
++  'win32/wsi_presenter_win32.cpp',
++  'win32/wsi_window_win32.cpp',
++]
++
++wsi_sdl2_src = [
++  'sdl2/wsi_mode_sdl2.cpp',
++  'sdl2/wsi_monitor_sdl2.cpp',
++  'sdl2/wsi_presenter_sdl2.cpp',
++  'sdl2/wsi_window_sdl2.cpp',
++]
++
++if dxvk_wsi == 'win32'
++  wsi_src  = wsi_win32_src
++  wsi_deps = []
++elif dxvk_wsi == 'sdl2'
++  wsi_src  = wsi_sdl2_src
++  wsi_deps = [ lib_sdl2 ]
++else
++  error('Unknown wsi')
++endif
++
++wsi_lib = static_library('wsi', wsi_src,
++  dependencies        : wsi_deps,
++  override_options    : ['cpp_std='+dxvk_cpp_std],
++  include_directories : [ dxvk_include_path ])
++
++wsi_dep = declare_dependency(
++  link_with           : [ wsi_lib ],
++  include_directories : [ dxvk_include_path ])
+diff --git a/src/wsi/sdl2/wsi_helpers_sdl2.h b/src/wsi/sdl2/wsi_helpers_sdl2.h
+new file mode 100644
+index 00000000..781a6882
+--- /dev/null
++++ b/src/wsi/sdl2/wsi_helpers_sdl2.h
+@@ -0,0 +1,16 @@
++#pragma once
++
++#include <SDL2/SDL.h>
++#include <SDL2/SDL_vulkan.h>
++
++#include "../wsi_monitor.h"
++
++namespace dxvk {
++
++  inline bool isDisplayValid(int32_t displayId) {
++    const int32_t displayCount = SDL_GetNumVideoDisplays();
++
++    return displayId < displayCount && displayId >= 0;
++  }
++  
++}
+\ No newline at end of file
+diff --git a/src/wsi/sdl2/wsi_mode_sdl2.cpp b/src/wsi/sdl2/wsi_mode_sdl2.cpp
+new file mode 100644
+index 00000000..c75a293a
+--- /dev/null
++++ b/src/wsi/sdl2/wsi_mode_sdl2.cpp
+@@ -0,0 +1,93 @@
++#include "../wsi_mode.h"
++
++#include "wsi_helpers_sdl2.h"
++
++#include <wsi/native_wsi.h>
++
++#include "../../util/util_string.h"
++#include "../../util/log/log.h"
++
++namespace dxvk::wsi {
++
++  static inline uint32_t roundToNextPow2(uint32_t num) {
++    if (num-- == 0)
++      return 0;
++
++    num |= num >> 1; num |= num >> 2;
++    num |= num >> 4; num |= num >> 8;
++    num |= num >> 16;
++
++    return ++num;
++  }
++
++
++  static inline void convertMode(const SDL_DisplayMode& mode, WsiMode* pMode) {
++    pMode->width          = uint32_t(mode.w);
++    pMode->height         = uint32_t(mode.h);
++    pMode->refreshRate    = WsiRational{ uint32_t(mode.refresh_rate) * 1000, 1000 }; 
++    // BPP should always be a power of two
++    // to match Windows behaviour of including padding.
++    pMode->bitsPerPixel   = roundToNextPow2(SDL_BITSPERPIXEL(mode.format));
++    pMode->interlaced     = false;
++  }
++
++
++  bool getDisplayMode(
++          HMONITOR         hMonitor,
++          uint32_t         ModeNumber,
++          WsiMode*         pMode) {
++    const int32_t displayId    = fromHmonitor(hMonitor);
++
++    if (!isDisplayValid(displayId))
++      return false;
++
++    SDL_DisplayMode mode = { };
++    if (SDL_GetDisplayMode(displayId, ModeNumber, &mode) != 0)
++      return false;
++
++    convertMode(mode, pMode);
++
++    return true;
++  }
++
++
++  bool getCurrentDisplayMode(
++          HMONITOR         hMonitor,
++          WsiMode*         pMode) {
++    const int32_t displayId    = fromHmonitor(hMonitor);
++
++    if (!isDisplayValid(displayId))
++      return false;
++
++    SDL_DisplayMode mode = { };
++    if (SDL_GetCurrentDisplayMode(displayId, &mode) != 0) {
++      Logger::err(str::format("SDL_GetCurrentDisplayMode: ", SDL_GetError()));
++      return false;
++    }
++
++    convertMode(mode, pMode);
++
++    return true;
++  }
++
++
++  bool getDesktopDisplayMode(
++          HMONITOR         hMonitor,
++          WsiMode*         pMode) {
++    const int32_t displayId    = fromHmonitor(hMonitor);
++
++    if (!isDisplayValid(displayId))
++      return false;
++
++    SDL_DisplayMode mode = { };
++    if (SDL_GetDesktopDisplayMode(displayId, &mode) != 0) {
++      Logger::err(str::format("SDL_GetCurrentDisplayMode: ", SDL_GetError()));
++      return false;
++    }
++
++    convertMode(mode, pMode);
++
++    return true;
++  }
++  
++}
+diff --git a/src/wsi/sdl2/wsi_monitor_sdl2.cpp b/src/wsi/sdl2/wsi_monitor_sdl2.cpp
+new file mode 100644
+index 00000000..4125457b
+--- /dev/null
++++ b/src/wsi/sdl2/wsi_monitor_sdl2.cpp
+@@ -0,0 +1,63 @@
++#include "../wsi_monitor.h"
++
++#include "wsi_helpers_sdl2.h"
++
++#include <windows.h>
++#include <wsi/native_wsi.h>
++
++#include <string>
++#include <sstream>
++
++namespace dxvk::wsi {
++
++  HMONITOR getDefaultMonitor() {
++    return enumMonitors(0);
++  }
++
++
++  HMONITOR enumMonitors(uint32_t index) {
++    return isDisplayValid(int32_t(index))
++      ? toHmonitor(index)
++      : nullptr;
++  }
++
++  bool getDisplayName(
++          HMONITOR         hMonitor,
++          WCHAR            (&Name)[32]) {
++    const int32_t displayId    = fromHmonitor(hMonitor);
++
++    if (!isDisplayValid(displayId))
++      return false;
++
++    std::wstringstream nameStream;
++    nameStream << LR"(\\.\DISPLAY)" << (displayId + 1);
++
++    std::wstring name = nameStream.str();
++
++    std::memset(Name, 0, sizeof(Name));
++    name.copy(Name, name.length(), 0);
++
++    return true;
++  }
++
++
++  bool getDesktopCoordinates(
++          HMONITOR         hMonitor,
++          RECT*            pRect) {
++    const int32_t displayId    = fromHmonitor(hMonitor);
++
++    if (!isDisplayValid(displayId))
++      return false;
++
++    SDL_Rect rect = { };
++    SDL_GetDisplayBounds(displayId, &rect);
++
++    pRect->left   = rect.x;
++    pRect->top    = rect.y;
++    pRect->right  = rect.x + rect.w;
++    pRect->bottom = rect.y + rect.h;
++
++    return true;
++  }
++
++}
+\ No newline at end of file
+diff --git a/src/wsi/sdl2/wsi_presenter_sdl2.cpp b/src/wsi/sdl2/wsi_presenter_sdl2.cpp
+new file mode 100644
+index 00000000..1bf222f3
+--- /dev/null
++++ b/src/wsi/sdl2/wsi_presenter_sdl2.cpp
+@@ -0,0 +1,21 @@
++#include "../wsi_presenter.h"
++
++#include <SDL2/SDL.h>
++#include <SDL2/SDL_vulkan.h>
++
++#include <wsi/native_wsi.h>
++
++namespace dxvk::wsi {
++
++  VkResult createSurface(
++          HWND                hWindow,
++    const Rc<vk::InstanceFn>& vki,
++          VkSurfaceKHR*       pSurface) {
++    SDL_Window* window = fromHwnd(hWindow);
++
++    return SDL_Vulkan_CreateSurface(window, vki->instance(), pSurface)
++         ? VK_SUCCESS
++         : VK_ERROR_OUT_OF_HOST_MEMORY;
++  }
++
++}
+\ No newline at end of file
+diff --git a/src/wsi/sdl2/wsi_window_sdl2.cpp b/src/wsi/sdl2/wsi_window_sdl2.cpp
+new file mode 100644
+index 00000000..47fffeb6
+--- /dev/null
++++ b/src/wsi/sdl2/wsi_window_sdl2.cpp
+@@ -0,0 +1,135 @@
++#include "../wsi_window.h"
++
++#include "wsi_helpers_sdl2.h"
++
++#include <windows.h>
++#include <wsi/native_wsi.h>
++
++#include "../../util/util_string.h"
++#include "../../util/log/log.h"
++
++namespace dxvk::wsi {
++
++  void getWindowSize(
++        HWND      hWindow,
++        uint32_t* pWidth,
++        uint32_t* pHeight) {
++    SDL_Window* window = fromHwnd(hWindow);
++
++    int32_t w, h;
++    SDL_GetWindowSize(window, &w, &h);
++
++    if (pWidth)
++      *pWidth = uint32_t(w);
++
++    if (pHeight)
++      *pHeight = uint32_t(h);
++  }
++
++
++  void resizeWindow(
++          HWND             hWindow,
++          DxvkWindowState* pState,
++          uint32_t         Width,
++          uint32_t         Height) {
++    SDL_Window* window = fromHwnd(hWindow);
++
++    SDL_SetWindowSize(window, int32_t(Width), int32_t(Height));
++  }
++
++
++  bool setWindowMode(
++          HMONITOR         hMonitor,
++          HWND             hWindow,
++    const WsiMode*         pMode,
++          bool             EnteringFullscreen) {
++    const int32_t displayId    = fromHmonitor(hMonitor);
++    SDL_Window* window         = fromHwnd(hWindow);
++
++    if (!isDisplayValid(displayId))
++      return false;
++
++    SDL_DisplayMode wantedMode = { };
++    wantedMode.w            = pMode->width;
++    wantedMode.h            = pMode->height;
++    wantedMode.refresh_rate = pMode->refreshRate.numerator != 0
++      ? pMode->refreshRate.numerator / pMode->refreshRate.denominator
++      : 0;
++    // TODO: Implement lookup format for bitsPerPixel here.
++
++    SDL_DisplayMode mode = { };
++    if (SDL_GetClosestDisplayMode(displayId, &wantedMode, &mode) == nullptr) {
++      Logger::err(str::format("SDL2 WSI: setWindowMode: SDL_GetClosestDisplayMode: ", SDL_GetError()));
++      return false;
++    }
++
++    if (SDL_SetWindowDisplayMode(window, &mode) != 0) {
++      Logger::err(str::format("SDL2 WSI: setWindowMode: SDL_SetWindowDisplayMode: ", SDL_GetError()));
++      return false;
++    }
++
++    return true;
++  }
++
++
++
++  bool enterFullscreenMode(
++          HMONITOR         hMonitor,
++          HWND             hWindow,
++          DxvkWindowState* pState,
++          bool             ModeSwitch) {
++    const int32_t displayId    = fromHmonitor(hMonitor);
++    SDL_Window* window         = fromHwnd(hWindow);
++
++    if (!isDisplayValid(displayId))
++      return false;
++
++    uint32_t flags = ModeSwitch
++        ? SDL_WINDOW_FULLSCREEN
++        : SDL_WINDOW_FULLSCREEN_DESKTOP;
++    
++    // TODO: Set this on the correct monitor.
++    // Docs aren't clear on this...
++    if (SDL_SetWindowFullscreen(window, flags) != 0) {
++      Logger::err(str::format("SDL2 WSI: enterFullscreenMode: SDL_SetWindowFullscreen: ", SDL_GetError()));
++      return false;
++    }
++
++    return true;
++  }
++
++
++  bool leaveFullscreenMode(
++          HWND             hWindow,
++          DxvkWindowState* pState) {
++    SDL_Window* window = fromHwnd(hWindow);
++
++    if (SDL_SetWindowFullscreen(window, 0) != 0) {
++      Logger::err(str::format("SDL2 WSI: leaveFullscreenMode: SDL_SetWindowFullscreen: ", SDL_GetError()));
++      return false;
++    }
++
++    return true;
++  }
++
++
++  bool restoreDisplayMode(HMONITOR hMonitor) {
++    const int32_t displayId = fromHmonitor(hMonitor);
++    return isDisplayValid(displayId);
++  }
++
++
++  HMONITOR getWindowMonitor(HWND hWindow) {
++    SDL_Window* window      = fromHwnd(hWindow);
++    const int32_t displayId = SDL_GetWindowDisplayIndex(window);
++
++    return toHmonitor(displayId);
++  }
++
++
++  bool isWindow(HWND hWindow) {
++    SDL_Window* window = fromHwnd(hWindow);
++    return window != nullptr;
++  }
++
++}
+\ No newline at end of file
+diff --git a/src/wsi/win32/wsi_mode_win32.cpp b/src/wsi/win32/wsi_mode_win32.cpp
+new file mode 100644
+index 00000000..45987945
+--- /dev/null
++++ b/src/wsi/win32/wsi_mode_win32.cpp
+@@ -0,0 +1,62 @@
++#include "../wsi_mode.h"
++
++#include "../../util/log/log.h"
++
++namespace dxvk::wsi {
++
++  static inline void convertMode(const DEVMODEW& mode, WsiMode* pMode) {
++    pMode->width         = mode.dmPelsWidth;
++    pMode->height        = mode.dmPelsHeight;
++    pMode->refreshRate   = WsiRational{ mode.dmDisplayFrequency * 1000, 1000 }; 
++    pMode->bitsPerPixel  = mode.dmBitsPerPel;
++    pMode->interlaced    = mode.dmDisplayFlags & DM_INTERLACED;
++  }
++
++
++  static inline bool retrieveDisplayMode(
++          HMONITOR         hMonitor,
++          DWORD            ModeNumber,
++          WsiMode*        pMode) {
++    // Query monitor info to get the device name
++    ::MONITORINFOEXW monInfo;
++    monInfo.cbSize = sizeof(monInfo);
++
++    if (!::GetMonitorInfoW(hMonitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
++      Logger::err("Win32 WSI: retrieveDisplayMode: Failed to query monitor info");
++      return false;
++    }
++
++    DEVMODEW devMode = { };
++    devMode.dmSize = sizeof(devMode);
++    
++    if (!::EnumDisplaySettingsW(monInfo.szDevice, ModeNumber, &devMode))
++      return false;
++
++    convertMode(devMode, pMode);
++
++    return true;
++  }
++
++
++  bool getDisplayMode(
++          HMONITOR         hMonitor,
++          uint32_t         ModeNumber,
++          WsiMode*         pMode) {
++    return retrieveDisplayMode(hMonitor, ModeNumber, pMode);
++  }
++
++
++  bool getCurrentDisplayMode(
++          HMONITOR         hMonitor,
++          WsiMode*         pMode) {
++    return retrieveDisplayMode(hMonitor, ENUM_CURRENT_SETTINGS, pMode);
++  }
++
++
++  bool getDesktopDisplayMode(
++          HMONITOR         hMonitor,
++          WsiMode*         pMode) {
++    return retrieveDisplayMode(hMonitor, ENUM_REGISTRY_SETTINGS, pMode);
++  }
++  
++}
+\ No newline at end of file
+diff --git a/src/wsi/win32/wsi_monitor_win32.cpp b/src/wsi/win32/wsi_monitor_win32.cpp
+new file mode 100644
+index 00000000..b6b135f0
+--- /dev/null
++++ b/src/wsi/win32/wsi_monitor_win32.cpp
+@@ -0,0 +1,79 @@
++#include "../wsi_monitor.h"
++
++#include "../../util/log/log.h"
++
++#include <cstring>
++
++namespace dxvk::wsi {
++
++  HMONITOR getDefaultMonitor() {
++    return ::MonitorFromPoint({ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
++  }
++
++  struct MonitorEnumInfo {
++    UINT      iMonitorId;
++    HMONITOR  oMonitor;
++  };
++
++  static BOOL CALLBACK MonitorEnumProc(
++          HMONITOR                  hmon,
++          HDC                       hdc,
++          LPRECT                    rect,
++          LPARAM                    lp) {
++    auto data = reinterpret_cast<MonitorEnumInfo*>(lp);
++
++    if (data->iMonitorId--)
++      return TRUE; /* continue */
++
++    data->oMonitor = hmon;
++    return FALSE; /* stop */
++  }
++
++  HMONITOR enumMonitors(uint32_t index) {
++    MonitorEnumInfo info;
++    info.iMonitorId = index;
++    info.oMonitor   = nullptr;
++
++    ::EnumDisplayMonitors(
++      nullptr, nullptr, &MonitorEnumProc,
++      reinterpret_cast<LPARAM>(&info));
++
++    return info.oMonitor;
++  }
++
++
++  bool getDisplayName(
++          HMONITOR         hMonitor,
++          WCHAR            (&Name)[32]) {
++    // Query monitor info to get the device name
++    ::MONITORINFOEXW monInfo;
++    monInfo.cbSize = sizeof(monInfo);
++
++    if (!::GetMonitorInfoW(hMonitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
++      Logger::err("Win32 WSI: getDisplayName: Failed to query monitor info");
++      return false;
++    }
++
++    std::memcpy(Name, monInfo.szDevice, sizeof(Name));
++
++    return true;
++  }
++
++
++  bool getDesktopCoordinates(
++          HMONITOR         hMonitor,
++          RECT*            pRect) {
++    ::MONITORINFOEXW monInfo;
++    monInfo.cbSize = sizeof(monInfo);
++
++    if (!::GetMonitorInfoW(hMonitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
++      Logger::err("Win32 WSI: getDisplayName: Failed to query monitor info");
++      return false;
++    }
++
++    *pRect = monInfo.rcMonitor;
++
++    return true;
++  }
++
++}
+\ No newline at end of file
+diff --git a/src/wsi/win32/wsi_presenter_win32.cpp b/src/wsi/win32/wsi_presenter_win32.cpp
+new file mode 100644
+index 00000000..b3ff9b5a
+--- /dev/null
++++ b/src/wsi/win32/wsi_presenter_win32.cpp
+@@ -0,0 +1,23 @@
++#include "../wsi_presenter.h"
++
++namespace dxvk::wsi {
++
++  VkResult createSurface(
++          HWND                hWindow,
++    const Rc<vk::InstanceFn>& vki,
++          VkSurfaceKHR*       pSurface) {
++    HINSTANCE hInstance = reinterpret_cast<HINSTANCE>(
++      GetWindowLongPtr(hWindow, GWLP_HINSTANCE));
++
++    VkWin32SurfaceCreateInfoKHR info;
++    info.sType      = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
++    info.pNext      = nullptr;
++    info.flags      = 0;
++    info.hinstance  = hInstance;
++    info.hwnd       = hWindow;
++    
++    return vki->vkCreateWin32SurfaceKHR(
++      vki->instance(), &info, nullptr, pSurface);
++  }
++
++}
+\ No newline at end of file
+diff --git a/src/wsi/win32/wsi_window_win32.cpp b/src/wsi/win32/wsi_window_win32.cpp
+new file mode 100644
+index 00000000..1c37dc7a
+--- /dev/null
++++ b/src/wsi/win32/wsi_window_win32.cpp
+@@ -0,0 +1,266 @@
++#include "../wsi_window.h"
++#include "../wsi_mode.h"
++#include "../wsi_monitor.h"
++
++#include "../../util/util_string.h"
++#include "../../util/log/log.h"
++
++namespace dxvk::wsi {
++
++  static bool getMonitorDisplayMode(
++          HMONITOR                hMonitor,
++          DWORD                   modeNum,
++          DEVMODEW*               pMode) {
++    ::MONITORINFOEXW monInfo;
++    monInfo.cbSize = sizeof(monInfo);
++
++    if (!::GetMonitorInfoW(hMonitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
++      Logger::err("Failed to query monitor info");
++      return false;
++    }
++
++    return ::EnumDisplaySettingsW(monInfo.szDevice, modeNum, pMode);
++  }
++
++
++  static bool setMonitorDisplayMode(
++          HMONITOR                hMonitor,
++          DEVMODEW*               pMode) {
++    ::MONITORINFOEXW monInfo;
++    monInfo.cbSize = sizeof(monInfo);
++
++    if (!::GetMonitorInfoW(hMonitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
++      Logger::err("Failed to query monitor info");
++      return E_FAIL;
++    }
++
++    Logger::info(str::format("Setting display mode: ",
++      pMode->dmPelsWidth, "x", pMode->dmPelsHeight, "@",
++      pMode->dmDisplayFrequency));
++
++    DEVMODEW curMode = { };
++    curMode.dmSize = sizeof(curMode);
++
++    if (getMonitorDisplayMode(hMonitor, ENUM_CURRENT_SETTINGS, &curMode)) {
++      bool eq = curMode.dmPelsWidth  == pMode->dmPelsWidth
++             && curMode.dmPelsHeight == pMode->dmPelsHeight
++             && curMode.dmBitsPerPel == pMode->dmBitsPerPel;
++
++      if (pMode->dmFields & DM_DISPLAYFREQUENCY)
++        eq &= curMode.dmDisplayFrequency == pMode->dmDisplayFrequency;
++
++      if (eq)
++        return true;
++    }
++
++    LONG status = ::ChangeDisplaySettingsExW(monInfo.szDevice,
++      pMode, nullptr, CDS_FULLSCREEN, nullptr);
++
++    if (status != DISP_CHANGE_SUCCESSFUL) {
++      pMode->dmFields &= ~DM_DISPLAYFREQUENCY;
++
++      status = ::ChangeDisplaySettingsExW(monInfo.szDevice,
++        pMode, nullptr, CDS_FULLSCREEN, nullptr);
++    }
++
++    return status == DISP_CHANGE_SUCCESSFUL;
++  }
++
++
++  static BOOL CALLBACK restoreMonitorDisplayModeCallback(
++          HMONITOR                hMonitor,
++          HDC                     hDC,
++          LPRECT                  pRect,
++          LPARAM                  pUserdata) {
++    auto success = reinterpret_cast<bool*>(pUserdata);
++
++    DEVMODEW devMode = { };
++    devMode.dmSize = sizeof(devMode);
++
++    if (!getMonitorDisplayMode(hMonitor, ENUM_REGISTRY_SETTINGS, &devMode)) {
++      *success = false;
++      return false;
++    }
++
++    Logger::info(str::format("Restoring display mode: ",
++      devMode.dmPelsWidth, "x", devMode.dmPelsHeight, "@",
++      devMode.dmDisplayFrequency));
++
++    if (!setMonitorDisplayMode(hMonitor, &devMode)) {
++      *success = false;
++      return false;
++    }
++
++    return true;
++  }
++
++
++  void getWindowSize(
++        HWND      hWindow,
++        uint32_t* pWidth,
++        uint32_t* pHeight) {
++    RECT rect = { };
++    ::GetClientRect(hWindow, &rect);
++    
++    if (pWidth)
++      *pWidth = rect.right - rect.left;
++    
++    if (pHeight)
++      *pHeight = rect.bottom - rect.top;
++  }
++
++
++  void resizeWindow(
++          HWND             hWindow,
++          DxvkWindowState* pState,
++          uint32_t         Width,
++          uint32_t         Height) {
++    // Adjust window position and size
++    RECT newRect = { 0, 0, 0, 0 };
++    RECT oldRect = { 0, 0, 0, 0 };
++    
++    ::GetWindowRect(hWindow, &oldRect);
++    ::MapWindowPoints(HWND_DESKTOP, ::GetParent(hWindow), reinterpret_cast<POINT*>(&oldRect), 1);
++    ::SetRect(&newRect, 0, 0, Width, Height);
++    ::AdjustWindowRectEx(&newRect,
++      ::GetWindowLongW(hWindow, GWL_STYLE), FALSE,
++      ::GetWindowLongW(hWindow, GWL_EXSTYLE));
++    ::SetRect(&newRect, 0, 0, newRect.right - newRect.left, newRect.bottom - newRect.top);
++    ::OffsetRect(&newRect, oldRect.left, oldRect.top);    
++    ::MoveWindow(hWindow, newRect.left, newRect.top,
++        newRect.right - newRect.left, newRect.bottom - newRect.top, TRUE);
++  }
++
++
++  bool setWindowMode(
++          HMONITOR                hMonitor,
++          HWND                    hWindow,
++    const WsiMode*                pMode,
++          bool                    EnteringFullscreen) {
++    ::MONITORINFOEXW monInfo;
++    monInfo.cbSize = sizeof(monInfo);
++
++    if (!::GetMonitorInfoW(hMonitor, reinterpret_cast<MONITORINFO*>(&monInfo))) {
++      Logger::err("Win32 WSI: setWindowMode: Failed to query monitor info");
++      return false;
++    }
++    
++    DEVMODEW devMode = { };
++    devMode.dmSize       = sizeof(devMode);
++    devMode.dmFields     = DM_PELSWIDTH | DM_PELSHEIGHT | DM_BITSPERPEL;
++    devMode.dmPelsWidth  = pMode->width;
++    devMode.dmPelsHeight = pMode->height;
++    devMode.dmBitsPerPel = pMode->bitsPerPixel;
++    
++    if (pMode->refreshRate.numerator != 0)  {
++      devMode.dmFields |= DM_DISPLAYFREQUENCY;
++      devMode.dmDisplayFrequency = pMode->refreshRate.numerator
++                                 / pMode->refreshRate.denominator;
++    }
++    
++    Logger::info(str::format("Setting display mode: ",
++      devMode.dmPelsWidth, "x", devMode.dmPelsHeight, "@",
++      devMode.dmDisplayFrequency));
++    
++    bool status = setMonitorDisplayMode(hMonitor, &devMode);
++
++    if (status && !EnteringFullscreen && hWindow != nullptr) {
++      RECT newRect = { };
++      getDesktopCoordinates(hMonitor, &newRect);
++      
++      ::MoveWindow(hWindow, newRect.left, newRect.top,
++          newRect.right - newRect.left, newRect.bottom - newRect.top, TRUE);
++    }
++    
++    return status == DISP_CHANGE_SUCCESSFUL;
++  }
++
++
++  bool enterFullscreenMode(
++          HMONITOR         hMonitor,
++          HWND             hWindow,
++          DxvkWindowState* pState,
++          bool             ModeSwitch) {
++    // Find a display mode that matches what we need
++    ::GetWindowRect(hWindow, &pState->rect);
++
++    // Change the window flags to remove the decoration etc.
++    LONG style   = ::GetWindowLongW(hWindow, GWL_STYLE);
++    LONG exstyle = ::GetWindowLongW(hWindow, GWL_EXSTYLE);
++    
++    pState->style = style;
++    pState->exstyle = exstyle;
++    
++    style   &= ~WS_OVERLAPPEDWINDOW;
++    exstyle &= ~WS_EX_OVERLAPPEDWINDOW;
++    
++    ::SetWindowLongW(hWindow, GWL_STYLE, style);
++    ::SetWindowLongW(hWindow, GWL_EXSTYLE, exstyle);
++
++    RECT rect = { };
++    getDesktopCoordinates(hMonitor, &rect);
++
++    ::SetWindowPos(hWindow, HWND_TOPMOST,
++      rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
++      SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE);
++
++    return true;
++  }
++
++
++  bool leaveFullscreenMode(
++          HWND             hWindow,
++          DxvkWindowState* pState) {
++    // Only restore the window style if the application hasn't
++    // changed them. This is in line with what native DXGI does.
++    LONG curStyle   = ::GetWindowLongW(hWindow, GWL_STYLE)   & ~WS_VISIBLE;
++    LONG curExstyle = ::GetWindowLongW(hWindow, GWL_EXSTYLE) & ~WS_EX_TOPMOST;
++
++    if (curStyle   == (pState->style   & ~(WS_VISIBLE    | WS_OVERLAPPEDWINDOW))
++     && curExstyle == (pState->exstyle & ~(WS_EX_TOPMOST | WS_EX_OVERLAPPEDWINDOW))) {
++      ::SetWindowLongW(hWindow, GWL_STYLE,   pState->style);
++      ::SetWindowLongW(hWindow, GWL_EXSTYLE, pState->exstyle);
++    }
++
++    // Restore window position and apply the style
++    const RECT rect = pState->rect;
++    
++    ::SetWindowPos(hWindow, (pState->exstyle & WS_EX_TOPMOST) ? HWND_TOPMOST : HWND_NOTOPMOST,
++      rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
++      SWP_FRAMECHANGED | SWP_NOACTIVATE);
++
++    return true;
++  }
++
++
++  bool restoreDisplayMode(HMONITOR hMonitor) {
++    if (!hMonitor)
++      return false;
++
++    bool success = true;
++    bool result = ::EnumDisplayMonitors(nullptr, nullptr,
++      &restoreMonitorDisplayModeCallback,
++      reinterpret_cast<LPARAM>(&success));
++
++    return result && success;
++  }
++
++
++  HMONITOR getWindowMonitor(HWND hWindow) {
++    RECT windowRect = { 0, 0, 0, 0 };
++    ::GetWindowRect(hWindow, &windowRect);
++    
++    HMONITOR monitor = ::MonitorFromPoint(
++      { (windowRect.left + windowRect.right) / 2,
++        (windowRect.top + windowRect.bottom) / 2 },
++      MONITOR_DEFAULTTOPRIMARY);
++
++    return monitor;
++  }
++
++
++  bool isWindow(HWND hWindow) {
++    return ::IsWindow(hWindow);
++  }
++
++}
+\ No newline at end of file
+diff --git a/src/wsi/wsi_mode.h b/src/wsi/wsi_mode.h
+new file mode 100644
+index 00000000..fb622367
+--- /dev/null
++++ b/src/wsi/wsi_mode.h
+@@ -0,0 +1,70 @@
++#pragma once
++
++#include <cstdint>
++
++#include <windows.h>
++
++#include "wsi_monitor.h"
++
++namespace dxvk::wsi {
++
++  /**
++   * \brief Rational number. Eg. 2/3
++   */
++  struct WsiRational {
++    uint32_t numerator;
++    uint32_t denominator;
++  };
++
++  /**
++   * \brief Display mode
++   */
++  struct WsiMode {
++    uint32_t     width;
++    uint32_t     height;
++    WsiRational  refreshRate;
++    uint32_t     bitsPerPixel;
++    bool         interlaced;
++  };
++
++  /**
++    * \brief Get the nth display mode
++    * 
++    * \param [in] hMonitor The monitor
++    * \param [in] ModeNumber The nth mode
++    * \param [out] pMode The resultant mode
++    * \returns \c true on success, \c false if the mode could not be found
++    */
++  bool getDisplayMode(
++          HMONITOR         hMonitor,
++          uint32_t         ModeNumber,
++          WsiMode*         pMode);
++
++  /**
++    * \brief Get the current display mode
++    *
++    * This is the display mode right now.
++    * 
++    * \param [in] hMonitor The monitor
++    * \param [out] pMode The resultant mode
++    * \returns \c true on success, \c false on failure
++    */
++  bool getCurrentDisplayMode(
++          HMONITOR         hMonitor,
++          WsiMode*         pMode);
++
++  /**
++    * \brief Get the current display mode
++    *
++    * This is the display mode of the user's
++    * default desktop.
++    * 
++    * \param [in] hMonitor The monitor
++    * \param [out] pMode The resultant mode
++    * \returns \c true on success, \c false on failure
++    */
++  bool getDesktopDisplayMode(
++          HMONITOR         hMonitor,
++          WsiMode*         pMode);
++
++}
+\ No newline at end of file
+diff --git a/src/wsi/wsi_monitor.h b/src/wsi/wsi_monitor.h
+new file mode 100644
+index 00000000..d0d324cb
+--- /dev/null
++++ b/src/wsi/wsi_monitor.h
+@@ -0,0 +1,48 @@
++#pragma once
++
++#include <windows.h>
++
++#include <array>
++#include <cstdint>
++
++namespace dxvk::wsi {
++
++  /**
++    * \brief Default monitor
++    *
++    * \returns The monitor of given index
++    */
++  HMONITOR getDefaultMonitor();
++
++  /**
++    * \brief Enumerators monitors on the system
++    *
++    * \returns The monitor of given index
++    */
++  HMONITOR enumMonitors(uint32_t index);
++
++  /**
++    * \brief Get the GDI name of a HMONITOR
++    *
++    * Get the GDI Device Name of a HMONITOR to
++    * return to the end user.
++    *
++    * This typically looks like \.\\DISPLAY1
++    * and has a maximum length of 32 chars.
++    *
++    * \param [in] hMonitor The monitor
++    * \param [out] Name The GDI display name
++    * \returns \c true on success, \c false if an error occured
++    */
++  bool getDisplayName(
++          HMONITOR         hMonitor,
++          WCHAR            (&Name)[32]);
++
++  /**
++    * \brief Get the encompassing coords of a monitor
++    */
++  bool getDesktopCoordinates(
++          HMONITOR         hMonitor,
++          RECT*            pRect);
++  
++}
+diff --git a/src/wsi/wsi_presenter.h b/src/wsi/wsi_presenter.h
+new file mode 100644
+index 00000000..152d05a5
+--- /dev/null
++++ b/src/wsi/wsi_presenter.h
+@@ -0,0 +1,21 @@
++#pragma once
++
++#include <windows.h>
++
++#include "../vulkan/vulkan_loader.h"
++
++namespace dxvk::wsi {
++
++  /**
++    * \brief Create a surface for a window
++    * 
++    * \param [in] hWindow The window
++    * \param [in] vki The instance
++    * \param [out] pSurface The surface
++    */
++  VkResult createSurface(
++          HWND                hWindow,
++    const Rc<vk::InstanceFn>& vki,
++          VkSurfaceKHR*       pSurface);
++
++}
+\ No newline at end of file
+diff --git a/src/wsi/wsi_window.h b/src/wsi/wsi_window.h
+new file mode 100644
+index 00000000..5de022b2
+--- /dev/null
++++ b/src/wsi/wsi_window.h
+@@ -0,0 +1,115 @@
++#pragma once
++
++// The windows.h will define HWND/HMONITOR
++// to be types that it wants for the wsi we are compiling against.
++// ie. HWND     = their own window data ptr (eg. SDL_Window)
++//     HMONTIOR = their own monitor data ptr/a display index
++
++#include <windows.h>
++
++#include "wsi_mode.h"
++
++namespace dxvk::wsi {
++
++  /**
++    * \brief Impl-dependent state
++    */
++  struct DxvkWindowState {
++#ifdef DXVK_WSI_WIN32
++    LONG style   = 0;
++    LONG exstyle = 0;
++    RECT rect    = { 0, 0, 0, 0 };
++#endif
++  };
++
++  /**
++    * \brief The size of the window
++    * 
++    * \param [in] hWindow The window
++    * \param [out] pWidth The width (optional)
++    * \param [out] pHeight The height (optional)
++    */
++  void getWindowSize(
++          HWND      hWindow,
++          uint32_t* pWidth,
++          uint32_t* pWeight);
++
++  /**
++    * \brief Resize a window
++    * 
++    * \param [in] hWindow The window
++    * \param [in] pState The swapchain's window state
++    * \param [in] Width The new width
++    * \param [in] Height The new height
++    */
++  void resizeWindow(
++          HWND             hWindow,
++          DxvkWindowState* pState,
++          uint32_t         Width,
++          uint32_t         Height);
++
++  /**
++    * \brief Sets the display mode for a window/monitor
++    * 
++    * \param [in] hMonitor The monitor
++    * \param [in] hWindow The window
++    * \param [in] pMode The mode
++    * \param [in] EnteringFullscreen Are we entering fullscreen?
++    * \returns \c true on success, \c false on failure
++    */
++  bool setWindowMode(
++          HMONITOR         hMonitor,
++          HWND             hWindow,
++    const WsiMode*         pMode,
++          bool             EnteringFullscreen);
++
++  /**
++    * \brief Enter fullscreen mode for a window & monitor
++    * 
++    * \param [in] hMonitor The monitor
++    * \param [in] hWindow The window
++    * \param [in] pState The swapchain's window state
++    * \param [in] ModeSwitch Whether mode switching is allowed
++    * \returns \c true on success, \c false on failure
++    */
++  bool enterFullscreenMode(
++          HMONITOR         hMonitor,
++          HWND             hWindow,
++          DxvkWindowState* pState,
++          bool             ModeSwitch);
++
++  /**
++    * \brief Exit fullscreen mode for a window
++    * 
++    * \param [in] hWindow The window
++    * \param [in] pState The swapchain's window state
++    * \returns \c true on success, \c false on failure
++    */
++  bool leaveFullscreenMode(
++          HWND             hWindow,
++          DxvkWindowState* pState);
++
++  /**
++    * \brief Restores the display mode if necessary
++    * 
++    * \param [in] hMonitor The monitor to restore the mode of
++    * \returns \c true on success, \c false on failure
++    */
++  bool restoreDisplayMode(HMONITOR hMonitor);
++
++  /**
++    * \brief The monitor a window is on
++    * 
++    * \param [in] hWindow The window
++    * \returns The monitor the window is on
++    */
++  HMONITOR getWindowMonitor(HWND hWindow);
++
++  /**
++    * \brief Is a HWND a window?
++    *
++    * \param [in] hWindow The window
++    * \returns Is it a window?
++    */
++  bool isWindow(HWND hWindow);
++}
+\ No newline at end of file
+diff --git a/include/native/windows/windows_base.h b/include/native/windows/windows_base.h
+index c4e625e5..205b93b8 100644
+--- a/include/native/windows/windows_base.h
++++ b/include/native/windows/windows_base.h
+@@ -313,3 +313,11 @@ typedef struct RGNDATA {
+ 
+ #define FAILED(hr) ((HRESULT)(hr) < 0)
+ #define SUCCEEDED(hr) ((HRESULT)(hr) >= 0)
++
++// DXVK 1.10's shared resources and fences (round 28, macOS): handles don't exist natively.
++#ifndef INVALID_HANDLE_VALUE
++#define INVALID_HANDLE_VALUE ((HANDLE)-1)
++#endif
++inline BOOL CloseHandle(HANDLE) { return TRUE; }
++inline BOOL SetEvent(HANDLE) { return FALSE; }
++

@@ -280,6 +280,20 @@ p2ce-moltenvk-features: tools/moltenvk_features.c
 	$(CC) -Ideps/dxvk-src/include/vulkan/include tools/moltenvk_features.c $(MOLTENVK_LIB)/libMoltenVK.dylib \
 		"-Wl,-rpath,$(CURDIR)/$(MOLTENVK_LIB)" -o build/p2ce/moltenvk-features
 	./build/p2ce/moltenvk-features 2>/dev/null
+# Round 28 (plan round F): DXVK 1.10 native on MoltenVK, built by
+# tools/build_dxvk_macos.sh, clears an SDL window and reads the colour back.
+# Never part of make check (fetches and builds DXVK, MoltenVK, glslang).
+P2CE_DXVK ?= deps/dxvk-macos
+.PHONY: p2ce-dxvk-clear
+p2ce-dxvk-clear: tools/dxvk_clear_test.cpp tools/build_dxvk_macos.sh
+	tools/build_dxvk_macos.sh >/dev/null
+	@mkdir -p build/p2ce
+	clang++ -std=c++17 -w -DDXVK_NATIVE -Ideps/dxvk-macos-src/include/native/windows \
+		-Ideps/dxvk-macos-src/include/native/directx -Ideps/dxvk-macos-src/include/native -Ideps/dxvk-macos-src/include \
+		-I$(dir $(P2CE_SDL2))../include/SDL2 tools/dxvk_clear_test.cpp $(P2CE_DXVK)/libdxvk_d3d11.dylib \
+		$(P2CE_DXVK)/libdxvk_dxgi.dylib $(P2CE_SDL2) "-Wl,-rpath,$(CURDIR)/$(P2CE_DXVK)" \
+		"-Wl,-rpath,$(CURDIR)/$(dir $(P2CE_SDL2))" -o build/p2ce/dxvk-clear
+	SDL_VULKAN_LIBRARY="$(CURDIR)/$(P2CE_DXVK)/libMoltenVK.dylib" ./build/p2ce/dxvk-clear 1
 .PHONY: p2ce-launch
 p2ce-launch: $(X64_RUNTIME) runtime/x64/rt64.h src/main64.c tools/run64.py
 	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-launch: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
