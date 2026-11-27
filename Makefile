@@ -266,7 +266,7 @@ P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/l
 	bin/linux64/filesystem_stdio.so bin/linux64/engine.so $(P2CE_SYSTEMS)
 P2CE_STEAM_API ?= $(CURDIR)/deps/steamworks-2024.8.0/steam_api.bundle/Contents/MacOS/libsteam_api.dylib
 P2CE_APPID ?= 440000
-P2CE_ARGS ?= -game p2ce -textmode -novid -nosound -shaderapi shaderapiempty
+P2CE_ARGS ?= -game p2ce -textmode -novid -nosound -shaderapi shaderapiempty -nominidumps -nobreakpad -nocrashdialog
 P2CE_CONTENT ?= $(subst depot_440005,depot_440002,$(P2CE_ROOT))
 P2CE_TIMEOUT ?= 120
 # -O0 by default: engine.so is 170 C files; -O1 takes about 2 GB and minutes per file.

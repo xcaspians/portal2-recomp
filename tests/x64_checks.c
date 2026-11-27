@@ -341,6 +341,21 @@ int main(void) {
     rt64_find_shim("access")(&cpu);
     EXPECT(cpu.r[RAX] == 0);
 
+    // Sentry's crash dump consent (P2CE's libtier0): answered "No" by the runtime, never shown.
+    {
+        struct { uint32_t flags; int32_t buttonid; const char *text; } buttons[2] = {{1, 7, "Yes"}, {2, 3, "No"}};
+        struct { uint32_t flags; void *window; const char *title; const char *message; int32_t n; void *b; void *colors; }
+            box = {0, NULL, "Consent for Crash Dump Upload", "Allow automatic upload of crash dumps?", 2, buttons, NULL};
+        int32_t chosen = 99;
+        cpu.r[RDI] = (uint64_t)(uintptr_t)&box; cpu.r[RSI] = (uint64_t)(uintptr_t)&chosen;
+        rt64_find_shim("SDL_ShowMessageBox")(&cpu);
+        EXPECT(cpu.r[RAX] == 0 && chosen == 3);
+        buttons[1].text = "Don't allow";   // no recognisable text: the Escape default
+        chosen = 99;
+        rt64_find_shim("SDL_ShowMessageBox")(&cpu);
+        EXPECT(cpu.r[RAX] == 0 && chosen == 3);
+    }
+
     // Native libraries standing in for Linux ones (round 28: P2CE's SDL2, then DXVK).
     EXPECT(rt64_native_library("libz.so.1") == 0 && rt64_native_library("/usr/lib/x86_64-linux-gnu/libz.so.1") == 0);
     EXPECT(rt64_native_library("libz.so") == 0 && rt64_native_library("libzz.so.1") == -1);
