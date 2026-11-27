@@ -206,6 +206,9 @@ int main(void) {
     rt64_native_call(&cpu, (uint64_t)(uintptr_t)native_half);
     EXPECT(cpu.xmm[0].g[0] == 3.5);
     EXPECT(rt64_is_native((uint64_t)(uintptr_t)native_half) && !rt64_is_native(sym("x64_sum8")));
+    // Asked again (the remembered answer): still native, and lifted code still isn't.
+    for (int i = 0; i < 3; ++i)
+        EXPECT(rt64_is_native((uint64_t)(uintptr_t)native_half) && !rt64_is_native(sym("x64_sum8")) && !rt64_is_native(0));
     // Through the dispatcher, as an indirect call from lifted code would arrive.
     rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
     cpu.xmm[0].g[0] = 9.0;
