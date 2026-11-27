@@ -84,6 +84,11 @@ def disassemble(path, objdump='objdump', start=None, stop=None, base=0):
         args = ' '.join(re.sub(r'\s*<[^>]*>', '', m[4]).split('#', 1)[0].split())
         if base and _BRANCH.fullmatch(m[3]) and re.fullmatch(r'0x[0-9a-f]+', args):
             args = f'{int(args, 16) - base:#x}'
+        elif base and m[3] in ('rep', 'repne', 'repe', 'repnz', 'repz'):
+            # A prefixed branch (`repne jne 0x...`: MPX's BND).
+            b = re.fullmatch(r'(\w+) (0x[0-9a-f]+)', args)
+            if b and _BRANCH.fullmatch(b[1]):
+                args = f'{b[1]} {int(b[2], 16) - base:#x}'
         insns[pc] = (pc + size, m[3], args)
     # objdump prints LOCK on its own line; it belongs to the next instruction.
     for pc, (nxt, op, args) in list(insns.items()):
@@ -398,15 +403,15 @@ class Module:
 
 
     def image_base_register(self, start, reg):
-        """True when `reg` holds the module's own base (offset 0) at `start`: the
-        last write to it before `start` is `lea reg, [rip +- d]` reaching offset 0."""
-        for p, (nxt, op, args) in [(start, self.insns[start])] + self.previous(start, 400):
+        """True when `reg` holds the module's own base (offset 0) just before
+        `start`: its last write is `lea reg, [rip +- d]` reaching offset 0."""
+        for p, (nxt, op, args) in self.previous(start, 400):
             parts = [x.strip() for x in args.split(',')]
             if op == 'call' and R64[GPR[reg][0]] in self.VOLATILE:
                 return False
+            if op == 'ret':
+                return False
             if not parts or GPR.get(parts[0], (None,))[0] != GPR[reg][0]:
-                if op in ('ret',):
-                    return False
                 continue
             m = re.fullmatch(r'(\w+), \[rip ([+-]) (0x[0-9a-f]+)\]', args)
             if op == 'lea' and m:
@@ -419,34 +424,45 @@ class Module:
     VOLATILE = frozenset(('rax', 'rcx', 'rdx', 'r8', 'r9', 'r10', 'r11'))
 
     def msvc_jump_table(self, pc, before, at, added):
-        """MSVC's switch (PE modules): `lea X, [__ImageBase]; [movzx I, byte ptr
-        [X + J + T1];] mov R, dword ptr [X + 4*I + T]; add R, X; jmp R`. The
-        tables hold RVAs (module offsets). Returns the targets, [] when this is
-        the pattern but the table can't be read, None when it isn't."""
+        """MSVC's switch (PE modules): `lea B, [__ImageBase]; [movzx I, byte ptr
+        [B + J + T1];] mov R, dword ptr [B + 4*I + T]; [lea X, [__ImageBase];]
+        add R, X; jmp R`. The tables hold RVAs (module offsets). Returns the
+        targets, [] when this is the pattern but the table can't be read, None
+        when it isn't."""
         if self.layout.get('format') != 'pe' or added not in GPR:
             return None
+        add_pc = before[at][0]
+        dst = [x.strip() for x in before[at][1][2].split(',')][0]
+        if dst not in GPR:
+            return None
+        # The base register is usually set by a lea a few instructions up;
+        # when it was set further away (across branches), the table is only
+        # taken with a known bound and every entry near the jump (below).
+        verified = self.image_base_register(add_pc, added)
         load = index = table = None
         for p, (nxt, op, args) in before[at + 1:at + 12]:
             m = re.fullmatch(r'(\w+), dword ptr \[(\w+) \+ 4\*(\w+) \+ (0x[0-9a-f]+)\]', args)
-            if op in ('mov', 'movsxd') and m and GPR.get(m[2], (None,))[0] == GPR[added][0]:
+            if op in ('mov', 'movsxd') and m and GPR.get(m[1], (None,))[0] == GPR[dst][0] and m[2] in GPR:
                 load, index, table = p, m[3], int(m[4], 16)
+                verified = verified and self.image_base_register(p, m[2])
                 break
             if op in ('ret', 'jmp', 'call'):
                 return None
-        if load is None or not self.image_base_register(load, added):
+        if load is None:
             return None
-        # A byte index table first (`movzx I, byte ptr [X + J + T1]`): the bound applies to it.
-        bytes_table, bound_reg = None, index
+        # A byte index table first (`movzx I, byte ptr [B + J + T1]`, either
+        # register order): the bound applies to it.
+        bytes_table, first = None, load
         for p, (nxt, op, args) in self.previous(load, 6):
             m = re.fullmatch(r'(\w+), byte ptr \[(\w+) \+ (\w+) \+ (0x[0-9a-f]+)\]', args)
-            if op == 'movzx' and m and GPR.get(m[1], (None,))[0] == GPR[index][0] \
-                    and GPR.get(m[2], (None,))[0] == GPR[added][0]:
-                bytes_table, bound_reg, load = int(m[4], 16), m[3], p
+            if op == 'movzx' and m and GPR.get(m[1], (None,))[0] == GPR[index][0] and m[2] in GPR and m[3] in GPR:
+                bytes_table, first = int(m[4], 16), p
+                verified = verified and any(self.image_base_register(p, r) for r in (m[2], m[3]))
                 break
             if op in ('ret', 'jmp', 'call'):
                 break
         count = None
-        for p, (nxt, op, args) in self.previous(load, 16):
+        for p, (nxt, op, args) in self.previous(first, 16):
             if op in ('ja', 'jae'):
                 for q, (_, op2, args2) in self.previous(p, 3):
                     m = re.fullmatch(r'(.+), (0x[0-9a-f]+)', args2)
@@ -456,8 +472,10 @@ class Module:
                 break
             if op in ('ret', 'jmp', 'call'):
                 break
+        if not verified and count is None:
+            return None
         if count is not None and not 0 < count <= 65536:
-            return []
+            return [] if verified else None
         if bytes_table is not None:
             if count is None or bytes_table + count > len(self.image):
                 return []
@@ -467,9 +485,9 @@ class Module:
             if table + 4 * k + 4 > len(self.image):
                 break
             target, = struct.unpack_from('<I', self.image, table + 4 * k)
-            if target not in self.insns or (count is None and abs(target - pc) > 0x20000):
+            if target not in self.insns or ((count is None or not verified) and abs(target - pc) > 0x20000):
                 if count is not None:
-                    return []
+                    return [] if verified else None
                 break
             targets.append(target)
         self.unbounded_tables += count is None and bool(targets)
@@ -680,6 +698,8 @@ def translate(pc, insn, mod, entry, callees):
         return string_op(m[1], {'b': 8, 'w': 16, 'd': 32, 'q': 64}[m[2]], repeat, end), [nxt]
     if repeat == 'rep' and op in ('bsf', 'tzcnt'):
         op = 'tzcnt'
+    elif repeat == 'repne' and (op in ('call', 'jmp', 'ret') or (op.startswith('j') and op[1:] in CC)):
+        repeat = None       # F2 on a branch is MPX's BND prefix (MSVC's CRT): no effect without MPX
     elif repeat:
         raise Unsupported(f'{repeat} {op}')
 

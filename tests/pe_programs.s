@@ -90,6 +90,50 @@ pe_switch2:
 .L2bytes:
     .byte 0, 1, 0, 1, 0, 1
 
+# The two-level form as MSVC also writes it: the byte table read with the
+# base register second, the RVA table through one register holding the base
+# and the base added from another (a second lea).
+.globl pe_switch3
+pe_switch3:
+    lea r9, [rip + __ImageBase]
+    cmp ecx, 3
+    ja .L3default
+    movsxd rax, ecx
+    movzx eax, byte ptr [rax + r9 + .L3bytes@IMGREL]
+    mov ecx, dword ptr [r9 + 4*rax + .L3table@IMGREL]
+    lea rax, [rip + __ImageBase]
+    add rcx, rax
+    jmp rcx
+.L3low:
+    mov eax, 30
+    ret
+.L3high:
+    mov eax, 31
+    ret
+.L3default:
+    mov eax, 39
+    ret
+    .p2align 2
+.L3table:
+    .long .L3low@IMGREL
+    .long .L3high@IMGREL
+.L3bytes:
+    .byte 0, 0, 1, 1
+
+# MPX's BND prefix (F2) on branches, as in MSVC's CRT: no effect.
+.globl pe_bnd
+pe_bnd:
+    xor eax, eax
+    test ecx, ecx
+    .byte 0xf2
+    jne .Lbnd_one
+    .byte 0xf2
+    ret
+.Lbnd_one:
+    mov eax, 1
+    .byte 0xf2
+    ret
+
 # Imports through the IAT: by name, with five arguments, by ordinal.
 .globl pe_import_twice
 pe_import_twice:

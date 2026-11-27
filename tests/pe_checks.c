@@ -63,6 +63,11 @@ int main(void) {
     for (uint64_t i = 0; i < 7; ++i)
         CHECK((uint32_t)call(c, "pe_switch2", 1, (const uint64_t[]){i}) == (i > 5 ? 0 : i & 1 ? 1 : 2),
               "two-level MSVC jump table, case %llu", (unsigned long long)i);
+    for (uint64_t i = 0; i < 5; ++i)
+        CHECK((uint32_t)call(c, "pe_switch3", 1, (const uint64_t[]){i}) == (i > 3 ? 39u : i < 2 ? 30u : 31u),
+              "two-level MSVC jump table, base added from a second register, case %llu", (unsigned long long)i);
+    CHECK(call(c, "pe_bnd", 1, (const uint64_t[]){0}) == 0 && call(c, "pe_bnd", 1, (const uint64_t[]){5}) == 1,
+          "BND-prefixed branches and returns");
     CHECK(call(c, "pe_import_twice", 1, (const uint64_t[]){21}) == 42, "import by name");
     CHECK(call(c, "pe_import_sum5", 0, NULL) == 54321, "import with a stack argument");
     CHECK(call(c, "pe_import_ordinal", 0, NULL) == 7, "import by ordinal");

@@ -28,7 +28,7 @@ class PeFixture(unittest.TestCase):
                        check=True)
         cls.dll = os.path.join(cls.dir.name, 'pefix.dll')
         pe_link.link(obj, cls.dll, 'pefix.dll', ['twice=pehost.dll', 'sum5=pehost.dll', 'seven=pehost.dll#7'],
-                     ['pe_add5', 'pe_switch', 'pe_hidden_call'])
+                     ['pe_add5', 'pe_switch', 'pe_switch3', 'pe_bnd', 'pe_hidden_call'])
         cls.layout = peprep64.prepare(cls.dll, cls.dir.name)
 
     @classmethod
@@ -65,7 +65,7 @@ class PeFixture(unittest.TestCase):
     def test_msvc_jump_table(self):
         bodies, report = lift64.lift_module(self.layout, [], every=True, sweep=False)
         self.assertEqual(report['unsupported'], 0)
-        self.assertGreaterEqual(report['table_jumps'], 1)
+        self.assertEqual(report['table_jumps'], 2)     # pe_switch and pe_switch3 (the exported ones)
         self.assertEqual(report['dispatch_jumps'], 0)
 
 
