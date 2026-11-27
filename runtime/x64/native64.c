@@ -18,6 +18,7 @@
 // x86-64). Floating-point arguments past the eighth aren't covered.
 #include "rt64.h"
 #include <dlfcn.h>
+#include <stdatomic.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
@@ -217,10 +218,20 @@ void rt64_native_call_win(CPU64 *c, uint64_t fn) {
 #endif
 }
 
+// Every indirect transfer that isn't lifted code asks this (rt64_dispatch): for a game calling
+// a native library's methods each frame (Skyrim into DXVK), dladdr's symbol search was a
+// visible part of the frame. Addresses found native are remembered in a small direct-mapped
+// table (native images stay loaded: nothing here unloads them); others are asked each time.
+static _Atomic uint64_t native_seen[4096];
 int rt64_is_native(uint64_t address) {
+    if (!address) return 0;
+    _Atomic uint64_t *slot = &native_seen[(address >> 2 ^ address >> 14) & 4095];
+    if (atomic_load_explicit(slot, memory_order_relaxed) == address) return 1;
     Dl_info info;
     // Lifted modules are mapped by the runtime, not by dyld: dladdr knows only native images.
-    return address && dladdr((const void *)(uintptr_t)address, &info) && info.dli_fbase;
+    int native = dladdr((const void *)(uintptr_t)address, &info) && info.dli_fbase;
+    if (native) atomic_store_explicit(slot, address, memory_order_relaxed);
+    return native;
 }
 
 // Native libraries standing in for Linux ones (native_libs64.h, round 28).
