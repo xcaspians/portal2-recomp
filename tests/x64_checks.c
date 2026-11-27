@@ -332,6 +332,15 @@ int main(void) {
     rt64_find_shim("faccessat")(&cpu);
     EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 2);
 
+    // Linux's CA certificate bundles open the Mac's (/etc/ssl/cert.pem): OpenSSL in P2CE's libvideo.
+    cpu.r[RDI] = (uint64_t)(uintptr_t)"/etc/ssl/certs/ca-certificates.crt"; cpu.r[RSI] = (uint64_t)(uintptr_t)"r";
+    rt64_find_shim("fopen")(&cpu);
+    EXPECT(cpu.r[RAX] != 0);
+    if (cpu.r[RAX]) fclose((FILE *)(uintptr_t)cpu.r[RAX]);
+    cpu.r[RDI] = (uint64_t)(uintptr_t)"/etc/pki/tls/cert.pem"; cpu.r[RSI] = 4;
+    rt64_find_shim("access")(&cpu);
+    EXPECT(cpu.r[RAX] == 0);
+
     // Native libraries standing in for Linux ones (round 28: P2CE's SDL2, then DXVK).
     EXPECT(rt64_native_library("libz.so.1") == 0 && rt64_native_library("/usr/lib/x86_64-linux-gnu/libz.so.1") == 0);
     EXPECT(rt64_native_library("libz.so") == 0 && rt64_native_library("libzz.so.1") == -1);

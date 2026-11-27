@@ -117,15 +117,30 @@ static void copy_on_write(const char *path) {
 }
 void rt64_prepare_write(const char *path) { copy_on_write(path); }
 
+// Linux paths with a macOS counterpart elsewhere: the trusted CA certificates
+// (OpenSSL, in P2CE's libvideo.so, tries the distributions' bundles; macOS
+// keeps the same PEM bundle at /etc/ssl/cert.pem). Other paths pass as they are.
+const char *rt64_host_path(const char *path);
+const char *rt64_host_path(const char *path) {
+    static const char *const ca_bundles[] = {"/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt",
+                                             "/etc/pki/tls/cert.pem", "/etc/ssl/ca-bundle.pem", "/usr/local/ssl/cert.pem",
+                                             "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", NULL};
+    if (!path) return path;
+    for (int i = 0; ca_bundles[i]; ++i)
+        if (!strcmp(path, ca_bundles[i])) return "/etc/ssl/cert.pem";
+    return path;
+}
+#define HP(i) rt64_host_path(S(i))
+
 static void s_open(CPU64 *c) {
     int proc = rt64_proc_open(S(0));
     if (proc != -2) { if (proc < 0) rt64_set_errno(ENOENT); RET(c, proc); return; }
     if (I(1) & 3) copy_on_write(S(0));
-    CHECK(c, open(S(0), host_open_flags(I(1)), (mode_t)ARG(c, 2)));
+    CHECK(c, open(HP(0), host_open_flags(I(1)), (mode_t)ARG(c, 2)));
 }
 static void s_openat(CPU64 *c) {
     int dir = I(0) == -100 ? AT_FDCWD : I(0);
-    CHECK(c, openat(dir, S(1), host_open_flags(I(2)), (mode_t)ARG(c, 3)));
+    CHECK(c, openat(dir, HP(1), host_open_flags(I(2)), (mode_t)ARG(c, 3)));
 }
 // An eventfd (epoll64.c) answers read, write and close itself: 1 when fd is
 // one and the operation (0 read, 1 write, 2 close) was done, its result in
@@ -151,12 +166,12 @@ static void s_dup(CPU64 *c) { CHECK(c, dup(I(0))); }
 static void s_dup2(CPU64 *c) { CHECK(c, dup2(I(0), I(1))); }
 static void s_pipe(CPU64 *c) { CHECK(c, pipe(PTR(c, 0))); }
 static void s_isatty(CPU64 *c) { RET(c, isatty(I(0))); }
-static void s_access(CPU64 *c) { CHECK(c, access(S(0), I(1))); }
+static void s_access(CPU64 *c) { CHECK(c, access(HP(0), I(1))); }
 // Linux AT_FDCWD is -100; AT_EACCESS 0x200 and AT_SYMLINK_NOFOLLOW 0x100 (macOS: 0x10, 0x20).
 static void s_faccessat(CPU64 *c) {
     int dir = I(0) == -100 ? AT_FDCWD : I(0), lf = I(3);
     int flags = (lf & 0x200 ? AT_EACCESS : 0) | (lf & 0x100 ? AT_SYMLINK_NOFOLLOW : 0);
-    CHECK(c, faccessat(dir, S(1), I(2), flags));
+    CHECK(c, faccessat(dir, HP(1), I(2), flags));
 }
 static void s_unlink(CPU64 *c) { CHECK(c, unlink(S(0))); }
 static void s_rmdir(CPU64 *c) { CHECK(c, rmdir(S(0))); }
@@ -226,11 +241,11 @@ static void stat_result(CPU64 *c, int r, const struct stat *st, uint64_t out) {
     put_stat(out, st);
     RET(c, 0);
 }
-static void s_stat(CPU64 *c) { struct stat st; stat_result(c, stat(S(0), &st), &st, ARG(c, 1)); }
-static void s_lstat(CPU64 *c) { struct stat st; stat_result(c, lstat(S(0), &st), &st, ARG(c, 1)); }
+static void s_stat(CPU64 *c) { struct stat st; stat_result(c, stat(HP(0), &st), &st, ARG(c, 1)); }
+static void s_lstat(CPU64 *c) { struct stat st; stat_result(c, lstat(HP(0), &st), &st, ARG(c, 1)); }
 static void s_fstat(CPU64 *c) { struct stat st; stat_result(c, fstat(I(0), &st), &st, ARG(c, 1)); }
-static void s_xstat(CPU64 *c) { struct stat st; stat_result(c, stat(S(1), &st), &st, ARG(c, 2)); }
-static void s_lxstat(CPU64 *c) { struct stat st; stat_result(c, lstat(S(1), &st), &st, ARG(c, 2)); }
+static void s_xstat(CPU64 *c) { struct stat st; stat_result(c, stat(HP(1), &st), &st, ARG(c, 2)); }
+static void s_lxstat(CPU64 *c) { struct stat st; stat_result(c, lstat(HP(1), &st), &st, ARG(c, 2)); }
 static void s_fxstat(CPU64 *c) { struct stat st; stat_result(c, fstat(I(1), &st), &st, ARG(c, 2)); }
 static void s_fstatat(CPU64 *c) {
     struct stat st;

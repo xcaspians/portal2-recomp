@@ -255,8 +255,14 @@ P2CE_SYSTEMS ?= bin/linux64/shaderapiempty.so bin/linux64/inputsystem.so bin/lin
 # libvideo.so links the system's libstdc++ (the other modules carry theirs in
 # libmimalloc.so): Debian's x86-64 copy, downloaded by tools/fetch_debian_amd64.sh.
 P2CE_SYSTEM_LIBS ?= libstdc++.so.6 libgcc_s.so.1
+# Round 28 (plan round E): SDL is the Mac's own SDL2, not P2CE's Linux copy
+# lifted: its imports and dlopen/dlsym go to the native library
+# (runtime/x64/native_libs64.h), so windows, the keyboard and the mouse are
+# Cocoa's. The host-library bundle's, else Homebrew's.
+P2CE_SDL2 ?= $(firstword $(wildcard deps/p2-host-deps-1-macos-arm64/lib/libSDL2-2.0.0.dylib /opt/homebrew/lib/libSDL2-2.0.0.dylib))
+P2CE_NATIVE_LIBS ?= libSDL2-2.0.so.0=$(CURDIR)/$(P2CE_SDL2)
 P2CE_LAUNCH_MODULES ?= bin/linux64/p2ce bin/linux64/libmimalloc.so bin/linux64/libtier0.so \
-	bin/linux64/libvstdlib.so bin/linux64/libSDL2-2.0.so.0 bin/linux64/launcher.so \
+	bin/linux64/libvstdlib.so bin/linux64/launcher.so \
 	bin/linux64/filesystem_stdio.so bin/linux64/engine.so $(P2CE_SYSTEMS)
 P2CE_STEAM_API ?= $(CURDIR)/deps/steamworks-2024.8.0/steam_api.bundle/Contents/MacOS/libsteam_api.dylib
 P2CE_APPID ?= 440000
@@ -284,6 +290,6 @@ p2ce-launch: $(X64_RUNTIME) runtime/x64/rt64.h src/main64.c tools/run64.py
 	$(PYTHON) tools/link64.py --out build/p2ce/dylib --exe build/p2ce/p2ce-run --main src/main64.c \
 		--registry build/p2ce/registry.c \
 		$$(sed -n 's/^extern const RT64Module \(m_[a-z0-9_]*\);/build\/p2ce\/lib\/\1\/lib\1.a/p' build/p2ce/registry.c); \
-	P2_STEAM_API_DYLIB="$(P2CE_STEAM_API)" P2_STEAM_APPID=$(P2CE_APPID) \
+	P2_STEAM_API_DYLIB="$(P2CE_STEAM_API)" P2_STEAM_APPID=$(P2CE_APPID) RT64_NATIVE_LIBS="$(P2CE_NATIVE_LIBS)" \
 	$(PYTHON) tools/run64.py --depot "$(P2CE_ROOT)" --depot "$(P2CE_CONTENT)" --mirror build/p2ce/game --timeout $(P2CE_TIMEOUT) \
 		build/p2ce/p2ce-run $(P2CE_ARGS)
