@@ -5,10 +5,10 @@ built for Skyrim yet, and no repository has been created.** Each piece below
 has a size and a milestone Caspian can check.
 
 **Size:** "S" fits in part of a round, "M" is about one round, "L" is one to
-two rounds, "XL" is two or more. **Total: about 14 to 19 rounds to the main
-menu on the Mac, then 3 to 5 more for the iPad.** That's a little more than
-P2CE's estimate: the lifter, the dylib linking and the renderer carry over,
-but the whole operating-system side is new.
+two rounds, "XL" is two or more. **Total: about 13 to 17 rounds to the main
+menu on the Mac, then 3 to 5 more for the iPad** (was 14 to 19 before the
+round 0 inventory: see "After round 0" below). The lifter, the dylib linking
+and the renderer carry over; the whole operating-system side is new.
 
 **What carries over from P2CE:**
 - the x86-64 lifter (`tools/lift64.py`, `simd64.py`, `x87_64.py`) and its
@@ -117,7 +117,10 @@ None of these looks like a wall. The worst case is a missing effect.
 
 ## Other blockers
 
-- **Steam DRM (SteamStub): the one possible dealbreaker, to check first.**
+- **Steam DRM (SteamStub): checked in round 0, GO.** The executable is wrapped,
+  but its code isn't encrypted (`SKYRIM_INVENTORY.md`); what follows was the
+  concern before the check.
+- *(Before round 0)* **Steam DRM (SteamStub): the one possible dealbreaker, to check first.**
   - Many Steam executables are wrapped by SteamStub. The real code is encrypted
     on disk and decrypted at start-up by a `.bind` section.
   - A static recompiler can't lift encrypted code. Decrypting it ahead of time
@@ -164,7 +167,7 @@ Windows bridge, COM), not in one impossible piece.
 | 0 | **Inventory** from Caspian's own install (needs the depots on the Mac, read-only): SteamStub check, the full import table by DLL, TLS and `.pdata` counts, instruction coverage with the lift64 decoder (AVX count), the shader archive's program types (geometry/hull/domain/compute). | S | A one-page `SKYRIM_INVENTORY.md` with those numbers, and a go/no-go on SteamStub. |
 | 1 | **PE32+ front end:** `peprep64` (format, relocations, imports, exports, TLS, `.pdata`), Win64 module type in lift64, the `gs:` thread block. A small Windows test program built from assembly (`clang -target x86_64-windows`) in `make check`. | L | `make check` lifts and runs the PE test program; `SkyrimSE.exe` lifts with a coverage report. |
 | 2 | **Windows-convention bridge:** shims declared with Windows prototypes, the trampoline both ways, varargs, UTF-16 strings; a COM thunk generator. | L | `make check` calls shims and a COM object both ways from the PE test program. |
-| 3 | **kernel32 core and the C runtime:** files, threads, sync, heap, virtual memory, TLS, time, modules. | XL | `SkyrimSE.exe` starts on the Mac, reads its INI files and writes its first log line. |
+| 3 | **kernel32 core and the C runtime:** files, threads, sync, heap, virtual memory, TLS, time, modules (137 KERNEL32 imports); the UCRT (190) and the MSVC C++ library (MSVCP140, 90). | XL | `SkyrimSE.exe` starts on the Mac, reads its INI files and writes its first log line. |
 | 4 | **Exceptions:** unwinding over `.pdata`, `RaiseException`, the MSVC C++ handlers. | L | A C++ exception thrown and caught two lifted frames up in the test program; Skyrim gets past start-up. |
 | 5 | **Steam:** `steam_api64.dll` to `libsteam_api.dylib`. | M | Steam shows Skyrim SE as running. |
 | 6 | **Window, input, sound:** user32 on SDL, DirectInput and XInput on SDL, XAudio2 and X3DAudio on FAudio. | L | An empty Skyrim window opens and reads the keyboard; a sound plays. |
@@ -178,7 +181,7 @@ Windows bridge, COM), not in one impossible piece.
 
 ### Sizes behind the total
 
-- **Mac to the main menu:** rounds 0 to 9, about 14 to 19 rounds. Round 3 alone
+- **Mac to the main menu:** rounds 0 to 9, about 13 to 17 rounds. Round 3 alone
   can take 3 or more.
 - **iOS:** rounds 11 to 13, 3 to 5 more.
 
@@ -255,3 +258,35 @@ Makefile           make check (no game files), make skyrim-inventory, make skyri
 - **Mac first.** Nothing about Portal 2, Portal, HL2, Mel, L4D2 or P2CE changes
   because of Skyrim, except shared lifter fixes, each with its check.
 - **Lifter bugs** each get a check in `make check`, in the shared toolkit.
+
+## After round 0 (26 November 2026)
+
+`SKYRIM_INVENTORY.md` has the numbers. **The estimate drops from 14–19 to
+13–17 rounds** to the main menu on the Mac.
+
+**Lower:**
+- **Coverage:** lift64 already handles effectively all of Skyrim's 5.4 million
+  real instructions, and AVX is 6 instructions behind a CPUID check. So round 1
+  needs no lifter work beyond the PE front end, and the "AVX without fallback"
+  L round is gone.
+- **Renderer:** no geometry, hull or domain shaders at all (16,044 shader model
+  5.0 programs: pixel, vertex, 19 compute). None of the MoltenVK feature gaps
+  applies.
+- **A small import table:** 606 functions from 32 DLLs, no delay-loaded imports,
+  no TLS callbacks.
+- **No JIT, no anti-tamper, no self-modifying code** outside SteamStub's own
+  stub.
+
+**Higher (smaller):**
+- **The Microsoft C++ library is a DLL** (MSVCP140, 90 functions, Microsoft's
+  C++ ABI). That's about one extra round inside round 3: shims, or Wine's
+  `msvcp140` (LGPL) built as a PE and lifted.
+- **Control Flow Guard** (the loader fills `__guard_dispatch_icall_fptr`) and the
+  **d3dx9 maths** (9 functions): S each.
+- **The real entry point** has to be found statically (5 candidates), because
+  the stub isn't run: S, in round 1.
+
+**Round 1 needs Caspian's two decisions first:**
+- the SteamStub rule question in `SKYRIM_INVENTORY.md` (start at the game's own
+  entry and check ownership through Valve's library);
+- where the code lives (the new-repo proposal above).
