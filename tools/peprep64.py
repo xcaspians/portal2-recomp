@@ -240,6 +240,104 @@ def unwind_handler(pe, unwind_rva):
     return pe.u32(at)
 
 
+FH3_MAGIC = (0x19930520, 0x19930521, 0x19930522)
+
+
+def handler_data(pe, unwind_rva):
+    """RVA of an UNWIND_INFO's language handler data, or None."""
+    o = pe.r2o(unwind_rva)
+    if o is None:
+        return None
+    version_flags, _, count, _ = struct.unpack_from('<BBBB', pe.data, o)
+    if not (version_flags >> 3) & 3:
+        return None
+    return unwind_rva + 4 + 2 * ((count + 1) & ~1) + 4
+
+
+def catch_continuations(pe, pdata, in_code):
+    """MSVC C++ catch continuations (__CxxFrameHandler3 tables), as landing pads:
+    {start of the function holding the continuation: [continuation RVAs]}.
+
+    A catch funclet returns the address where its function goes on in rax
+    (`lea rax, [rip + X]` before its ret); the runtime (msvceh64.c) jumps
+    there, so the lifted function must have it as a resume point. Every
+    such lea of a catch funclet that lands in a function sharing its
+    FuncInfo counts."""
+    ranges = sorted((b, e) for b, e, _ in pdata)
+    def owner(rva):
+        for b, e in ranges:
+            if b <= rva < e:
+                return b, e
+        return None
+    by_info, funclets = {}, set()
+    for begin, end, unwind in pdata:
+        data = handler_data(pe, unwind)
+        if data is None or pe.r2o(data) is None:
+            continue
+        info = pe.u32(data)
+        if pe.r2o(info) is None or pe.u32(info) & 0x1fffffff not in FH3_MAGIC:
+            continue
+        by_info.setdefault(info, []).append((begin, end))
+    pads = {}
+    for info, members in by_info.items():
+        tries, try_map = pe.u32(info + 12), pe.u32(info + 16)
+        for t in range(tries if try_map else 0):
+            entry = try_map + 20 * t
+            count, handlers = pe.u32(entry + 12), pe.u32(entry + 16)
+            for h in range(count if handlers else 0):
+                funclet = pe.u32(handlers + 20 * h + 12)
+                span = owner(funclet)
+                if not span or not in_code(funclet):
+                    continue
+                o = pe.r2o(span[0])
+                body = pe.data[o:o + span[1] - span[0]]
+                at = body.find(b'\x48\x8d\x05')
+                while at >= 0:
+                    target = span[0] + at + 7 + struct.unpack_from('<i', body, at + 3)[0]
+                    home = owner(target)
+                    if home and home in members and home != span and in_code(target):
+                        pads.setdefault(home[0], set()).add(target)
+                    at = body.find(b'\x48\x8d\x05', at + 1)
+    return {k: sorted(v) for k, v in sorted(pads.items())}
+
+
+def throw_info_functions(pe, in_code):
+    """Destructors and copy constructors MSVC's ThrowInfo records name (image-relative,
+    so no relocation points at them): the C++ runtime (msvceh64.c) calls them, and a
+    leaf one has no .pdata entry. Found by scanning initialized data for ThrowInfo
+    {attributes, destructor, forward compat 0, CatchableTypeArray} whose array's
+    types are type descriptors (names starting with '.')."""
+    import array
+    found = set()
+    for sec in pe.sections:
+        chars = sec['characteristics']
+        if sec['excluded'] or chars & 0x20000000 or not chars & 0x40 or not sec['raw_size']:
+            continue
+        lo, hi = sec['rva'], sec['rva'] + sec['raw_size']
+        words = array.array('I')
+        words.frombytes(pe.data[sec['raw_off']:sec['raw_off'] + (sec['raw_size'] & ~3)])
+        def type_name_ok(rva):
+            o = pe.r2o(rva + 16)
+            return o is not None and pe.data[o:o + 1] == b'.'
+        for i in range(len(words) - 3):
+            attributes, unwind, compat, cta = words[i], words[i + 1], words[i + 2], words[i + 3]
+            if attributes > 0x1f or compat or not lo <= cta < hi or (unwind and not in_code(unwind)):
+                continue
+            n = pe.u32(cta)
+            if not 1 <= n <= 64:
+                continue
+            types = [pe.u32(cta + 4 + 4 * k) for k in range(n)]
+            if not all(t and pe.r2o(t) is not None and pe.u32(t) <= 0x1f and type_name_ok(pe.u32(t + 4)) for t in types):
+                continue
+            if unwind:
+                found.add(unwind)
+            for t in types:
+                copy = pe.u32(t + 24)
+                if copy and in_code(copy):
+                    found.add(copy)
+    return found
+
+
 def is_data_import(name):
     """MSVC-mangled variables are data, not code: globals (`?cout@std@@3V...`)
     and static members (`?id@?$codecvt@DDU_Mbstatet@@@std@@2V0locale@2@A`)."""
@@ -286,6 +384,7 @@ def layout(pe, real_entry=None):
         if h and in_code(h):
             handlers.add(h)
     entries |= handlers
+    entries |= throw_info_functions(pe, in_code)
     entries |= {a for a in exported if in_code(a)}
     entry = real_entry if real_entry is not None else pe.entry
     if entry and in_code(entry):
@@ -314,7 +413,7 @@ def layout(pe, real_entry=None):
         exports=dict(sorted(named.items())), export_types={n: 2 for n in named},
         needed=sorted({i['name'].split('!')[0] for i in imports if not i['name'].startswith('rt64!')}),
         imports=imports, relocations=relocs, relocation_counts=counts,
-        landing_pads={}, pdata=[list(p) for p in pdata], handlers=sorted(handlers),
+        landing_pads={hex(k): v for k, v in catch_continuations(pe, pdata, in_code).items()}, pdata=[list(p) for p in pdata], handlers=sorted(handlers),
         guard=guard, delay_imports=len(pe.delay_imports()))
 
 

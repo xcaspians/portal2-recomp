@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A tiny linker for the PE test program: COFF x86-64 .obj -> PE32+ DLL.
+"""A tiny linker for the PE test program: COFF x86-64 .obj files -> PE32+ DLL.
 
 This Mac has clang, which assembles for x86_64-windows-msvc, but no PE
 linker (no lld-link), so the test fixture is linked here, like
@@ -66,8 +66,24 @@ def read_object(path):
     return sections, symbols
 
 
-def link(obj, out, dll_name, imports=(), exports=()):
-    sections, symbols = read_object(obj)
+def read_objects(paths):
+    """Several objects as one: section numbers and symbol indices renumbered."""
+    sections, symbols = [], []
+    for path in paths:
+        secs, syms = read_object(path)
+        sec_base, sym_base = len(sections), len(symbols)
+        for sec in secs:
+            sec['relocs'] = [(off, index + sym_base, kind) for off, index, kind in sec['relocs']]
+        for sym in syms:
+            if sym and sym['section'] > 0:
+                sym['section'] += sec_base
+        sections += secs
+        symbols += syms
+    return sections, symbols
+
+
+def link(objs, out, dll_name, imports=(), exports=()):
+    sections, symbols = read_objects([objs] if isinstance(objs, str) else objs)
     # Place the input sections.
     placed, rva, outputs = {}, SECTION_ALIGN, []
     for out_name, chars, groups in LAYOUT:
@@ -248,10 +264,10 @@ def main(argv):
     ap.add_argument('--name', required=True, help="the DLL's own name (export directory)")
     ap.add_argument('--import', dest='imports', action='append', default=[], help='NAME=DLL or NAME=DLL#ORDINAL')
     ap.add_argument('--export', dest='exports', action='append', default=[])
-    ap.add_argument('obj')
+    ap.add_argument('objs', nargs='+', metavar='obj')
     ap.add_argument('out')
     a = ap.parse_args(argv)
-    link(a.obj, a.out, a.name, a.imports, a.exports)
+    link(a.objs, a.out, a.name, a.imports, a.exports)
     return 0
 
 

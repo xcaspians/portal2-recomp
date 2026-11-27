@@ -39,7 +39,12 @@ static void host_longjmp(CPU64 *c) {
     RET(c, (uint32_t)(value ? value : 1));
     c->transferred = 1;
 }
+// vcruntime's two C++ exception entry points (tests/pe_eh.cpp): throw goes to the
+// runtime's MSVC unwinder; the frame handler is only ever named in tables.
+static void host_throw(CPU64 *c) { rt64_msvc_throw(c, WARG(c, 0), WARG(c, 1)); }
+static void host_frame_handler(CPU64 *c) { rt64_trap(c, R64(c->r[RSP]), "__CxxFrameHandler3 called"); }
 static const RT64Shim shims[] = {
+    {"pehost.dll!_CxxThrowException", host_throw}, {"pehost.dll!__CxxFrameHandler3", host_frame_handler},
     {"pehost.dll!twice", host_twice}, {"pehost.dll!sum5", host_sum5}, {"pehost.dll!#7", host_seven},
     {"pehost.dll!_setjmp", host_setjmp}, {"pehost.dll!longjmp", host_longjmp}, {NULL, NULL}};
 static const RT64Data data[] = {{NULL, NULL}};
@@ -129,9 +134,18 @@ int main(void) {
     CHECK(call(c, "pe_guard_call", 1, (const uint64_t[]){0}) == 21, "Control Flow Guard dispatch (relocated pointer)");
     CHECK(call(c, "pe_guard_call", 1, (const uint64_t[]){1}) == 1007, "Control Flow Guard dispatch, second target");
     CHECK(call(c, "pe_hidden_call", 0, NULL) == 4242, "function known only from .pdata");
+    CHECK(call(c, "pe_eh_int", 1, (const uint64_t[]){41}) == 42, "C++ throw caught by value in the caller");
+    CHECK(call(c, "pe_eh_int", 1, (const uint64_t[]){0}) == 0, "no throw: the try block's normal way out");
+    CHECK(call(c, "pe_eh_unwind", 1, (const uint64_t[]){3}) == 311,
+          "C++ throw through a frame whose catch doesn't match: its locals destroyed, caught above");
+    CHECK(call(c, "pe_eh_base_ref", 1, (const uint64_t[]){5}) == 1005, "derived class caught by base reference (virtual call)");
+    { uint64_t d = call(c, "pe_eh_destroyed", 0, NULL); CHECK(d == 100, "the exception object destroyed once after the catch (%llu)", (unsigned long long)d); }
+    CHECK(call(c, "pe_eh_all", 0, NULL) == 2, "catch (...) after a catch that doesn't match");
+    CHECK(call(c, "pe_eh_rethrow", 1, (const uint64_t[]){4}) == 11, "throw; inside a catch, caught by the caller");
+    CHECK(call(c, "pe_eh_loop", 1, (const uint64_t[]){10}) == 55, "ten throws caught in a loop, which goes on");
     CHECK(c->r[RSP] == (uint64_t)(uintptr_t)(stack + stack_size), "stack balanced");
     if (failures) { fprintf(stderr, "pe-check: %d of %d checks failed\n", failures, failures + passes); return 1; }
     printf("pe-check: PASS, %d checks (Windows x64 calls, TEB, static TLS, MSVC jump tables, imports by name and "
-           "ordinal, Control Flow Guard, base relocations, .pdata entries)\n", passes);
+           "ordinal, Control Flow Guard, base relocations, .pdata entries, MSVC C++ exceptions)\n", passes);
     return 0;
 }

@@ -316,6 +316,7 @@ void rt64_run_exit_handlers(CPU64 *c, uint64_t dso);
 
 void rt64_cpu_init(CPU64 *c, uint64_t stack_top);
 // Host -> guest call: pushes a sentinel return address and runs `target`.
+#define RT64_SENTINEL UINT64_C(0xdead5e0000000000)
 void rt64_call(CPU64 *c, uint64_t target);
 // Calls from lifted code: target is a lifted function, an import, or unknown (trap).
 void rt64_dispatch(CPU64 *c, uint64_t target);

@@ -17,7 +17,6 @@
 #define RT64_MAX_MODULES 256
 #define RT64_IMPORT_STRIDE 16
 // Return address pushed by rt64_call: never guest code (non-canonical).
-#define RT64_SENTINEL UINT64_C(0xdead5e0000000000)
 // Static TLS reserved for every thread: all modules' PT_TLS blocks, plus
 // room for modules opened after the thread started.
 #define RT64_TLS_AREA (1u << 20)
