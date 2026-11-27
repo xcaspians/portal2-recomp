@@ -373,6 +373,36 @@ x64_strings:
     add rax, qword ptr [rdi]                  # 9 + 9 + 12 = 30
     ret
 
+# repe cmpsb / repne scasb (round 29: OpenSSL's PEM reader). A line that
+# shares one byte with "-----END " at the same place is not that line; rax =
+# 1 if the line matched, + 10 if "-----END X" did, + 100 * strlen("abc") by
+# repne scasb.
+.globl x64_repe_cmps
+.type x64_repe_cmps, @function
+x64_repe_cmps:
+    cld
+    lea rsi, [rip + .Lpem_line]
+    lea rdi, [rip + .Lpem_end]
+    mov ecx, 9
+    repe cmpsb
+    sete al
+    movzx r8d, al
+    lea rsi, [rip + .Lpem_endline]
+    lea rdi, [rip + .Lpem_end]
+    mov ecx, 9
+    repe cmpsb
+    jne 1f
+    add r8d, 10
+1:  lea rdi, [rip + .Lpem_abc]
+    xor eax, eax
+    mov rcx, -1
+    repne scasb
+    not rcx
+    dec rcx
+    imul ecx, ecx, 100
+    lea eax, [r8 + rcx]
+    ret
+
 # Scalar SSE2 doubles: (a * 3 + 0.5) / 2, then truncation to an integer.
 .globl x64_sse
 .type x64_sse, @function
@@ -558,6 +588,10 @@ x64_after_data:
     .long .Lcase3 - .Ltable
 .p2align 3
 x64_minus2: .quad -2
+.Lpem_line:    .ascii "jLMi6Et8Vcad+qMU\n"
+.Lpem_end:     .ascii "-----END "
+.Lpem_endline: .ascii "-----END CERTIFICATE-----\n"
+.Lpem_abc:     .asciz "abc"
 x64_three: .double 3.0
 x64_half: .double 0.5
 x64_two: .double 2.0

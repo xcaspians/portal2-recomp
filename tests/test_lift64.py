@@ -94,6 +94,19 @@ class ControlFlow(unittest.TestCase):
         code, _, _ = tr('psrlq', 'xmm3, 0x20')
         self.assertIn('c->xmm[3].q[i] >>= 32', code)
 
+    def test_rep_cmps_and_scas_repeat_while_equal(self):
+        # Round 29 (P2CE's OpenSSL PEM reader): objdump prints F3 A6 as
+        # "rep cmpsb", which is REPE; it was lifted as REPNE.
+        for prefix in ('rep', 'repe', 'repz'):
+            for op in ('cmpsb', 'scasb'):
+                code, _, _ = tr(prefix, op + ' byte ptr [rsi], byte ptr es:[rdi]')
+                self.assertIn('if (!f.zf) break;', code, (prefix, op))
+        for prefix in ('repne', 'repnz'):
+            code, _, _ = tr(prefix, 'scasb al, byte ptr es:[rdi]')
+            self.assertIn('if (f.zf) break;', code)
+        code, _, _ = tr('rep', 'movsb byte ptr es:[rdi], byte ptr [rsi]')
+        self.assertNotIn('break', code)
+
     def test_unknown_instruction_is_reported(self):
         with self.assertRaises(lift64.Unsupported):
             tr('fbstp', 'tbyte ptr [rax]')

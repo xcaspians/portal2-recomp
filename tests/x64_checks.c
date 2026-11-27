@@ -127,6 +127,8 @@ int main(void) {
     EXPECT(!strcmp(buffer, "AAAAAAA") && !strcmp(buffer + 16, "AAAAAAA"));
 
     EXPECT(CALL0("x64_strings") == 30);
+    EXPECT(CALL0("x64_repe_cmps") == 310);   // F3 cmps repeats while equal (round 29, OpenSSL PEM)
+
     EXPECT(out(0) == 0x0101010101010101u && out(24) == 0x0101010101010101u);
     EXPECT((out(40) & 0xffffff) == 0x010101 && out8(43) == 0xff);   // 3 bytes copied, the 4th (from x64_alu) kept
     EXPECT(out8(48) == 1 && out8(49) == 0);

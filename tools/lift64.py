@@ -721,7 +721,10 @@ def string_op(kind, n, repeat, end):
         return one + ' ' + end
     stop = ''
     if kind in ('scas', 'cmps'):
-        stop = ' if (!f.zf) break;' if repeat == 'repe' else ' if (f.zf) break;'
+        # F3 is REPE on cmps/scas: objdump spells it "rep" (or "repz"), so
+        # only F2 ("repne"/"repnz") stops on equal bytes (round 29: OpenSSL's
+        # PEM reader took any line sharing one byte with "-----END " as its end).
+        stop = ' if (f.zf) break;' if repeat == 'repne' else ' if (!f.zf) break;'
     return f'while (c->r[RCX]) {{ {one} c->r[RCX]--;{stop} }} {end}'
 
 
