@@ -330,6 +330,21 @@ class Module:
             if op == 'lea' and m and load is not None and GPR.get(m[1], (None,))[0] == GPR[base_reg][0]:
                 table = nxt + (1 if m[2] == '+' else -1) * int(m[3], 16)
                 break
+        far = False
+        if table is None and load is not None and base_reg is not None:
+            # GCC hoists the table's `lea` out of a loop into a callee-saved
+            # register (P2CE's shaderapidx11.so: `lea r12, [rip + T]` long
+            # before `movsxd rax, [r12 + 4*rax]; add rax, r12; xorps..; jmp rax`).
+            # Look further back, stopping where anything else writes that
+            # register.
+            for p, (nxt, op, args) in self.previous(load, 400):
+                parts = [x.strip() for x in args.split(',')]
+                m = re.fullmatch(r'(\w+), \[rip ([+-]) (0x[0-9a-f]+)\]', args)
+                if op == 'lea' and m and GPR.get(m[1], (None,))[0] == GPR[base_reg][0]:
+                    table, far = nxt + (1 if m[2] == '+' else -1) * int(m[3], 16), True
+                    break
+                if parts and GPR.get(parts[0], (None,))[0] == GPR[base_reg][0] and op not in ('cmp', 'test', 'push'):
+                    break
         if table is None:
             return None
         # Bound: the nearest `cmp X, N; ja/jae` before the load (the index
@@ -347,6 +362,9 @@ class Module:
                 break
         if count is not None and not 0 < count <= 4096:
             return None
+        # A far table base without a bound (the index is a loop counter, as
+        # there) is read like any unbounded table below: entries while they
+        # land on instructions near the jump.
         targets = []
         for k in range(count if count is not None else 256):
             if table + 4 * k + 4 > len(self.image):

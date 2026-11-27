@@ -117,6 +117,7 @@ int main(void) {
     // Round 23: instructions between the add and the jmp (P2CE's launcher.so).
     EXPECT(CALL("x64_switch_gap", 0) == 20 && CALL("x64_switch_gap", 1) == 21 && CALL("x64_switch_gap", 2) == 22);
     EXPECT((uint32_t)CALL("x64_switch_gap", 3) == 0xfffffffeu);
+    EXPECT(CALL0("x64_switch_hoisted") == 111);   // a table base hoisted far from its jump (round 28)
     EXPECT(CALL("x64_callptr", 0, 21) == 42);
     EXPECT(CALL("x64_callptr", 1, 12) == 144);
     EXPECT(CALL("x64_tail", 6) == 49);
