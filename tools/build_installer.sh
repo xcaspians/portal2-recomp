@@ -142,6 +142,8 @@ if [ $RELEASE = 1 ]; then   # what users' Gatekeeper checks, once more on the fi
     xcrun stapler validate "$DMG_FILE"
     spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG_FILE"
     spctl --assess --type execute --verbose=2 "$APP"
-    codesign --display --verbose=2 "$APP" 2>&1 | grep -q 'flags=0x10000(runtime)' || fail "--release: no hardened runtime on the app"
+    # Captured first: with pipefail, grep -q stopping early made codesign's SIGPIPE fail the check (v0.5.0).
+    SIGNATURE="$(codesign --display --verbose=2 "$APP" 2>&1)"
+    case "$SIGNATURE" in *'flags=0x10000(runtime)'*) ;; *) fail "--release: no hardened runtime on the app" ;; esac
     echo "release: $DMG_FILE signed ($IDENTITY), notarized, stapled, accepted by Gatekeeper"
 fi
