@@ -323,6 +323,47 @@ x64_tail:
     add rdi, 1
     jmp x64_square
 
+# A conditional jump that leaves the function for another function's entry
+# (a tail jump), whose first instruction reads the caller's flags: MSVC
+# shares tails this way (Skyrim's fast atan2, round 04's camera snap). The
+# flags must reach the other function. x64_tail_flags(a, b): 1 if a < b,
+# 2 if a == b, 3 if a > b (unsigned); x64_tail_flags_f(&x, &y) the same for
+# floats through comiss.
+.globl x64_tail_flags
+.type x64_tail_flags, @function
+x64_tail_flags:
+    cmp rdi, rsi
+    jbe x64_tail_flags_le
+    mov eax, 3
+    ret
+.globl x64_tail_flags_le
+.type x64_tail_flags_le, @function
+x64_tail_flags_le:
+    jae 1f                          # CF from the caller's cmp
+    mov eax, 1
+    ret
+1:  mov eax, 2
+    ret
+.globl x64_tail_flags_f
+.type x64_tail_flags_f, @function
+x64_tail_flags_f:
+    movss xmm0, dword ptr [rdi]
+    movss xmm1, dword ptr [rsi]
+    comiss xmm0, xmm1
+    movaps xmm2, xmm0               # moves and arithmetic leave the flags alone
+    mulss xmm2, xmm1
+    jbe x64_tail_flags_f_le
+    mov eax, 3
+    ret
+.globl x64_tail_flags_f_le
+.type x64_tail_flags_f_le, @function
+x64_tail_flags_f_le:
+    jae 1f
+    mov eax, 1
+    ret
+1:  mov eax, 2
+    ret
+
 # Imports through the PLT (memset, strlen) and through the GOT (memcpy).
 .globl x64_imports
 .type x64_imports, @function
@@ -617,6 +658,7 @@ x64_f4b: .float 2.0, -3.0, 3.0, 1.0
     .long .Lh0 - .Ltable4
     .long .Lh1 - .Ltable4
     .long .Lh2 - .Ltable4
+
 
 .data
 x64_once_outer_ctl: .long 0
