@@ -152,6 +152,12 @@ static void s_dup2(CPU64 *c) { CHECK(c, dup2(I(0), I(1))); }
 static void s_pipe(CPU64 *c) { CHECK(c, pipe(PTR(c, 0))); }
 static void s_isatty(CPU64 *c) { RET(c, isatty(I(0))); }
 static void s_access(CPU64 *c) { CHECK(c, access(S(0), I(1))); }
+// Linux AT_FDCWD is -100; AT_EACCESS 0x200 and AT_SYMLINK_NOFOLLOW 0x100 (macOS: 0x10, 0x20).
+static void s_faccessat(CPU64 *c) {
+    int dir = I(0) == -100 ? AT_FDCWD : I(0), lf = I(3);
+    int flags = (lf & 0x200 ? AT_EACCESS : 0) | (lf & 0x100 ? AT_SYMLINK_NOFOLLOW : 0);
+    CHECK(c, faccessat(dir, S(1), I(2), flags));
+}
 static void s_unlink(CPU64 *c) { CHECK(c, unlink(S(0))); }
 static void s_rmdir(CPU64 *c) { CHECK(c, rmdir(S(0))); }
 static void s_mkdir(CPU64 *c) { CHECK(c, mkdir(S(0), (mode_t)ARG(c, 1))); }
@@ -420,7 +426,7 @@ static const RT64Shim shims[] = {
     {"open", s_open}, {"open64", s_open}, {"__open_2", s_open}, {"openat", s_openat}, {"close", s_close},
     {"read", s_read}, {"write", s_write}, {"pread", s_pread}, {"pread64", s_pread}, {"pwrite", s_pwrite},
     {"pwrite64", s_pwrite}, {"writev", s_writev}, {"lseek", s_lseek}, {"lseek64", s_lseek}, {"dup", s_dup},
-    {"dup2", s_dup2}, {"pipe", s_pipe}, {"isatty", s_isatty}, {"access", s_access}, {"unlink", s_unlink},
+    {"dup2", s_dup2}, {"pipe", s_pipe}, {"isatty", s_isatty}, {"access", s_access}, {"faccessat", s_faccessat}, {"unlink", s_unlink},
     {"rmdir", s_rmdir}, {"mkdir", s_mkdir}, {"chdir", s_chdir}, {"chmod", s_chmod}, {"fchmod", s_fchmod},
     {"symlink", s_symlink}, {"link", s_link}, {"truncate", s_truncate}, {"ftruncate", s_ftruncate},
     {"ftruncate64", s_ftruncate}, {"fsync", s_fsync}, {"readlink", s_readlink}, {"getcwd", s_getcwd},

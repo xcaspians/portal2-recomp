@@ -324,6 +324,14 @@ int main(void) {
         EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 38);
     }
 
+    // faccessat with Linux's AT_FDCWD (-100) and AT_EACCESS (0x200): P2CE's libvideo.
+    cpu.r[RDI] = (uint64_t)-100; cpu.r[RSI] = (uint64_t)(uintptr_t)"/bin/sh"; cpu.r[RDX] = 4; cpu.r[RCX] = 0x200;
+    rt64_find_shim("faccessat")(&cpu);
+    EXPECT(cpu.r[RAX] == 0);
+    cpu.r[RSI] = (uint64_t)(uintptr_t)"/no/such/file";
+    rt64_find_shim("faccessat")(&cpu);
+    EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 2);
+
     // Native libraries standing in for Linux ones (round 28: P2CE's SDL2, then DXVK).
     EXPECT(rt64_native_library("libz.so.1") == 0 && rt64_native_library("/usr/lib/x86_64-linux-gnu/libz.so.1") == 0);
     EXPECT(rt64_native_library("libz.so") == 0 && rt64_native_library("libzz.so.1") == -1);
