@@ -90,6 +90,16 @@ int main(void) {
 
     EXPECT(CALL("x64_fact", 20) == 2432902008176640000ull);
 
+    // A tail jump into another function whose entry reads the flags (round 04, Skyrim's camera snap).
+    EXPECT(CALL("x64_tail_flags", 1, 2) == 1);
+    EXPECT(CALL("x64_tail_flags", 2, 2) == 2);
+    EXPECT(CALL("x64_tail_flags", 3, 2) == 3);
+    {
+        static const float x[] = {-0.5f, 1.0f, 2.0f}, y = 1.0f;
+        for (int i = 0; i < 3; ++i)
+            EXPECT(CALL("x64_tail_flags_f", (uint64_t)(uintptr_t)&x[i], (uint64_t)(uintptr_t)&y) == (uint64_t)i + 1);
+    }
+
     CALL0("x64_flags");
     EXPECT(out8(0) == 1 && out8(1) == 1 && out8(2) == 1 && out8(3) == 1);
     EXPECT(out8(4) == 1 && out8(5) == 1);
