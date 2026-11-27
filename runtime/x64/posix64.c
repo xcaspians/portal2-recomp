@@ -214,8 +214,35 @@ static void s_realpath(CPU64 *c) {
     strcpy(PTR(c, 1), buffer);
     RET(c, ARG(c, 1));
 }
+// struct flock on Linux x86-64: short l_type, short l_whence, off_t l_start
+// (at 8), off_t l_len (16), pid_t l_pid (24); 32 bytes. Its l_type values
+// are F_RDLCK 0, F_WRLCK 1, F_UNLCK 2 (macOS: 1, 3, 2), and its fields come
+// in another order than macOS's.
+static int fcntl_lock(int fd, int host_cmd, uint64_t at) {
+    static const short to_host[] = {F_RDLCK, F_WRLCK, F_UNLCK};
+    struct flock fl = {0};
+    short type = (short)R16(at);
+    fl.l_type = type >= 0 && type <= 2 ? to_host[type] : F_UNLCK;
+    fl.l_whence = (short)R16(at + 2);
+    fl.l_start = (off_t)R64(at + 8);
+    fl.l_len = (off_t)R64(at + 16);
+    int r = fcntl(fd, host_cmd, &fl);
+    if (r == 0 && host_cmd == F_GETLK) {
+        W16(at, fl.l_type == F_RDLCK ? 0 : fl.l_type == F_WRLCK ? 1 : 2);
+        W16(at + 2, (uint16_t)fl.l_whence);
+        W64(at + 8, (uint64_t)fl.l_start);
+        W64(at + 16, (uint64_t)fl.l_len);
+        W32(at + 24, (uint32_t)fl.l_pid);
+    }
+    return r;
+}
+
 static void s_fcntl(CPU64 *c) {
     switch (I(1)) {
+    // F_GETLK, F_SETLK, F_SETLKW, and the OFD locks (36-38) as POSIX ones (P2CE's single-instance lock).
+    case 5: case 36: CHECK(c, fcntl_lock(I(0), F_GETLK, ARG(c, 2))); break;
+    case 6: case 37: CHECK(c, fcntl_lock(I(0), F_SETLK, ARG(c, 2))); break;
+    case 7: case 38: CHECK(c, fcntl_lock(I(0), F_SETLKW, ARG(c, 2))); break;
     case 1: CHECK(c, fcntl(I(0), F_GETFD)); break;
     case 2: CHECK(c, fcntl(I(0), F_SETFD, I(2))); break;
     case 3: { int f = fcntl(I(0), F_GETFL); if (f < 0) { CHECK(c, f); break; }

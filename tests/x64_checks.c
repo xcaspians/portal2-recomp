@@ -341,6 +341,24 @@ int main(void) {
     rt64_find_shim("access")(&cpu);
     EXPECT(cpu.r[RAX] == 0);
 
+    // fcntl record locks with Linux's struct flock (P2CE's single-instance lock file).
+    {
+        char lockpath[] = "/tmp/rt64-lock-XXXXXX";
+        int fd = mkstemp(lockpath);
+        EXPECT(fd >= 0);
+        uint8_t fl[32] = {0};   // l_type F_WRLCK (1), l_whence SEEK_SET, l_start 0, l_len 0: the whole file
+        fl[0] = 1;
+        cpu.r[RDI] = (uint64_t)fd; cpu.r[RSI] = 6; cpu.r[RDX] = (uint64_t)(uintptr_t)fl;   // F_SETLK
+        rt64_find_shim("fcntl")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);
+        memset(fl, 0, sizeof fl); fl[0] = 1;
+        cpu.r[RDI] = (uint64_t)fd; cpu.r[RSI] = 5; cpu.r[RDX] = (uint64_t)(uintptr_t)fl;   // F_GETLK: our own lock doesn't conflict
+        rt64_find_shim("fcntl")(&cpu);
+        EXPECT(cpu.r[RAX] == 0 && fl[0] == 2);   // F_UNLCK in Linux's numbering
+        close(fd);
+        unlink(lockpath);
+    }
+
     // Sentry's crash dump consent (P2CE's libtier0): answered "No" by the runtime, never shown.
     {
         struct { uint32_t flags; int32_t buttonid; const char *text; } buttons[2] = {{1, 7, "Yes"}, {2, 3, "No"}};
