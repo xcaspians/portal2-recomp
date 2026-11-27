@@ -219,6 +219,7 @@ static void s_fopen(CPU64 *c) {
     if (strpbrk(STR(1), "wa+")) rt64_prepare_write(STR(0));
     FILE *f = fopen(rt64_host_path(STR(0)), STR(1));
     if (!f) rt64_set_errno(errno);
+    if (getenv("RT64_TRACE_PATHS")) fprintf(stderr, "rt64: fopen(%s, %s) -> %p (errno %d)\n", STR(0), STR(1), (void *)f, f ? 0 : errno);
     RET(c, (uintptr_t)f);
 }
 static void s_fdopen(CPU64 *c) { RET(c, (uintptr_t)fdopen((int)ARG(c, 0), STR(1))); }

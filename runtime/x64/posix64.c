@@ -126,8 +126,11 @@ const char *rt64_host_path(const char *path) {
                                              "/etc/pki/tls/cert.pem", "/etc/ssl/ca-bundle.pem", "/usr/local/ssl/cert.pem",
                                              "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", NULL};
     if (!path) return path;
+    static int trace = -1;   // RT64_TRACE_PATHS=1: every path the guest opens or checks, on stderr
+    if (trace < 0) trace = getenv("RT64_TRACE_PATHS") != NULL;
+    if (trace) fprintf(stderr, "rt64: path %s\n", path);
     for (int i = 0; ca_bundles[i]; ++i)
-        if (!strcmp(path, ca_bundles[i])) return "/etc/ssl/cert.pem";
+        if (!strcmp(path, ca_bundles[i])) return getenv("RT64_CA_BUNDLE") ? getenv("RT64_CA_BUNDLE") : "/etc/ssl/cert.pem";
     return path;
 }
 #define HP(i) rt64_host_path(S(i))
@@ -136,7 +139,9 @@ static void s_open(CPU64 *c) {
     int proc = rt64_proc_open(S(0));
     if (proc != -2) { if (proc < 0) rt64_set_errno(ENOENT); RET(c, proc); return; }
     if (I(1) & 3) copy_on_write(S(0));
-    CHECK(c, open(HP(0), host_open_flags(I(1)), (mode_t)ARG(c, 2)));
+    int fd = open(HP(0), host_open_flags(I(1)), (mode_t)ARG(c, 2));
+    if (getenv("RT64_TRACE_PATHS")) fprintf(stderr, "rt64: open(%s, 0x%x) -> %d (errno %d)\n", S(0), I(1), fd, fd < 0 ? errno : 0);
+    CHECK(c, fd);
 }
 static void s_openat(CPU64 *c) {
     int dir = I(0) == -100 ? AT_FDCWD : I(0);
@@ -204,7 +209,7 @@ static void s_getcwd(CPU64 *c) {
 }
 static void s_realpath(CPU64 *c) {
     char buffer[PATH_MAX];
-    if (!realpath(S(0), buffer)) { rt64_set_errno(errno); RET(c, 0); return; }
+    if (!realpath(HP(0), buffer)) { rt64_set_errno(errno); RET(c, 0); return; }
     if (!ARG(c, 1)) { RET(c, rt64_guest_strdup(c, buffer)); return; }
     strcpy(PTR(c, 1), buffer);
     RET(c, ARG(c, 1));
