@@ -140,3 +140,58 @@ int rt64_is_native(uint64_t address) {
     // Lifted modules are mapped by the runtime, not by dyld: dladdr knows only native images.
     return address && dladdr((const void *)(uintptr_t)address, &info) && info.dli_fbase;
 }
+
+// Native libraries standing in for Linux ones (native_libs64.h, round 28).
+#include "native_libs64.h"
+#include <pthread.h>
+#include <stdlib.h>
+
+#define NATIVE_MAX 8
+static struct { char soname[96]; void *handle; } natives[NATIVE_MAX];
+static int native_count;
+static pthread_once_t natives_once = PTHREAD_ONCE_INIT;
+
+static void natives_init(void) {
+    const char *spec = getenv("RT64_NATIVE_LIBS");
+    if (!spec) return;
+    char *copy = strdup(spec), *save = NULL;
+    for (char *entry = strtok_r(copy, ";", &save); entry && native_count < NATIVE_MAX; entry = strtok_r(NULL, ";", &save)) {
+        char *eq = strchr(entry, '=');
+        if (!eq) continue;
+        *eq = 0;
+        void *h = dlopen(eq + 1, RTLD_NOW | RTLD_GLOBAL);
+        if (!h) { fprintf(stderr, "rt64: %s stands in for %s but didn't load: %s\n", eq + 1, entry, dlerror()); continue; }
+        snprintf(natives[native_count].soname, sizeof natives[0].soname, "%s", entry);
+        natives[native_count++].handle = h;
+    }
+    free(copy);
+}
+
+int rt64_native_library(const char *name) {
+    pthread_once(&natives_once, natives_init);
+    const char *base = strrchr(name, '/') ? strrchr(name, '/') + 1 : name;
+    for (int i = 0; i < native_count; ++i) {
+        // libSDL2-2.0.so.0 also answers libSDL2-2.0.so and libSDL2.so (what dlopen callers try).
+        const char *so = natives[i].soname, *dot = strstr(so, ".so");
+        size_t stem = dot ? (size_t)(dot - so) : strlen(so);
+        if (!strcmp(base, so) || (!strncmp(base, so, stem) && !strncmp(base + stem, ".so", 3))) return i;
+        const char *dash = memchr(so, '-', stem);
+        if (dash && !strncmp(base, so, (size_t)(dash - so)) && !strcmp(base + (dash - so), ".so")) return i;
+    }
+    return -1;
+}
+
+uint64_t rt64_native_library_symbol(int index, const char *name) {
+    pthread_once(&natives_once, natives_init);
+    if (index < 0 || index >= native_count) return 0;
+    return (uint64_t)(uintptr_t)dlsym(natives[index].handle, name);
+}
+
+uint64_t rt64_native_symbol(const char *name) {
+    pthread_once(&natives_once, natives_init);
+    for (int i = 0; i < native_count; ++i) {
+        void *p = dlsym(natives[i].handle, name);
+        if (p) return (uint64_t)(uintptr_t)p;
+    }
+    return 0;
+}

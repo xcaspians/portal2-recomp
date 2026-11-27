@@ -3,6 +3,7 @@
 // static TLS, constructors and exit handlers, and the dispatcher that maps
 // a guest code address to its lifted function. See rt64.h.
 #include "rt64.h"
+#include "native_libs64.h"
 
 #include <errno.h>
 #include <setjmp.h>
@@ -185,6 +186,10 @@ static uint64_t resolve_import(RT64Loaded *l, size_t index) {
         return (uint64_t)(uintptr_t)data;
     }
     l->shims[index] = rt64_find_shim(import->name);
+    if (!l->shims[index]) {   // a native library standing in for a Linux one (native_libs64.h)
+        uint64_t native = rt64_native_symbol(import->name);
+        if (native) return native;
+    }
     if (!l->shims[index] && (import->flags & RT64_IMPORT_WEAK) && ignorable_weak(import->name)) return 0;
     if (!l->shims[index] && (import->flags & RT64_IMPORT_WEAK)) return 0;
     return l->imports + RT64_IMPORT_STRIDE * index;

@@ -3,6 +3,7 @@
 // tools/elfprep64.py and lifted by tools/lift64.py, run through the 64-bit
 // runtime (runtime/x64). Expected values come from the architecture manuals.
 #include "x64/rt64.h"
+#include "x64/native_libs64.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -68,6 +69,8 @@ static uint64_t out(int offset) { return R64(sym("x64_out") + offset); }
 static uint8_t out8(int offset) { return (uint8_t)R8(sym("x64_out") + offset); }
 
 int main(void) {
+    // Before anything resolves an import: the Mac's zlib stands in for Linux's (native_libs64.h).
+    setenv("RT64_NATIVE_LIBS", "libz.so.1=/usr/lib/libz.1.dylib", 1);
     if (rt64_load(&x64_fixture, NULL)) return 1;
     EXPECT(CALL("x64_sum8", 1, 2, 3, 4, 5, 6, 700, 8000) == 8721);
 
@@ -320,6 +323,26 @@ int main(void) {
         rt64_find_shim("timerfd_create")(&cpu);
         EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 38);
     }
+
+    // Native libraries standing in for Linux ones (round 28: P2CE's SDL2, then DXVK).
+    EXPECT(rt64_native_library("libz.so.1") == 0 && rt64_native_library("/usr/lib/x86_64-linux-gnu/libz.so.1") == 0);
+    EXPECT(rt64_native_library("libz.so") == 0 && rt64_native_library("libzz.so.1") == -1);
+    uint64_t version = rt64_native_symbol("zlibVersion");
+    EXPECT(version && rt64_is_native(version) && !rt64_native_symbol("no_such_function_anywhere"));
+    rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+    rt64_native_call(&cpu, version);
+    EXPECT(cpu.r[RAX] && ((const char *)(uintptr_t)cpu.r[RAX])[0] == '1');
+    // The guest's dlopen/dlsym reach it too.
+    cpu.r[RDI] = (uint64_t)(uintptr_t)"libz.so.1";
+    rt64_find_shim("dlopen")(&cpu);
+    uint64_t handle = cpu.r[RAX];
+    EXPECT(handle == 0x100);
+    cpu.r[RDI] = handle; cpu.r[RSI] = (uint64_t)(uintptr_t)"zlibVersion";
+    rt64_find_shim("dlsym")(&cpu);
+    EXPECT(cpu.r[RAX] == version);
+    cpu.r[RDI] = handle; cpu.r[RSI] = (uint64_t)(uintptr_t)"snprintf";   // variadic: the shim wins
+    rt64_find_shim("dlsym")(&cpu);
+    EXPECT(cpu.r[RAX] && !rt64_is_native(cpu.r[RAX]));
 
     if (failures) { fprintf(stderr, "x64-check: %d of %d checks failed\n", failures, checks); return 1; }
     printf("x64-check: PASS, %d checks (System V calls, 16 registers, RIP-relative data, "
