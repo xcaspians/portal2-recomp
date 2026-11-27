@@ -75,6 +75,55 @@ RT64_ALWAYS_INLINE int64_t rt64_sat(int64_t v, int64_t lo, int64_t hi) { return 
 #define W64(a, v) rt64_w64((a), (v))
 #define WX(a, v)  rt64_wx((a), (v))
 
+// Guest memory that other threads may share (the lifter's RG/WG: any address
+// but [rsp + ...]). x86 orders every load and store (TSO: loads act as
+// acquires, stores as releases); arm64 does not, and lock-free code written
+// for x86 (job queues publishing a node, then its pointer) breaks when threads
+// really run in parallel. Built with RT64_TSO, RG/WG are acquire loads and
+// release stores (LDAPR/STLR with -mcpu=apple-m1), with fences on the rare
+// unaligned path; without it they are the plain R/W.
+#ifdef RT64_TSO
+#define RT64_TSO_ACCESS(n, type)                                                                         \
+    RT64_ALWAYS_INLINE uint64_t rt64_rg##n(uint64_t a) {                                                 \
+        if (__builtin_expect(!(a & (sizeof(type) - 1)), 1))                                              \
+            return __atomic_load_n((const type *)(uintptr_t)a, __ATOMIC_ACQUIRE);                       \
+        type v; memcpy(&v, (const void *)(uintptr_t)a, sizeof v);                                        \
+        __atomic_thread_fence(__ATOMIC_ACQUIRE);                                                         \
+        return v;                                                                                        \
+    }                                                                                                    \
+    RT64_ALWAYS_INLINE void rt64_wg##n(uint64_t a, uint64_t v) {                                         \
+        type x = (type)v;                                                                                \
+        if (__builtin_expect(!(a & (sizeof(type) - 1)), 1)) {                                            \
+            __atomic_store_n((type *)(uintptr_t)a, x, __ATOMIC_RELEASE);                                \
+            return;                                                                                      \
+        }                                                                                                \
+        __atomic_thread_fence(__ATOMIC_RELEASE);                                                         \
+        memcpy((void *)(uintptr_t)a, &x, sizeof x);                                                      \
+    }
+RT64_TSO_ACCESS(8, uint8_t)
+RT64_TSO_ACCESS(16, uint16_t)
+RT64_TSO_ACCESS(32, uint32_t)
+RT64_TSO_ACCESS(64, uint64_t)
+#undef RT64_TSO_ACCESS
+#define RG8(a)  rt64_rg8(a)
+#define RG16(a) rt64_rg16(a)
+#define RG32(a) rt64_rg32(a)
+#define RG64(a) rt64_rg64(a)
+#define WG8(a, v)  rt64_wg8((a), (v))
+#define WG16(a, v) rt64_wg16((a), (v))
+#define WG32(a, v) rt64_wg32((a), (v))
+#define WG64(a, v) rt64_wg64((a), (v))
+#else
+#define RG8(a)  R8(a)
+#define RG16(a) R16(a)
+#define RG32(a) R32(a)
+#define RG64(a) R64(a)
+#define WG8(a, v)  W8(a, v)
+#define WG16(a, v) W16(a, v)
+#define WG32(a, v) W32(a, v)
+#define WG64(a, v) W64(a, v)
+#endif
+
 #define PUSH64(cpu, v) do { uint64_t push_value_ = (v); (cpu)->r[RSP] -= 8; W64((cpu)->r[RSP], push_value_); } while (0)
 #define POP64(cpu) ({ uint64_t pop_value_ = R64((cpu)->r[RSP]); (cpu)->r[RSP] += 8; pop_value_; })
 
