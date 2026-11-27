@@ -74,6 +74,23 @@ def compile_one(source, obj_dir, flags, limit_gb, log):
     return obj, True
 
 
+LIFTER = ('elfprep64.py', 'lift64.py', 'simd64.py', 'x87_64.py', 'build64.py')
+
+
+def lift_key(path, roots, shard_size, symbol):
+    """What a lift depends on: the module's bytes, the lifter's sources and the
+    options. The same key means the C files already on disk are current."""
+    digest = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for block in iter(lambda: f.read(1 << 20), b''):
+            digest.update(block)
+    for name in LIFTER:
+        with open(os.path.join(TOOLS, name), 'rb') as f:
+            digest.update(f.read())
+    digest.update(json.dumps([sorted(roots or []), shard_size, symbol]).encode())
+    return digest.hexdigest()
+
+
 def build_module(path, out, jobs, shard_size, opt, limit_gb, roots=None, log=print):
     elf_name = os.path.basename(path)
     symbol = symbol_for(elf_name)
@@ -82,29 +99,48 @@ def build_module(path, out, jobs, shard_size, opt, limit_gb, roots=None, log=pri
     os.makedirs(src, exist_ok=True)
     os.makedirs(obj_dir, exist_ok=True)
     started = time.time()
-    layout = elfprep64.prepare(path, work)
-    with open(os.path.join(work, 'layout.path'), 'w') as f:
-        f.write(os.path.join(work, layout['name'] + '.layout.json'))
-    bodies, report = lift64.lift_module(layout, lift64.resolve_roots(layout, roots or []), every=not roots)
-    size = sum(len(b) for b in bodies.values())
-    shards = max(2, -(-size // shard_size))
-    files = lift64.emit(layout, bodies, symbol, shards)
-    for name in os.listdir(src):
-        if name not in files:
-            os.remove(os.path.join(src, name))
-    for name, text in files.items():
-        target = os.path.join(src, name)
-        try:
-            with open(target) as f:
-                if f.read() == text:
-                    continue
-        except OSError:
-            pass
-        with open(target, 'w') as f:
-            f.write(text)
-    log(f'{elf_name}: lifted {report["functions"]} functions, {report["instructions"]} instructions '
-        f'({report["unsupported"]} traps) into {len(files) - 1} C files, {size / 1e6:.1f} MB, '
-        f'in {time.time() - started:.0f} s')
+    key = lift_key(path, roots, shard_size, symbol)
+    key_file, report_file = os.path.join(work, 'lift.key'), os.path.join(work, 'lift.json')
+    cached = None
+    try:
+        with open(key_file) as f, open(report_file) as g:
+            if f.read() == key:
+                cached = json.load(g)
+    except (OSError, ValueError):
+        pass
+    if cached and all(os.path.exists(os.path.join(src, n)) for n in cached['files']):
+        # Same module, same lifter: the C files on disk are what lifting would write.
+        files = dict.fromkeys(cached['files'])
+        report, size = cached['report'], cached['size']
+        log(f'{elf_name}: lift cached ({report["functions"]} functions, {report["unsupported"]} traps)')
+    else:
+        layout = elfprep64.prepare(path, work)
+        with open(os.path.join(work, 'layout.path'), 'w') as f:
+            f.write(os.path.join(work, layout['name'] + '.layout.json'))
+        bodies, report = lift64.lift_module(layout, lift64.resolve_roots(layout, roots or []), every=not roots)
+        size = sum(len(b) for b in bodies.values())
+        shards = max(2, -(-size // shard_size))
+        files = lift64.emit(layout, bodies, symbol, shards)
+        for name in os.listdir(src):
+            if name not in files:
+                os.remove(os.path.join(src, name))
+        for name, text in files.items():
+            target = os.path.join(src, name)
+            try:
+                with open(target) as f:
+                    if f.read() == text:
+                        continue
+            except OSError:
+                pass
+            with open(target, 'w') as f:
+                f.write(text)
+        with open(report_file, 'w') as f:
+            json.dump({'files': sorted(files), 'report': report, 'size': size}, f)
+        with open(key_file, 'w') as f:
+            f.write(key)
+        log(f'{elf_name}: lifted {report["functions"]} functions, {report["instructions"]} instructions '
+            f'({report["unsupported"]} traps) into {len(files) - 1} C files, {size / 1e6:.1f} MB, '
+            f'in {time.time() - started:.0f} s')
     flags = [f'-O{opt}', '-g0', '-w', '-I' + os.path.join(ROOT, 'runtime'), '-fno-strict-aliasing']
     sources = sorted(os.path.join(src, n) for n in files if n.endswith('.c'))
     objects, compiled = [], 0
