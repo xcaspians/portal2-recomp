@@ -81,6 +81,32 @@ struct DeviceStatus: Decodable, Equatable {
     func hasUpdate(_ game: String) -> Bool { (updates?[game] ?? nil).map { !$0.isEmpty } ?? false }
 }
 struct PlanStep: Decodable { let label: String; let command: [String] }
+/// One tool of tools/build_tools.py check: what the builds need, and what to click when it's missing.
+struct ToolCheck: Decodable, Identifiable, Equatable {
+    let id: String
+    let title: String
+    let ok: Bool
+    let problem: String?
+    let action: String?        // "install" (Set up tools), "clt", "appstore", "open-xcode"
+    let size_mb: Int
+}
+
+/// The environment the tools run in: a Finder app's bare PATH plus Homebrew's and
+/// Rust's, and Xcode selected through DEVELOPER_DIR when xcode-select points to
+/// the command line tools (devicectl and the iOS SDK are Xcode's; no sudo).
+/// setup.sh adds the installer's own tools itself (tools/build_tools.py env).
+func toolEnvironment(device: String? = nil) -> [String: String] {
+    var env = ProcessInfo.processInfo.environment
+    env["PATH"] = ([home.appendingPathComponent(".cargo/bin").path, "/opt/homebrew/bin", "/usr/local/bin"]
+                   + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]).joined(separator: ":")
+    let xcode = "/Applications/Xcode.app/Contents/Developer"
+    if env["DEVELOPER_DIR"] == nil, FileManager.default.fileExists(atPath: xcode + "/usr/bin/xcodebuild"),
+       !run("/usr/bin/xcode-select", ["-p"]).output.contains("Xcode.app") {
+        env["DEVELOPER_DIR"] = xcode
+    }
+    if let device { env["P2_DEVICE"] = device }   // never a guess: the device the user chose
+    return env
+}
 struct DownloadPlan: Decodable { let steps: [PlanStep]; let need_bytes: Int64; let problem: String? }
 
 // The one app every game lives in on the device (tools/games.py APP_NAME, round 19).
@@ -128,6 +154,9 @@ final class DeviceHub: ObservableObject {
     @Published var hasXcode = false
     @Published var hasSigningAccount = false
     @Published var expiry: Date?
+    @Published var toolChecks: [ToolCheck] = []
+    @Published var toolsChecked = false
+    @Published var settingUp: Job?        // the "Setting up tools" run, while it goes and after a failure
     private var process: Process?
     private var timer: Timer?
     private var unpacked = false
@@ -136,6 +165,8 @@ final class DeviceHub: ObservableObject {
     var deviceStatus: DeviceStatus? { selected.flatMap { status[$0] } }
     var sauceOnDevice: Bool { deviceStatus?.app_installed == true }
     var canBuildSauce: Bool { hasXcode && hasSigningAccount && isAppleSilicon }
+    var missingTools: [ToolCheck] { toolChecks.filter { !$0.ok } }
+    var toolsReady: Bool { toolsChecked && missingTools.isEmpty }
 
     func entry(_ game: Game) -> LibraryEntry { library[game.id] ?? LibraryEntry() }
     func onDevice(_ game: Game) -> Bool { deviceStatus?.data?[game.id] == true }
@@ -158,7 +189,7 @@ final class DeviceHub: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 6, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, !self.running else { return }
-                if allGames.contains(where: { !self.entry($0).ready }) || !self.hasSigningAccount { self.rescan() }
+                if allGames.contains(where: { !self.entry($0).ready }) || !self.hasSigningAccount || !self.toolsReady { self.rescan() }
             }
         }
     }
@@ -171,7 +202,9 @@ final class DeviceHub: ObservableObject {
                 || run("/usr/bin/xcode-select", ["-p"]).output.contains("Xcode")
             let account = run("/usr/bin/security", ["find-certificate", "-c", "Apple Development"]).status == 0
             let expiry = sauceProfileExpiry()
+            let tools = await self.checkTools()
             await MainActor.run {
+                if let tools { self.toolChecks = tools; self.toolsChecked = true }
                 self.library = found
                 self.scanned = true
                 self.hasXcode = xcode
@@ -203,6 +236,7 @@ final class DeviceHub: ObservableObject {
                 p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
                 p.arguments = [repoDir.appendingPathComponent("tools/devices.py").path] + args
                 p.currentDirectoryURL = repoDir
+                p.environment = toolEnvironment()
                 let pipe = Pipe()
                 p.standardOutput = pipe
                 p.standardError = FileHandle.nullDevice
@@ -246,9 +280,73 @@ final class DeviceHub: ObservableObject {
         }
     }
 
+    // MARK: Tools (tools/build_tools.py)
+
+    /// Every tool the builds need, checked at once; nil before the command line tools (no python3 yet).
+    nonisolated func checkTools() async -> [ToolCheck]? {
+        guard hasCommandLineTools() else { return [] }
+        let ok = await MainActor.run { self.ensureSource() }
+        guard ok else { return nil }
+        return await withCheckedContinuation { done in
+            DispatchQueue.global().async {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+                p.arguments = [repoDir.appendingPathComponent("tools/build_tools.py").path, "check", "--json"]
+                p.currentDirectoryURL = repoDir
+                p.environment = toolEnvironment()
+                let pipe = Pipe()
+                p.standardOutput = pipe
+                p.standardError = FileHandle.nullDevice
+                try? p.run()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                p.waitUntilExit()
+                done.resume(returning: try? JSONDecoder().decode([ToolCheck].self, from: data))
+            }
+        }
+    }
+
+    func refreshTools() {
+        Task {
+            if let checks = await checkTools() { toolChecks = checks; toolsChecked = true }
+        }
+    }
+
+    /// Installs every missing tool in one go (Homebrew when it's there, else the
+    /// installer's own pinned copies; Rust through rustup), with progress.
+    @discardableResult
+    func setUpTools() async -> Bool {
+        guard !missingTools.filter({ $0.action == "install" }).isEmpty else { return missingTools.isEmpty }
+        settingUp = Job(state: .running, fraction: 0, text: "Starting")
+        let ok = await launch(URL(fileURLWithPath: "/usr/bin/python3"),
+                              [repoDir.appendingPathComponent("tools/build_tools.py").path, "install"], device: "") { line in
+            if line.hasPrefix("==> ") { self.settingUp?.text = String(line.dropFirst(4)) }
+            if line.hasPrefix("progress "), let f = line.dropFirst(9).split(separator: " ").first?.split(separator: "/"),
+               f.count == 2, let a = Double(f[0]), let b = Double(f[1]), b > 0 { self.settingUp?.fraction = a / b }
+        }
+        if let checks = await checkTools() { toolChecks = checks; toolsChecked = true }
+        if ok && missingTools.isEmpty { settingUp = nil; return true }
+        let still = missingTools.first { $0.action == "install" }
+        settingUp = Job(state: .failed(still.map { _ in lastError ?? "Some tools didn't install. Press Set up tools again." }
+                                       ?? (missingTools.first?.problem ?? lastError ?? "Press Set up tools again.")),
+                        fraction: settingUp?.fraction ?? 0, text: "")
+        return false
+    }
+
     // MARK: Install
 
-    func install() { perform(games: allGames.filter { picks.contains($0.id) }) }
+    func install() {
+        let games = allGames.filter { picks.contains($0.id) }
+        Task {
+            // The tools first, all at once: never one missing tool per failed build.
+            if !(await setUpTools()) {
+                for g in games {
+                    jobs[g.id] = Job(state: .failed("The tools aren't all set up yet: see step 1 above."), fraction: 0, text: "")
+                }
+                return
+            }
+            perform(games: games)
+        }
+    }
     func retry(_ game: Game) { perform(games: [game]) }
 
     private func perform(games: [Game]) {
@@ -362,11 +460,7 @@ final class DeviceHub: ObservableObject {
             p.executableURL = tool
             p.arguments = args
             p.currentDirectoryURL = repoDir
-            var env = ProcessInfo.processInfo.environment
-            env["P2_DEVICE"] = device   // never a guess: the device the user chose
-            env["PATH"] = ([home.appendingPathComponent(".cargo/bin").path, "/opt/homebrew/bin"]
-                           + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]).joined(separator: ":")
-            p.environment = env
+            p.environment = toolEnvironment(device: device.isEmpty ? nil : device)
             let pipe = Pipe()
             p.standardOutput = pipe
             p.standardError = pipe
@@ -470,16 +564,53 @@ struct DeviceFlowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            if !tools.tools {
-                StepRow(number: 0, title: "Apple's command line tools", ok: false) {
-                    Text("The installer needs them to talk to your iPad or iPhone (about 1 GB, once).")
-                    Button("Install…") { tools.installTools() }
-                }
-            }
-            StepRow(number: 1, title: "Your games in Steam", ok: !hub.picks.isEmpty) { gamesList }
-            StepRow(number: 2, title: "Your iPad or iPhone", ok: hub.device?.ready == true && hub.sauceOnDevice) { deviceSection }
-            StepRow(number: 3, title: "Install", ok: !hub.jobs.isEmpty && hub.jobs.values.allSatisfy { if case .done = $0.state { return true }; return false }) {
+            StepRow(number: 1, title: "Setting up tools", ok: tools.tools && hub.toolsReady) { toolsSection }
+            StepRow(number: 2, title: "Your games in Steam", ok: !hub.picks.isEmpty) { gamesList }
+            StepRow(number: 3, title: "Your iPad or iPhone", ok: hub.device?.ready == true && hub.sauceOnDevice) { deviceSection }
+            StepRow(number: 4, title: "Install", ok: !hub.jobs.isEmpty && hub.jobs.values.allSatisfy { if case .done = $0.state { return true }; return false }) {
                 installSection
+            }
+        }
+    }
+
+    /// Everything the builds need, checked at once (tools/build_tools.py), installed in one go.
+    @ViewBuilder var toolsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !tools.tools {
+                Text("Apple's command line tools aren't installed. Click Install, then Install again in the window macOS opens (about 1 GB, 5–10 minutes). This page carries on by itself when they're in.")
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Install…") { tools.installTools() }
+            } else if !hub.toolsChecked {
+                Text("Checking what's on this Mac…")
+            } else if hub.missingTools.isEmpty && hub.settingUp == nil {
+                Text("All set: Xcode, XcodeGen, CMake, Ninja and Rust are ready.")
+            } else {
+                ForEach(hub.missingTools) { t in
+                    Label(t.problem ?? t.title, systemImage: t.action == "install" ? "arrow.down.circle" : "hand.point.right")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let job = hub.settingUp {
+                    ProgressView(value: job.fraction)
+                    switch job.state {
+                    case .failed(let m): Text(m).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    default: Text(job.text).lineLimit(1)
+                    }
+                }
+                HStack {
+                    let installable = hub.missingTools.filter { $0.action == "install" }
+                    if !installable.isEmpty {
+                        let mb = installable.map(\.size_mb).reduce(0, +)
+                        Button("Set up tools (about \(mb) MB)") { Task { await hub.setUpTools() } }
+                            .disabled(hub.running || hub.settingUp?.state == .running)
+                    }
+                    if hub.missingTools.contains(where: { $0.action == "appstore" }) {
+                        Button("Get Xcode") { NSWorkspace.shared.open(URL(string: "macappstore://apps.apple.com/app/xcode/id497799835")!) }
+                    }
+                    if hub.missingTools.contains(where: { $0.action == "open-xcode" }) {
+                        Button("Open Xcode") { NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications/Xcode.app")) }
+                    }
+                    Button("Check again") { hub.refreshTools() }.buttonStyle(.link)
+                }
             }
         }
     }
@@ -609,7 +740,8 @@ struct DeviceFlowView: View {
                 if hub.running { Button("Stop") { hub.cancel() } }
                 Button(installTitle(chosen)) { hub.install() }
                     .keyboardShortcut(.defaultAction).controlSize(.large)
-                    .disabled(chosen.isEmpty || hub.running || hub.device?.ready != true || !tools.tools || hub.spaceWarning != nil)
+                    .disabled(chosen.isEmpty || hub.running || hub.device?.ready != true || !tools.tools || hub.spaceWarning != nil
+                               || hub.missingTools.contains { $0.action != "install" })
             }
             if showLog {
                 ScrollView {

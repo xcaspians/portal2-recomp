@@ -294,13 +294,13 @@ Terminal instead of the installer, iPhone, and the details:
     Steam, or use `download_depot 317400 317401` (about 8.6 GB) in the Steam
     console;
   - the Linux binaries: `download_depot 317400 317404` (about 90 MB).
-- Optional: Rust 1.99 or newer from [rustup](https://rustup.rs) builds the
-  Metal renderer from source instead of using the prebuilt one; the iPhone
-  app needs it for Metal (Homebrew's `rust` has no iOS target).
-- For iPhone: Xcode with your Apple ID (a free account works),
-  `brew install xcodegen cmake ninja`, an iPhone on iOS 17 or newer
-  connected by cable with Developer Mode on, and about 12 GB free on it.
-  Tested on an iPhone 15 Pro Max only.
+- For iPhone and iPad: Xcode with your Apple ID (a free account works), a
+  device on iOS 17 or newer with Developer Mode on, and about 12 GB free on
+  it. The build tools (XcodeGen, CMake, Ninja, and Rust 1.99 or newer for the
+  Metal renderer) are set up by the installer's "Setting up tools" step, or
+  by `./setup.sh --ios` itself: Homebrew's when Homebrew is installed, else
+  pinned copies in `~/Library/Application Support/Natif Installer/tools`
+  (`python3 tools/build_tools.py check` lists what's there).
 
 ## Install on Mac
 
