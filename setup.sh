@@ -385,15 +385,15 @@ DEBIAN_LIBGCC_DEB="libgcc-s1_10.2.1-6_i386.deb"
 DEBIAN_LIBGCC_SHA256="0a52edec5d626f8d9acf1998248d276760aff3950f44a308d27d4a2a488fe18d"
 SYSTEM_LIB_DIR=""
 fetch_debian_i386() {  # game ids that need them
-    local c dest deb deb_path sha url got t found spec id candidates=()
-    for id in "$@"; do candidates+=("$(config_get "$id" system_lib_dir)"); done
+    local c dest deb deb_path sha url got t found spec id candidates=() titles=()
+    for id in "$@"; do candidates+=("$(config_get "$id" system_lib_dir)"); game_info "$id"; titles+=("$TITLE"); done
     for c in "${candidates[@]}" "$REPO/../work/downloads/debian-i386/lib" "$DEPS/debian-i386/lib"; do
         if [ -n "$c" ] && [ -f "$c/libstdc++.so.6" ] && [ -f "$c/libgcc_s.so.1" ]; then
             SYSTEM_LIB_DIR="$c"
             return 0
         fi
     done
-    step "Downloading Debian bullseye i386 libstdc++.so.6 and libgcc_s.so.1 (for $*)"
+    step "Downloading Debian bullseye i386 libstdc++.so.6 and libgcc_s.so.1 (for ${titles[*]})"
     need ar "It comes with the Xcode command line tools: xcode-select --install"
     dest="$DEPS/debian-i386/lib"
     mkdir -p "$DEPS/debian-i386" "$dest"
