@@ -1,7 +1,6 @@
 """The Natif Installer's packaging (tools/build_installer.sh) and window
 (installer/Installer.swift): static checks, no build needed."""
 import re
-import sys
 import unittest
 from pathlib import Path
 
@@ -9,8 +8,6 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = (ROOT / 'tools/build_installer.sh').read_text()
 SWIFT = (ROOT / 'installer/Installer.swift').read_text()
 DEVICES = (ROOT / 'installer/Devices.swift').read_text()
-sys.path.insert(0, str(ROOT / 'tools'))
-import steam_library  # noqa: E402
 
 
 class PackagingTests(unittest.TestCase):
@@ -41,12 +38,7 @@ class PackagingTests(unittest.TestCase):
 
 
 class WindowTests(unittest.TestCase):
-    def test_swift_games_match_steam_library(self):
-        rows = re.findall(r'SauceGame\(id: "(\w+)",\s+title: "[^"]+",\s+appID: (\d+),\s+linuxDepot: (\d+),\s+'
-                          r'dataDepot: (\d+),\s+folder: "([^"]+)",\s+marker: "([^"]+)"', DEVICES)
-        self.assertEqual([(g, int(a), int(l), int(d), f, m) for g, a, l, d, f, m in rows],
-                         [(g, a, l, d, f, m) for g, _t, a, l, d, f, m in steam_library.GAMES])
-
+    # The game list itself: tests/test_installer_table.py.
     def test_never_asks_for_a_password(self):
         for source in (SWIFT, DEVICES):
             self.assertNotIn('SecureField', source)

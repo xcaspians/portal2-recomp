@@ -42,6 +42,13 @@ GAMES = {
         depot_id=661,
         # Installed app and its data: unchanged since the first release, so
         # existing installs, saves and settings stay where they are.
+        # The Natif Installer and setup.sh (see installer_games()).
+        installer=dict(title='Portal 2', data_depot=621, steam_folder='Portal 2',
+                       data_files=('portal2/pak01_dir.vpk', 'platform'),
+                       linux_files=('bin/linux32/engine.so', 'portal2/bin/linux32/server.so'),
+                       linux_size='about 90 MB', audio=('mssmp3.asi', 'mssvoice.asi', 'binkawin.asi'),
+                       minutes=10, device_bytes=11_500_000_000, map_compiler='bin/linux32/vbsp_linux'),
+        steamworks=('20.1.0', '3be79e6bdf53c86210267bf39f46362bb839130896006aec26364c5efc37e314'),
         app_name='Portal 2 Natif',
         log_name='Portal2Natif.log',
         bundle_id='fr.kanapitsas.portal2-native',
@@ -93,6 +100,13 @@ GAMES = {
         roots='config/hl2-roots.json',
         steam_appid=220,
         depot_id=224,
+        installer=dict(title='Half-Life 2', data_depot=221, steam_folder='Half-Life 2',
+                       data_files=('hl2_complete/gameinfo.txt', 'hl2/hl2_pak_dir.vpk', 'platform'),
+                       linux_files=('hl2_linux', 'bin/engine.so', 'hl2_complete/bin/server.so'),
+                       linux_size='about 320 MB', audio=('mssmp3.asi', 'binkawin.asi', 'mssmixer.mix'),
+                       minutes=20, device_bytes=10_000_000_000, experimental=True),
+        # SDK 1.60: Half-Life 2's client.so asks for newer interfaces (docs/steam.md).
+        steamworks=('2024.8.0', '0a8e9b8c95760e81fcb16477a8962a4c230ea887b3731b1f9bc0690677f6f087'),
         app_name='Half-Life 2 Natif',
         log_name='HalfLife2Natif.log',
         bundle_id='fr.kanapitsas.hl2-native',
@@ -135,6 +149,13 @@ GAMES = {
         roots='config/portal1-roots.json',
         steam_appid=400,
         depot_id=404,
+        installer=dict(title='Portal', data_depot=401, steam_folder='Portal',
+                       data_files=('portal/gameinfo.txt', 'platform'),
+                       linux_files=('hl2_linux', 'bin/engine.so', 'portal/bin/server.so', 'bin/shaderapivk.so'),
+                       linux_size='about 150 MB', audio=('mssmp3.asi', 'binkawin.asi', 'mssmixer.mix'),
+                       minutes=10, device_bytes=4_400_000_000, experimental=True),
+        # SDK 1.60: engine.so asks SteamUser023/SteamClient021 (docs/steam.md).
+        steamworks=('2024.8.0', '0a8e9b8c95760e81fcb16477a8962a4c230ea887b3731b1f9bc0690677f6f087'),
         app_name='Portal Natif',
         log_name='PortalNatif.log',
         bundle_id='fr.kanapitsas.portal-native',
@@ -172,6 +193,13 @@ GAMES = {
         roots='config/mel-roots.json',
         steam_appid=317400,
         depot_id=317404,
+        # Mel runs on Portal 2's files on the device (tools/mel_slim.py): needs.
+        installer=dict(title='Portal Stories: Mel', data_depot=317401, steam_folder='Portal Stories Mel',
+                       data_files=('portal_stories/bin/server.so', 'portal_stories/gameinfo.txt', 'platform'),
+                       linux_files=('portal2_linux', 'bin/engine.so', 'bin/shaderapivk.so'),
+                       linux_size='about 90 MB', audio=('mssmp3.asi', 'binkawin.asi'),
+                       minutes=15, device_bytes=6_800_000_000, needs='portal2', experimental=True),
+        steamworks=('20.1.0', '3be79e6bdf53c86210267bf39f46362bb839130896006aec26364c5efc37e314'),
         app_name='Portal Stories Mel Natif',
         log_name='PortalStoriesMelNatif.log',
         bundle_id='fr.kanapitsas.mel-native',
@@ -221,6 +249,15 @@ GAMES = {
         launch_args=('-insecure', '+sv_lan', '1', '-nomaster'),
         # And the Steam bridge refuses server lists, pings and lobbies (P2_STEAM_OFFLINE).
         steam_offline=True,
+        # Biggest of the five (17.3 M instructions, Mel 16.2 M): about 20 minutes.
+        installer=dict(title='Left 4 Dead 2', data_depot=551, steam_folder='Left 4 Dead 2',
+                       data_files=('left4dead2/pak01_dir.vpk', 'left4dead2/gameinfo.txt', 'platform'),
+                       linux_files=('hl2_linux', 'bin/engine.so', 'left4dead2/bin/server.so', 'bin/shaderapivk.so'),
+                       linux_size='about 510 MB', audio=('mssmp3.asi', 'binkawin.asi', 'mssmixer.mix'),
+                       minutes=20, device_bytes=14_000_000_000, experimental=True,
+                       note='Offline only: single-player campaigns with bots, never internet servers.'),
+        # SDK of Portal 2's generation: SteamClient020, SteamUser021.
+        steamworks=('20.1.0', '3be79e6bdf53c86210267bf39f46362bb839130896006aec26364c5efc37e314'),
         app_name='Left 4 Dead 2 Natif',
         log_name='Left4Dead2Natif.log',
         bundle_id='fr.kanapitsas.l4d2-native',
@@ -337,3 +374,72 @@ def missing_ios_data(game, game_root):
         return []
     dirs = gameinfo_dirs(info.read_text(errors='replace'), game['mod'])
     return [d for d in dirs if d not in game['ios_data'] and (Path(game_root) / d).is_dir()]
+
+
+# ---- The Natif Installer's games (round 29) ----
+# The one list of the games the installer and setup.sh offer: every profile
+# with an `installer` entry, in this file's order. tools/steam_library.py,
+# tools/devices.py, setup.sh (--installer-ids, --shell) and the installer app
+# (games.json, written by tools/build_installer.sh from --installer-json) all
+# read it; tests/test_installer_table.py fails when one of them keeps its own
+# copy. A new game is its profile plus that entry. Portal 2: Community Edition
+# stays out until it plays (its 64-bit profile is tools/build64.py's): it joins
+# with an `installer` entry once it has a profile here.
+
+def installer_games():
+    """Names of the games the installer offers, in order."""
+    return [name for name, g in GAMES.items() if g.get('installer')]
+
+
+def extras(name):
+    """What comes with a game's install, each its own game in Sauce's picker:
+    [(id, short title, folder)], from ios_variants (Half-Life 2's episodes)."""
+    return [(v, title.split(': ', 1)[-1], mod) for v, mod, title in GAMES[name].get('ios_variants', ())]
+
+
+def installer_entry(name):
+    """One game for the installer: the shape of games.json (installer/Installer.swift GameInfo)."""
+    g, i = GAMES[name], GAMES[name]['installer']
+    return {
+        'id': name, 'title': i['title'], 'appID': g['steam_appid'], 'dataDepot': i['data_depot'],
+        'linuxDepot': g['depot_id'], 'linuxSize': i['linux_size'], 'folder': i['steam_folder'],
+        'mod': g['mod'], 'markerFile': i['data_files'][0], 'dataFiles': list(i['data_files']),
+        'linuxFiles': list(i['linux_files']), 'minutes': i['minutes'], 'deviceBytes': i['device_bytes'],
+        'appName': g['app_name'], 'needs': i.get('needs'), 'mapCompiler': i.get('map_compiler'),
+        'experimental': bool(i.get('experimental')), 'note': i.get('note'),
+        'extras': [{'id': e, 'title': t, 'folder': f} for e, t, f in extras(name)],
+    }
+
+
+def shell_vars(name):
+    """setup.sh's variables for one game (eval'd by its game_info)."""
+    import shlex
+    g, i = GAMES[name], GAMES[name]['installer']
+    version, sha = g['steamworks']
+    scalars = dict(TITLE=i['title'], APPID=g['steam_appid'], LINUX_DEPOT=g['depot_id'], DATA_DEPOT=i['data_depot'],
+                   STEAM_FOLDER=i['steam_folder'], MOD=g['mod'], LINUX_SIZE=i['linux_size'], MINUTES=i['minutes'],
+                   DEVICE_SIZE=f"about {i['device_bytes'] / 1e9:g} GB", APP_NAME=g['app_name'], LOG_NAME=g['log_name'],
+                   STEAMWORKS_VERSION=version, STEAMWORKS_SHA256=sha, NEEDS=i.get('needs') or '',
+                   SYSTEM_LIBS=' '.join(g.get('system_libs', ())))
+    arrays = dict(DATA_FILES=i['data_files'], LINUX_FILES=i['linux_files'], AUDIO_FILES=i.get('audio', ()))
+    lines = [f'{k}={shlex.quote(str(v))}' for k, v in scalars.items()]
+    lines += [f'{k}=({" ".join(shlex.quote(x) for x in v)})' for k, v in arrays.items()]
+    return '\n'.join(lines)
+
+
+def main(argv):
+    import json
+    if argv == ['--installer-json']:
+        print(json.dumps([installer_entry(n) for n in installer_games()], indent=1))
+    elif argv == ['--installer-ids']:
+        print(' '.join(installer_games()))
+    elif len(argv) == 2 and argv[0] == '--shell' and argv[1] in installer_games():
+        print(shell_vars(argv[1]))
+    else:
+        print('usage: games.py --installer-json | --installer-ids | --shell <game>', file=__import__('sys').stderr)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main(__import__('sys').argv[1:]))

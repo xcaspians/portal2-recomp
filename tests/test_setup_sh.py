@@ -43,6 +43,7 @@ class SetupScriptTests(unittest.TestCase):
                               (['--game', 'all', '/a'], 'paths are for one game'),
                               (['--game', 'hl2', '--puzzle-maker'], '--puzzle-maker is for Portal 2'),
                               (['--game', 'mel', '--puzzle-maker'], '--puzzle-maker is for Portal 2'),
+                              (['--game', 'l4d2', '--puzzle-maker'], '--puzzle-maker is for Portal 2'),
                               (['--game', 'mel', '--ios'], '--ios is not yet supported for Portal Stories: Mel'),
                               (['/a', '/b', '/c'], 'too many arguments')):
             result = run_setup(*args)
@@ -106,6 +107,15 @@ class GameDetectionTests(unittest.TestCase):
             self.touch(linux / 'portal2_linux', linux / 'bin/engine.so', linux / 'bin/shaderapivk.so')
         return game
 
+    def install_l4d2(self, depot=True):
+        game = self.steam / 'steamapps/common/Left 4 Dead 2'
+        self.touch(game / 'left4dead2/pak01_dir.vpk', game / 'left4dead2/gameinfo.txt', game / 'platform/x')
+        if depot:   # where the Steam console puts it on a Mac
+            linux = self.steam / 'Steam.AppBundle/Steam/Contents/MacOS/steamapps/content/app_550/depot_554'
+            self.touch(linux / 'hl2_linux', linux / 'bin/engine.so', linux / 'left4dead2/bin/server.so',
+                       linux / 'bin/shaderapivk.so')
+        return game
+
     def detect(self, *args, config=None):
         if config is not None:
             (self.repo / 'config').mkdir(exist_ok=True)
@@ -163,7 +173,10 @@ class GameDetectionTests(unittest.TestCase):
         self.install_portal1()
         self.install_mel()
         self.assert_builds(self.detect(), 'portal2 hl2 portal1 mel')
-        self.assert_builds(self.detect('--game', 'all'), 'portal2 hl2 portal1 mel')
+        self.install_l4d2()
+        self.assert_builds(self.detect(), 'portal2 hl2 portal1 mel l4d2')
+        self.assert_builds(self.detect('--game', 'all'), 'portal2 hl2 portal1 mel l4d2')
+        self.assert_builds(self.detect('--game', 'l4d2'), 'l4d2')
         self.assert_builds(self.detect('--game', 'hl2'), 'hl2')
         self.assert_builds(self.detect('--game', 'portal1'), 'portal1')
         self.assert_builds(self.detect('--game', 'mel'), 'mel')
@@ -174,6 +187,43 @@ class GameDetectionTests(unittest.TestCase):
         game = self.steam / 'steamapps/common/Portal Stories Mel'
         linux = self.steam / 'steamapps/content/app_317400/depot_317404'
         self.assert_builds(self.detect(str(game), str(linux)), 'mel')
+
+    def test_l4d2_alone_is_built(self):
+        game = self.install_l4d2()
+        result = self.detect()
+        self.assert_builds(result, 'l4d2')
+        self.assertIn('Left 4 Dead 2:', result.stdout)
+        self.assertIn('app_550/depot_554', result.stdout)
+        # A folder with left4dead2/ is Left 4 Dead 2 without --game (not Portal 2).
+        linux = self.steam / 'Steam.AppBundle/Steam/Contents/MacOS/steamapps/content/app_550/depot_554'
+        self.assert_builds(self.detect(str(game), str(linux)), 'l4d2')
+        self.assert_builds(self.detect('--game', 'l4d2', str(game), str(linux)), 'l4d2')
+
+    def test_l4d2_without_linux_binaries_says_what_to_fetch(self):
+        self.install_l4d2(depot=False)
+        result = self.detect()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('download_depot 550 554', result.stderr)
+        self.install_portal2()
+        result = self.detect()
+        self.assert_builds(result, 'portal2')   # skipped with the hint, Portal 2 still built
+        self.assertIn('Left 4 Dead 2 is installed but its Linux binaries were not found', result.stderr)
+        self.assertIn('download_depot 550 554', result.stderr)
+        result = self.detect('--game', 'l4d2')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Left 4 Dead 2's Linux binaries not found", result.stderr)
+        self.assertIn('about 510 MB', result.stderr)
+
+    def test_l4d2_data_depot_and_missing_data(self):
+        result = self.detect('--game', 'l4d2')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('download_depot 550 551', result.stderr)
+        installed = self.install_l4d2()
+        depot = self.steam / 'steamapps/content/app_550/depot_551'
+        shutil.move(str(installed), str(depot))
+        result = self.detect('--game', 'l4d2')
+        self.assert_builds(result, 'l4d2')
+        self.assertIn(f'game data:      {depot}', result.stdout)
 
     def test_portal1_alone_is_built(self):
         self.install_portal1()
@@ -328,6 +378,14 @@ class GameDetectionTests(unittest.TestCase):
             result = self.detect(*args)
             self.assert_builds(result, line)
             self.assertIn(f'iPhone apps: {line}', result.stdout)
+        self.install_l4d2()
+        result = self.detect('--ios', '--game', 'l4d2')
+        self.assert_builds(result, 'l4d2')
+        self.assertIn('iPhone apps: l4d2', result.stdout)   # into the one Sauce app, Portal 2's
+        # Mel joins Portal 2's iPhone build: never its own --ios run.
+        self.install_mel()
+        result = self.detect('--ios')
+        self.assertIn('iPhone apps: portal2 hl2 portal1 l4d2', result.stdout)
         self.assertNotIn('iPhone', self.detect().stdout)
 
 
@@ -362,6 +420,21 @@ class SetupConfigTests(unittest.TestCase):
         config = self.write_config(None, '', *both)
         self.assertNotIn('ios_bundle_id', config)
         self.assertNotIn('ios_bundle_id', config['games']['hl2'])
+
+
+    def test_l4d2_section_has_its_ids_and_system_libraries(self):
+        import os as _os
+        _os.environ['P2_SETUP_SYSTEM_LIB_DIR'] = '/deps/debian-i386/lib'
+        try:
+            config = self.write_config({}, '', 'portal2', '/p2', '/p2l', '/sw', 'l4d2', '/l4d2', '/depot_554', '/sw')
+        finally:
+            del _os.environ['P2_SETUP_SYSTEM_LIB_DIR']
+        l4d2 = config['games']['l4d2']
+        self.assertEqual((l4d2['game_root'], l4d2['linux_root'], l4d2['steam_api_dylib']), ('/l4d2', '/depot_554', '/sw'))
+        self.assertEqual((l4d2['steam_appid'], l4d2['depot_id']), (550, 554))
+        self.assertEqual(l4d2['system_lib_dir'], '/deps/debian-i386/lib')
+        self.assertIn('Left 4 Dead 2 Natif', l4d2['user_dir'])
+        self.assertNotIn('system_lib_dir', config)   # Portal 2 links them statically
 
 
 class SetupDeviceTests(unittest.TestCase):
@@ -405,16 +478,41 @@ class SetupDeviceTests(unittest.TestCase):
 
 
 class SetupTableTests(unittest.TestCase):
-    def test_game_table_matches_profiles(self):
-        # setup.sh names the app, log and Steam ids itself; tools/games.py must agree.
+    """setup.sh takes every game from tools/games.py (tests/test_installer_table.py checks the other readers)."""
+
+    def game_info(self, name):
         text = (ROOT / 'setup.sh').read_text()
-        for name, profile in games.GAMES.items():
-            block = re.search(rf'^ *{name}\)\n(.*?);;', text, re.M | re.S).group(1)
-            title = re.search(r'TITLE="([^"]+)"', block).group(1)
-            self.assertEqual(f'{title} Natif', profile['app_name'])
-            self.assertEqual(title.replace(' ', '').replace('-', '') + 'Natif.log', profile['log_name'])
-            self.assertEqual(int(re.search(r'APPID=(\d+)', block).group(1)), profile['steam_appid'])
-            self.assertEqual(int(re.search(r'LINUX_DEPOT=(\d+)', block).group(1)), profile['depot_id'])
+        func = re.search(r'^game_info\(\) \{.*?^\}$', text, re.M | re.S).group(0)
+        script = f'set -euo pipefail\nREPO={shlex_quote(str(ROOT))}\ndie() {{ echo "$*" >&2; exit 1; }}\n{func}\n' \
+                 f'game_info {name}\necho "$TITLE|$APPID|$LINUX_DEPOT|$DATA_DEPOT|$APP_NAME|$LOG_NAME|$MINUTES|' \
+                 '$STEAMWORKS_VERSION|$SYSTEM_LIBS|${LINUX_FILES[*]}|$STEAMWORKS_URL"'
+        result = subprocess.run(['bash', '-c', script], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip().split('|')
+
+    def test_game_info_is_the_table(self):
+        for name in games.installer_games():
+            g, i = games.GAMES[name], games.GAMES[name]['installer']
+            got = self.game_info(name)
+            self.assertEqual(got[:10], [i['title'], str(g['steam_appid']), str(g['depot_id']), str(i['data_depot']),
+                                        g['app_name'], g['log_name'], str(i['minutes']), g['steamworks'][0],
+                                        ' '.join(g.get('system_libs', ())), ' '.join(i['linux_files'])], name)
+            self.assertIn(f"/{g['steamworks'][0]}/Steamworks.NET_{g['steamworks'][0]}.unitypackage", got[10])
+
+    def test_l4d2_uses_portal2s_steamworks_and_the_debian_libraries(self):
+        title, *_rest = self.game_info('l4d2')
+        self.assertEqual(title, 'Left 4 Dead 2')
+        self.assertEqual(games.GAMES['l4d2']['steamworks'], games.GAMES['portal2']['steamworks'])
+        self.assertEqual(games.GAMES['l4d2']['system_libs'], ('libstdc++.so.6', 'libgcc_s.so.1'))
+        text = (ROOT / 'setup.sh').read_text()
+        self.assertIn('[ -z "$SYSTEM_LIBS" ] || NEED_SYSTEM_LIBS+=("$id")', text)
+        # The offline set stays forced on every launch (make_app.py, build_ios.py, run_game.py).
+        self.assertEqual(games.GAMES['l4d2']['launch_args'], ('-insecure', '+sv_lan', '1', '-nomaster'))
+
+
+def shlex_quote(s):
+    import shlex
+    return shlex.quote(s)
 
 
 if __name__ == '__main__':
