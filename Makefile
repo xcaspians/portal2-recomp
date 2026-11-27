@@ -97,10 +97,11 @@ test: build/tier0-smoke build/abi-smoke
 	./build/abi-smoke
 
 # What CI runs (make -j check): Python tests and the runtime against generated fixtures, no game files needed.
-check: build/abi-smoke build/x64-check build/x64-dylib-check build/pe-check
+check: build/abi-smoke build/x64-check build/x64-dylib-check build/pe-check build/x64-check-tso
 	$(PYTHON) -m unittest discover -s tests -p 'test_*.py'
 	./build/abi-smoke
 	./build/x64-check
+	./build/x64-check-tso
 	./build/x64-dylib-check
 	./build/pe-check
 
@@ -169,6 +170,10 @@ build/x64/second.c: build/x64/libx64second.so tools/elfprep64.py tools/lift64.py
 	$(PYTHON) tools/lift64.py --layout build/x64/libx64second.so.layout.json --all --symbol x64_second --out $@
 build/x64-check: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c build/x64/second.c tests/x64_checks.c
 	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) build/x64/fixture.c build/x64/second.c tests/x64_checks.c $(X64_LIBS) -o $@
+# The same programs with RT64_TSO: shared memory through acquire loads and
+# release stores (x86's ordering on arm64), as Skyrim's build uses.
+build/x64-check-tso: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c build/x64/second.c tests/x64_checks.c
+	$(CC) $(X64_CFLAGS) -DRT64_TSO -mcpu=apple-m1 -Iruntime $(X64_RUNTIME) build/x64/fixture.c build/x64/second.c tests/x64_checks.c $(X64_LIBS) -o $@
 # PE32+ (Windows x86-64) front end: tests/pe_programs.s assembled for
 # x86_64-windows-msvc, linked into a DLL by tests/pe_link.py (no PE linker on
 # the Mac), prepared by tools/peprep64.py, lifted and run by tests/pe_checks.c.

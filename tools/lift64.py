@@ -162,6 +162,7 @@ class Operand:
         self.reg = GPR.get(text)
         self.xmm = XMM.get(text)
         self.addr = self.imm = self.width = None
+        self.ordered = False
         if self.reg:
             self.width = self.reg[1]
             return
@@ -174,6 +175,10 @@ class Operand:
             self.effective = effective
             self.addr = f'(c->{m[2]}_base + {effective})' if m[2] in ('fs', 'gs') else effective
             self.width = WIDTHS.get(m[1]) if m[1] else None
+            # The thread's own stack ([rsp + ...]) is read and written plainly;
+            # any other address may be shared with another thread, so it goes
+            # through RG/WG, which keep x86's ordering when built with RT64_TSO.
+            self.ordered = not (m[2] is None and re.match(r'rsp\b', m[3].strip()))
             return
         if re.fullmatch(r'st(\(\d\))?|mm\d', text):
             return          # x87 stack or MMX register: read by x87_64.py from .text
@@ -193,7 +198,7 @@ class Operand:
         if self.addr is not None:
             if self.width not in (8, 16, 32, 64):
                 raise Unsupported(f'memory read of width {self.width}')
-            return f'R{self.width}({self.addr})'
+            return f'R{"G" if self.ordered else ""}{self.width}({self.addr})'
         if self.imm is not None:
             n = width or 64
             return f'{self.imm & ((1 << n) - 1):#x}ull'
@@ -212,7 +217,7 @@ class Operand:
         if self.addr is not None:
             if self.width not in (8, 16, 32, 64):
                 raise Unsupported(f'memory write of width {self.width}')
-            return f'W{self.width}({self.addr}, {value});'
+            return f'W{"G" if self.ordered else ""}{self.width}({self.addr}, {value});'
         raise Unsupported(f'destination {self.text!r}')
 
 

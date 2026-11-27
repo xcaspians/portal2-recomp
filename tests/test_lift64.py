@@ -37,6 +37,14 @@ class Operands(unittest.TestCase):
         self.assertEqual(lift64.Operand('r15w', 0).reg, (15, 16, 0))
         self.assertEqual(lift64.Operand('spl', 0).reg, (4, 8, 0))
 
+    def test_shared_memory_goes_through_ordered_accessors(self):
+        # [rsp + ...] is the thread's own stack: plain; anything else may be shared (RG/WG, TSO under RT64_TSO).
+        self.assertTrue(lift64.Operand('qword ptr [rsp + 0x20]', 0).read().startswith('R64('))
+        self.assertTrue(lift64.Operand('dword ptr [rcx + 0x8]', 0).read().startswith('RG32('))
+        self.assertTrue(lift64.Operand('qword ptr [rip + 0x10]', 0x1000).write('v').startswith('WG64('))
+        self.assertTrue(lift64.Operand('byte ptr [rsp]', 0).write('v').startswith('W8('))
+        self.assertTrue(lift64.Operand('qword ptr gs:[0x58]', 0).read().startswith('RG64('))
+
     def test_rip_relative_is_module_relative(self):
         operand = lift64.Operand('qword ptr [rip + 0x10]', 0x2000)
         self.assertEqual(operand.addr, '(B_ + 0x2010ull)')
