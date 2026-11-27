@@ -38,7 +38,8 @@ described below so the numbers can be redone.
   - picking the one that reaches `__scrt_common_main_seh` and `WinMain` is
     ordinary static analysis in round 1.
 
-**The rule question (Caspian's call before round 1).**
+**The rule question (Caspian's call before round 1).** *Decided 26 November
+2026: approved with the recommended approach (`SKYRIM_PLAN.md`, Decision 1).*
 - Starting at the game's own entry point means SteamStub's launch check never
   runs. The stub's code is encrypted, so it can't be lifted statically.
 - Ownership would still be checked for real, with no faking:

@@ -208,6 +208,8 @@ Windows bridge, COM), not in one impossible piece.
 
 ## Where it lives (proposal: nothing created)
 
+*Superseded by Decision 2 under "After round 0": a private fork of Sauce.*
+
 **Recommendation: a new repository for Skyrim, with the x86-64 tools shared,
 not copied.**
 
@@ -286,7 +288,42 @@ Makefile           make check (no game files), make skyrim-inventory, make skyri
 - **The real entry point** has to be found statically (5 candidates), because
   the stub isn't run: S, in round 1.
 
-**Round 1 needs Caspian's two decisions first:**
+**Round 1 needed Caspian's two decisions first:**
 - the SteamStub rule question in `SKYRIM_INVENTORY.md` (start at the game's own
   entry and check ownership through Valve's library);
 - where the code lives (the new-repo proposal above).
+
+Both were made on 26 November 2026 (round 31), as follows.
+
+### Decision 1: SteamStub. Approved, with the recommended approach
+
+- **Start at the game's own real entry point** and skip the SteamStub stub.
+  This port is for Caspian's own personal use only.
+- **Both ownership checks stay, and both must pass:**
+  - the game's own `SteamAPI_Init`, through Valve's `libsteam_api.dylib`;
+  - `BIsSubscribedApp(489830)`, asked by the runtime before the game starts.
+  - If either one fails, the runtime refuses to run.
+- **Nothing is decrypted, unwrapped or written to disk,** and no modified
+  executable is created. The lifter reads `SkyrimSE.exe` as it is in Caspian's
+  Steam install.
+
+### Decision 2: where the code lives. A new private repo, forked from Sauce
+
+This replaces the "Where it lives" proposal above (a new Skyrim-only repo with
+a submodule).
+
+- **`xcaspians/sauce-private`** (working name, Caspian may rename it): a
+  private repo that carries Sauce's full history, with Sauce as its
+  `upstream` remote. GitHub doesn't fork a repo into its own account, so it's
+  a new repo with the history pushed into it, not a GitHub fork.
+- **Its role:** Caspian's personal launcher, for games Caspian compiles and keeps
+  on their own devices. Skyrim is the first non-Source game in it. It could
+  seed a community project later; for now it's personal.
+- **It stays private.** Its visibility is never changed.
+- **Sauce stays as it is,** the public app for Source games.
+- **Code flow:**
+  - lifter and toolkit fixes land in Sauce first, each with its check in
+    `make check`, then get merged into the private repo from `upstream`;
+  - Skyrim-only code lives only in the private repo, never in Sauce.
+- The private repo's `docs/` holds copies of this plan and of
+  `SKYRIM_INVENTORY.md`; Skyrim work updates those copies from round 1 on.
