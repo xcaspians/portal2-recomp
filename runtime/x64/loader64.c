@@ -465,7 +465,31 @@ uint64_t rt64_dynamic_import(const char *name) {
     return i < RT64_DYNAMIC_MAX ? dynamic_base + RT64_IMPORT_STRIDE * i : 0;
 }
 
+// Dispatch cache (round 04 of Skyrim, docs in sauce-private's SKYRIM_PERFORMANCE.md): an
+// indirect call into lifted code walked the modules and binary-searched the module's
+// functions (151,000 for SkyrimSE.exe) every time. Each thread keeps a direct-mapped table
+// from target address to lifted function, filled only with functions the search found.
+// Such an answer never changes: modules are never unloaded (dlclose keeps them, as
+// RTLD_NODELETE), a module registered later is mapped elsewhere, and a function's address
+// is fixed. Per thread, so the hot path takes no lock and can't read a torn entry.
+#define RT64_DISPATCH_CACHE 4096
+typedef struct { uint64_t target; gfn64 fn; } DispatchEntry;
+static __thread DispatchEntry *dispatch_cache;
+static __thread uint64_t dispatch_hits, dispatch_misses;
+static inline DispatchEntry *dispatch_slot(uint64_t target) {
+    if (!dispatch_cache) dispatch_cache = calloc(RT64_DISPATCH_CACHE, sizeof *dispatch_cache);
+    if (!dispatch_cache) return NULL;
+    return &dispatch_cache[(target >> 4 ^ target >> 16) & (RT64_DISPATCH_CACHE - 1)];
+}
+void rt64_dispatch_stats(uint64_t *hits, uint64_t *misses) {
+    if (hits) *hits = dispatch_hits;
+    if (misses) *misses = dispatch_misses;
+}
+
 void rt64_dispatch(CPU64 *c, uint64_t target) {
+    DispatchEntry *slot = dispatch_slot(target);
+    if (slot && slot->target == target && slot->fn) { dispatch_hits++; slot->fn(c); return; }
+    dispatch_misses++;
     if (dynamic_base && target >= dynamic_base && target < dynamic_base + RT64_IMPORT_STRIDE * dynamic_count) {
         dynamic_shims[(target - dynamic_base) / RT64_IMPORT_STRIDE](c);
         if (c->transferred) { c->transferred = 0; return; }
@@ -499,6 +523,7 @@ void rt64_dispatch(CPU64 *c, uint64_t target) {
                 c->rip = target;
                 return;
             }
+            if (slot) { slot->target = target; slot->fn = fn; }
             fn(c);
             return;
         }

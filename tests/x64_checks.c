@@ -186,7 +186,16 @@ int main(void) {
     rt64_register(&x64_second);
     EXPECT(rt64_open(&cpu, "libx64second.so") != NULL);
     EXPECT(rt64_loaded_count() == 2);
+    {   // The dispatch cache (loader64.c): a function reached through a pointer before the second
+        // module was loaded still dispatches to itself after, and both modules' functions do.
+        uint64_t hits, misses, hits2, misses2;
+        rt64_dispatch_stats(&hits, &misses);
+        EXPECT(CALL("x64_callptr", 0, 21) == 42 && CALL("x64_callptr", 1, 12) == 144);
+        rt64_dispatch_stats(&hits2, &misses2);
+        EXPECT(hits2 > hits);                              // x64_callptr's targets were cached earlier
+    }
     EXPECT(CALL0("x64b_add_via_first") == 36);           // import resolved to the first module's export
+    EXPECT(CALL0("x64b_add_via_first") == 36);           // again, through the dispatch cache
     EXPECT(CALL0("x64b_ctor_value") == 1234);            // its .init_array ran
     EXPECT(CALL0("x64b_tls_gd") == 11 && CALL0("x64b_tls_gd") == 12);   // __tls_get_addr, .tdata copied
     EXPECT(CALL0("x64b_tls_ie") == 77);                  // TPOFF64 from fs

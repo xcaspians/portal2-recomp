@@ -19,6 +19,7 @@
 #include "rt64.h"
 #include <dlfcn.h>
 #include <stdatomic.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
@@ -141,12 +142,19 @@ void rt64_native_call(CPU64 *c, uint64_t fn) {
 static struct { uint64_t fn; char slots[RT64_WIN_SIG_MAX + 1]; int hidden; } win_sigs[256];
 static int win_sig_count;
 static pthread_mutex_t win_sig_lock = PTHREAD_MUTEX_INITIALIZER;
+// Bumped (under the lock) by every change to the signature and override tables: a thread's
+// cached lookups (win_lookup) are good while it hasn't moved.
+static _Atomic uint64_t win_sig_generation = 1;
 
 int rt64_win_native_set_sig(uint64_t fn, const char *slots, int hidden) {
     if (!fn || strlen(slots) > RT64_WIN_SIG_MAX) return 0;
     pthread_mutex_lock(&win_sig_lock);
     int i = 0;
     while (i < win_sig_count && win_sigs[i].fn != fn) ++i;
+    if (i < win_sig_count && win_sigs[i].hidden == hidden && !strcmp(win_sigs[i].slots, slots)) {
+        pthread_mutex_unlock(&win_sig_lock);            // unchanged: cached lookups stay good
+        return 1;
+    }
     if (i == win_sig_count) {
         if (win_sig_count == (int)(sizeof win_sigs / sizeof *win_sigs)) { pthread_mutex_unlock(&win_sig_lock); return 0; }
         win_sig_count++;
@@ -154,6 +162,7 @@ int rt64_win_native_set_sig(uint64_t fn, const char *slots, int hidden) {
     win_sigs[i].fn = fn;
     snprintf(win_sigs[i].slots, sizeof win_sigs[i].slots, "%s", slots);
     win_sigs[i].hidden = hidden;
+    atomic_fetch_add_explicit(&win_sig_generation, 1, memory_order_release);
     pthread_mutex_unlock(&win_sig_lock);
     return 1;
 }
@@ -171,24 +180,46 @@ int rt64_win_native_set_override(uint64_t fn, rt64_shim shim) {
     int i = 0;
     while (i < win_override_count && win_overrides[i].fn != fn) ++i;
     int ok = i < (int)(sizeof win_overrides / sizeof *win_overrides);
+    int same = ok && i < win_override_count && win_overrides[i].shim == shim;
     if (ok) { win_overrides[i].fn = fn; win_overrides[i].shim = shim; if (i == win_override_count) win_override_count++; }
+    if (ok && !same) atomic_fetch_add_explicit(&win_sig_generation, 1, memory_order_release);
     pthread_mutex_unlock(&win_sig_lock);
     return ok;
 }
 
-void rt64_native_call_win(CPU64 *c, uint64_t fn) {
-    rt64_shim override = NULL;
+// What a call to fn needs: its override, else its signature. Each thread remembers its
+// lookups in a small direct-mapped table, checked against the tables' generation, so a
+// call into DXVK (every Direct3D call) takes no mutex and scans nothing once seen.
+typedef struct { uint64_t fn, generation; rt64_shim override; int hidden; char slots[RT64_WIN_SIG_MAX + 1]; } WinLookup;
+#define WIN_LOOKUP_CACHE 512
+static __thread WinLookup *win_cache;
+static __thread uint64_t win_cache_hits;
+uint64_t rt64_win_native_cache_hits(void) { return win_cache_hits; }
+static const WinLookup *win_lookup(uint64_t fn, WinLookup *scratch) {
+    uint64_t generation = atomic_load_explicit(&win_sig_generation, memory_order_acquire);
+    if (!win_cache) win_cache = calloc(WIN_LOOKUP_CACHE, sizeof *win_cache);
+    WinLookup *e = win_cache ? &win_cache[(fn >> 4 ^ fn >> 14) & (WIN_LOOKUP_CACHE - 1)] : scratch;
+    if (e->fn == fn && e->generation == generation) { win_cache_hits++; return e; }
+    WinLookup fresh = {fn, generation, NULL, -1, "pppppppppppp"};      // no signature: 12 64-bit slots
     pthread_mutex_lock(&win_sig_lock);
-    for (int i = 0; i < win_override_count; ++i) if (win_overrides[i].fn == fn) override = win_overrides[i].shim;
-    pthread_mutex_unlock(&win_sig_lock);
-    if (override) { override(c); return; }
-#if defined(__aarch64__)
-    char slots[RT64_WIN_SIG_MAX + 1] = "pppppppppppp";      // no signature: 12 64-bit slots
-    int hidden = -1;
-    pthread_mutex_lock(&win_sig_lock);
+    for (int i = 0; i < win_override_count; ++i) if (win_overrides[i].fn == fn) fresh.override = win_overrides[i].shim;
     for (int i = 0; i < win_sig_count; ++i)
-        if (win_sigs[i].fn == fn) { memcpy(slots, win_sigs[i].slots, sizeof slots); hidden = win_sigs[i].hidden; break; }
+        if (win_sigs[i].fn == fn) { memcpy(fresh.slots, win_sigs[i].slots, sizeof fresh.slots); fresh.hidden = win_sigs[i].hidden; break; }
+    // Read under the lock: a change after it bumps the generation again, so this entry can't outlive it.
+    fresh.generation = atomic_load_explicit(&win_sig_generation, memory_order_relaxed);
     pthread_mutex_unlock(&win_sig_lock);
+    *e = fresh;
+    return e;
+}
+
+void rt64_native_call_win(CPU64 *c, uint64_t fn) {
+    WinLookup scratch;
+    const WinLookup *found = win_lookup(fn, &scratch);
+    if (found->override) { found->override(c); return; }
+#if defined(__aarch64__)
+    char slots[RT64_WIN_SIG_MAX + 1];
+    memcpy(slots, found->slots, sizeof slots);
+    int hidden = found->hidden;
     uint64_t ints[8] = {0}, fps[8] = {0}, x8 = 0, out[4];
     uint8_t stack[RT64_WIN_SIG_MAX * 8 + 16] __attribute__((aligned(16))) = {0};
     size_t at = 0;

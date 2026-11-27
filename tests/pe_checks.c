@@ -6,6 +6,8 @@
 // relocations, and a function known only from .pdata.
 #include "x64/win64.h"
 
+#include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -57,6 +59,25 @@ static int64_t native_sum10(int64_t a, int64_t b, int64_t c, int64_t d, int64_t 
     return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h + 9 * i + 10 * j;
 }
 typedef struct { int64_t a, b, c; } Three;
+
+// Several threads calling a native function with a signature while another thread keeps
+// changing the signature table: each thread's cached lookup (native64.c win_lookup) must
+// give the right signature every time, and hit once seen.
+static _Atomic int sig_threads_done;
+typedef struct { uint64_t fn; int wrong; uint64_t hits; } SigWorker;
+static void *sig_worker(void *arg) {
+    SigWorker *w = arg;
+    static __thread CPU64 cpu;
+    uint64_t before = rt64_win_native_cache_hits();
+    for (int i = 0; i < 20000; ++i) {
+        cpu.r[RCX] = 1; cpu.xmm[1].g[0] = 2.0; cpu.r[R8] = 3; cpu.xmm[3].q[0] = 0; cpu.xmm[3].f[0] = 4.0f;
+        rt64_native_call_win(&cpu, w->fn);
+        if (cpu.xmm[0].g[0] != 4321.0) w->wrong++;
+    }
+    w->hits = rt64_win_native_cache_hits() - before;
+    atomic_fetch_add(&sig_threads_done, 1);
+    return NULL;
+}
 static Three native_make3(int64_t k) { return (Three){k, 2 * k, 3 * k}; }
 
 static uint64_t fn(const char *name) {
@@ -119,6 +140,19 @@ int main(void) {
     rt64_win_native_set_sig((uintptr_t)native_mix, "pdif", -1);
     call(c, "pe_native_mix", 1, (const uint64_t[]){(uintptr_t)native_mix});
     CHECK(c->xmm[0].g[0] == 4321.0, "native call with integer and float slots: %g", c->xmm[0].g[0]);
+    {   // The signature lookup is cached per thread: the same call again hits, with the same answer.
+        uint64_t hits = rt64_win_native_cache_hits();
+        call(c, "pe_native_mix", 1, (const uint64_t[]){(uintptr_t)native_mix});
+        CHECK(c->xmm[0].g[0] == 4321.0 && rt64_win_native_cache_hits() > hits, "native signature from the thread's cache");
+        SigWorker workers[4];
+        pthread_t threads[4];
+        for (int i = 0; i < 4; ++i) { workers[i] = (SigWorker){(uintptr_t)native_mix, 0, 0}; pthread_create(&threads[i], NULL, sig_worker, &workers[i]); }
+        for (int k = 0; atomic_load(&sig_threads_done) < 4; ++k)    // the tables change meanwhile
+            rt64_win_native_set_sig((uintptr_t)native_make3, k & 1 ? "ppp" : "pp", 0);
+        int wrong = 0, hit_all = 1;
+        for (int i = 0; i < 4; ++i) { pthread_join(threads[i], NULL); wrong += workers[i].wrong; hit_all &= workers[i].hits > 0; }
+        CHECK(!wrong && hit_all, "native signature lookups from four threads while the table changes (%d wrong)", wrong);
+    }
     CHECK(call(c, "pe_native_sum10", 1, (const uint64_t[]){(uintptr_t)native_sum10}) == 385, "native call, six stack slots");
     rt64_win_native_set_sig((uintptr_t)native_make3, "pp", 0);
     Three three = {0, 0, 0};
