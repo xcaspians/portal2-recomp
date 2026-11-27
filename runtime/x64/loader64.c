@@ -10,7 +10,9 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <fcntl.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #define RT64_MAX_MODULES 256
 #define RT64_IMPORT_STRIDE 16
@@ -212,18 +214,45 @@ static uint64_t align_up(uint64_t value, uint64_t alignment) {
     return alignment > 1 ? (value + alignment - 1) & ~(alignment - 1) : value;
 }
 
+// A PE32+ module: its headers and sections read in place from the original
+// file (opened read-only, never written), the rest of the image zeros.
+static uint8_t *map_sections(const RT64Module *module, const char *path) {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) { fprintf(stderr, "rt64: %s: %s\n", path, strerror(errno)); return NULL; }
+    uint8_t *base = mmap(NULL, module->size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (base == MAP_FAILED) { close(fd); return NULL; }
+    for (size_t i = 0; i < module->section_count; ++i) {
+        const RT64Section *s = &module->sections[i];
+        if (s->rva + s->raw_size > module->size) { base = NULL; break; }
+        for (uint64_t done = 0; done < s->raw_size;) {
+            ssize_t got = pread(fd, base + s->rva + done, s->raw_size - done, (off_t)(s->raw_offset + done));
+            if (got <= 0) { fprintf(stderr, "rt64: %s: short read of a section at %#llx\n", path,
+                                    (unsigned long long)s->rva); close(fd); return NULL; }
+            done += (uint64_t)got;
+        }
+    }
+    close(fd);
+    return base;
+}
+
 static int load_locked(const RT64Module *module, const char *image_path) {
     if (find_loaded(module)) return 0;
     if (loaded_count == RT64_MAX_MODULES) return -1;
     if (!image_path) image_path = module->image_path;
-    FILE *f = fopen(image_path, "rb");
-    if (!f) { fprintf(stderr, "rt64: %s: %s\n", image_path, strerror(errno)); return -1; }
-    uint8_t *base = mmap(NULL, module->size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-    size_t got = base == MAP_FAILED ? 0 : fread(base, 1, module->size, f);
-    fclose(f);
-    if (base == MAP_FAILED || got != module->size) {
-        fprintf(stderr, "rt64: %s: short image (%zu of %llu bytes)\n", image_path, got, (unsigned long long)module->size);
-        return -1;
+    uint8_t *base;
+    if (module->section_count) {
+        base = map_sections(module, image_path);
+        if (!base) return -1;
+    } else {
+        FILE *f = fopen(image_path, "rb");
+        if (!f) { fprintf(stderr, "rt64: %s: %s\n", image_path, strerror(errno)); return -1; }
+        base = mmap(NULL, module->size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+        size_t got = base == MAP_FAILED ? 0 : fread(base, 1, module->size, f);
+        fclose(f);
+        if (base == MAP_FAILED || got != module->size) {
+            fprintf(stderr, "rt64: %s: short image (%zu of %llu bytes)\n", image_path, got, (unsigned long long)module->size);
+            return -1;
+        }
     }
     size_t import_span = RT64_IMPORT_STRIDE * (module->import_count ? module->import_count : 1);
     void *imports = mmap(NULL, import_span, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0);
@@ -234,7 +263,7 @@ static int load_locked(const RT64Module *module, const char *image_path) {
     l->shims = calloc(module->import_count + 1, sizeof *l->shims);
     l->modid = loaded_count + 1;
     build_hash(l);
-    if (module->tls_memsz) {
+    if (module->tls_memsz && !module->section_count) {     // ELF static TLS (PE: pe64.c, through the TEB)
         uint64_t end = align_up(tls_used + module->tls_memsz, module->tls_align ? module->tls_align : 1);
         if (end > RT64_TLS_AREA) { fprintf(stderr, "rt64: %s: static TLS area full\n", module->name); return -1; }
         tls_used = end;
@@ -265,8 +294,9 @@ static int load_locked(const RT64Module *module, const char *image_path) {
         memcpy(base + r->offset, &value, 8);
     }
     free(resolved);
+    if (module->section_count) rt64_pe_loaded(module, l->base);
     // Threads that already exist get this module's TLS block too.
-    if (module->tls_memsz)
+    else if (module->tls_memsz)
         for (size_t i = 0; i < thread_count; ++i) copy_tls_template(l, thread_pointers[i]);
     if (is_verbose()) fprintf(stderr, "rt64: loaded %s at %#llx\n", module->name, (unsigned long long)l->base);
     return 0;
@@ -326,7 +356,7 @@ void rt64_thread_tls(CPU64 *c) {
     W64(tp + 0x28, UINT64_C(0x2f8a3c1d00000000) ^ (uint64_t)arc4random());  // stack guard
     pthread_mutex_lock(&loader_lock);
     for (size_t i = 0; i < loaded_count; ++i)
-        if (loaded[i].module->tls_memsz) copy_tls_template(&loaded[i], tp);
+        if (loaded[i].module->tls_memsz && !loaded[i].module->section_count) copy_tls_template(&loaded[i], tp);
     if (thread_count == thread_capacity) {
         thread_capacity = thread_capacity ? 2 * thread_capacity : 16;
         thread_pointers = realloc(thread_pointers, thread_capacity * sizeof *thread_pointers);

@@ -11,7 +11,10 @@
 ## Tests
 
 - `make check`: Python tests and `build/abi-smoke`, no game files needed (what
-  CI runs, plus `build/abi-smoke-ubsan` and the Python tests on 3.9).
+  CI runs, plus `build/abi-smoke-ubsan` and the Python tests on 3.9). It also
+  runs the x86-64 checks: `build/x64-check`, `build/x64-dylib-check` and
+  `build/pe-check` (the PE32+ front end: `tools/peprep64.py`,
+  `runtime/x64/pe64.c`, `tests/pe_programs.s` linked by `tests/pe_link.py`).
 - `make test`: the full run, needs Portal 2's Linux depot (`INPUT_DIR`,
   default `<linux_root>/bin/linux32` from `config/local.json`, else
   `../work/portal2-linux/bin`). `make sanitize` is the UBSan variant.

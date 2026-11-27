@@ -64,9 +64,14 @@ SAVE_F = '/*s*/c->flags = f;'
 LOAD_F = '/*l*/f = c->flags;'
 
 
-def disassemble(path, objdump='objdump', start=None, stop=None):
-    """{pc: (next pc, mnemonic, operands)} for every executable section (or the window [start, stop))."""
-    window = [f'--start-address={start:#x}', f'--stop-address={stop:#x}'] if start is not None else []
+_BRANCH = re.compile(r'(call|jmp|j[a-z]+|loop[a-z]*|jrcxz|jecxz)')
+
+
+def disassemble(path, objdump='objdump', start=None, stop=None, base=0):
+    """{pc: (next pc, mnemonic, operands)} for every executable section (or the window [start, stop)).
+    `base` is the address objdump prints for module offset 0 (a PE's ImageBase):
+    instruction addresses and direct branch targets come back as module offsets."""
+    window = [f'--start-address={start + base:#x}', f'--stop-address={stop + base:#x}'] if start is not None else []
     raw = subprocess.run([objdump, '-d', '-z', '--x86-asm-syntax=intel', *window, str(path)],
                          check=True, capture_output=True, text=True).stdout
     insns = {}
@@ -74,10 +79,12 @@ def disassemble(path, objdump='objdump', start=None, stop=None):
         m = _LINE.match(line.replace('\t', ' '))
         if not m:
             continue
-        pc = int(m[1], 16)
+        pc = int(m[1], 16) - base
         size = len(m[2].split())
-        args = re.sub(r'\s*<[^>]*>', '', m[4]).split('#', 1)[0]
-        insns[pc] = (pc + size, m[3], ' '.join(args.split()))
+        args = ' '.join(re.sub(r'\s*<[^>]*>', '', m[4]).split('#', 1)[0].split())
+        if base and _BRANCH.fullmatch(m[3]) and re.fullmatch(r'0x[0-9a-f]+', args):
+            args = f'{int(args, 16) - base:#x}'
+        insns[pc] = (pc + size, m[3], args)
     # objdump prints LOCK on its own line; it belongs to the next instruction.
     for pc, (nxt, op, args) in list(insns.items()):
         if op == 'lock' and not args and nxt in insns:
@@ -249,11 +256,16 @@ class Module:
         if layout.get('image'):
             with open(layout['image'], 'rb') as f:
                 self.image = f.read()
+        elif layout.get('format') == 'pe':
+            # Read in place from the original file, in memory only (tools/peprep64.py).
+            import peprep64
+            excluded = [s['name'] for s in layout['sections'] if s['excluded']]
+            self.image = bytes(peprep64.Pe64(layout['source'], excluded).image())
         self.table_jumps = self.dispatch_jumps = self.unbounded_tables = 0
 
     def resync(self, pc):
         """Decode from `pc` (an address the linear sweep did not start an instruction at)."""
-        window = disassemble(self.layout['source'], start=pc, stop=pc + 0x400)
+        window = disassemble(self.layout['source'], start=pc, stop=pc + 0x400, base=self.layout.get('image_base', 0))
         at = pc
         while at in window:
             if at in self.insns and at != pc:
@@ -304,6 +316,9 @@ class Module:
             return None
         table = load = index = base_reg = None
         added = [x.strip() for x in before[at][1][2].split(',')][1]
+        msvc = self.msvc_jump_table(pc, before, at, added)
+        if msvc is not None:
+            return msvc or None
         # Unoptimised form (P2CE's engine.so, round 23): `lea rdx, [4*rax]; lea rax,
         # [rip + T]; mov eax, dword ptr [rdx + rax]; cdqe; lea rdx, [rip + T];
         # add rax, rdx; jmp rax`: the table is the rip-relative lea of the added
@@ -379,6 +394,85 @@ class Module:
         if not targets:
             return None
         self.unbounded_tables += count is None
+        return targets
+
+
+    def image_base_register(self, start, reg):
+        """True when `reg` holds the module's own base (offset 0) at `start`: the
+        last write to it before `start` is `lea reg, [rip +- d]` reaching offset 0."""
+        for p, (nxt, op, args) in [(start, self.insns[start])] + self.previous(start, 400):
+            parts = [x.strip() for x in args.split(',')]
+            if op == 'call' and R64[GPR[reg][0]] in self.VOLATILE:
+                return False
+            if not parts or GPR.get(parts[0], (None,))[0] != GPR[reg][0]:
+                if op in ('ret',):
+                    return False
+                continue
+            m = re.fullmatch(r'(\w+), \[rip ([+-]) (0x[0-9a-f]+)\]', args)
+            if op == 'lea' and m:
+                return nxt + (1 if m[2] == '+' else -1) * int(m[3], 16) == 0
+            if op in ('cmp', 'test', 'push'):
+                continue
+            return False
+        return False
+
+    VOLATILE = frozenset(('rax', 'rcx', 'rdx', 'r8', 'r9', 'r10', 'r11'))
+
+    def msvc_jump_table(self, pc, before, at, added):
+        """MSVC's switch (PE modules): `lea X, [__ImageBase]; [movzx I, byte ptr
+        [X + J + T1];] mov R, dword ptr [X + 4*I + T]; add R, X; jmp R`. The
+        tables hold RVAs (module offsets). Returns the targets, [] when this is
+        the pattern but the table can't be read, None when it isn't."""
+        if self.layout.get('format') != 'pe' or added not in GPR:
+            return None
+        load = index = table = None
+        for p, (nxt, op, args) in before[at + 1:at + 12]:
+            m = re.fullmatch(r'(\w+), dword ptr \[(\w+) \+ 4\*(\w+) \+ (0x[0-9a-f]+)\]', args)
+            if op in ('mov', 'movsxd') and m and GPR.get(m[2], (None,))[0] == GPR[added][0]:
+                load, index, table = p, m[3], int(m[4], 16)
+                break
+            if op in ('ret', 'jmp', 'call'):
+                return None
+        if load is None or not self.image_base_register(load, added):
+            return None
+        # A byte index table first (`movzx I, byte ptr [X + J + T1]`): the bound applies to it.
+        bytes_table, bound_reg = None, index
+        for p, (nxt, op, args) in self.previous(load, 6):
+            m = re.fullmatch(r'(\w+), byte ptr \[(\w+) \+ (\w+) \+ (0x[0-9a-f]+)\]', args)
+            if op == 'movzx' and m and GPR.get(m[1], (None,))[0] == GPR[index][0] \
+                    and GPR.get(m[2], (None,))[0] == GPR[added][0]:
+                bytes_table, bound_reg, load = int(m[4], 16), m[3], p
+                break
+            if op in ('ret', 'jmp', 'call'):
+                break
+        count = None
+        for p, (nxt, op, args) in self.previous(load, 16):
+            if op in ('ja', 'jae'):
+                for q, (_, op2, args2) in self.previous(p, 3):
+                    m = re.fullmatch(r'(.+), (0x[0-9a-f]+)', args2)
+                    if op2 == 'cmp' and m:
+                        count = int(m[2], 16) + (1 if op == 'ja' else 0)
+                        break
+                break
+            if op in ('ret', 'jmp', 'call'):
+                break
+        if count is not None and not 0 < count <= 65536:
+            return []
+        if bytes_table is not None:
+            if count is None or bytes_table + count > len(self.image):
+                return []
+            count = max(self.image[bytes_table:bytes_table + count]) + 1
+        targets = []
+        for k in range(count if count is not None else 1024):
+            if table + 4 * k + 4 > len(self.image):
+                break
+            target, = struct.unpack_from('<I', self.image, table + 4 * k)
+            if target not in self.insns or (count is None and abs(target - pc) > 0x20000):
+                if count is not None:
+                    return []
+                break
+            targets.append(target)
+        self.unbounded_tables += count is None and bool(targets)
         return targets
 
 
@@ -1224,7 +1318,14 @@ def relocation_rows(layout):
 def lift_module(layout, roots, objdump='objdump', every=False, sweep=True):
     """Lift `roots` (module offsets) and everything they call directly, or
     every known entry point. Returns ({entry: body}, report)."""
-    insns = disassemble(layout['source'], objdump)
+    base = layout.get('image_base', 0)
+    if layout.get('format') == 'pe':
+        # One window per code section: never the excluded ones (a DRM stub).
+        insns = {}
+        for lo, hi in layout['code']:
+            insns.update(disassemble(layout['source'], objdump, lo, hi, base))
+    else:
+        insns = disassemble(layout['source'], objdump)
     mod = Module(layout, insns)
     stats = new_stats()
     pending = sorted(mod.entries) if every else list(roots)
@@ -1300,13 +1401,24 @@ def emit(layout, bodies, symbol, shards=1):
     tables.append('static const RT64Export exports_[] = {')
     tables += [f'    {{{json.dumps(n)}, {v:#x}}},' for n, v in layout['exports'].items()] or ['    {"", 0},']
     tables.append('};')
-    tables.append(f'const RT64Module {symbol} = {{{json.dumps(layout["name"])}, {json.dumps(layout["image"] or "")}, '
+    pe = layout.get('format') == 'pe'
+    if pe:
+        # PE: mapped section by section from the original file (headers first), never the excluded ones.
+        mapped = [(0, layout['header_size'], 0, layout['header_size'])]
+        mapped += [(x['rva'], x['vsize'] or x['raw_size'], x['raw_off'], min(x['raw_size'], x['vsize'] or x['raw_size']))
+                   for x in layout['sections'] if not x['excluded']]
+        tables.append('static const RT64Section sections_[] = {')
+        tables += [f'    {{{a:#x}, {b:#x}, {c:#x}, {d:#x}}},' for a, b, c, d in mapped]
+        tables.append('};')
+    tables.append(f'const RT64Module {symbol} = {{{json.dumps(layout["name"])}, '
+                  f'{json.dumps((layout["source"] if pe else layout["image"]) or "")}, '
                   f'{layout["size"]:#x}, &{symbol}_base, functions_, {len(bodies)}, relocs_, {len(rows)}, '
                   f'imports_, {len(layout["imports"])}, exports_, {len(layout["exports"])}, '
                   f'{layout.get("init", 0):#x}, {layout.get("fini", 0):#x}, '
                   f'init_array_, {len(layout.get("init_array") or [])}, fini_array_, {len(layout.get("fini_array") or [])}, '
                   f'{tls["vaddr"]:#x}, {tls["filesz"]:#x}, {tls["memsz"]:#x}, {tls["align"]:#x}, '
-                  f'needed_, {len(layout.get("needed") or [])}, {layout.get("entry", 0):#x}}};')
+                  f'needed_, {len(layout.get("needed") or [])}, {layout.get("entry", 0):#x}, '
+                  f'{"sections_" if pe else "0"}, {len(mapped) if pe else 0}, {tls.get("index", 0):#x}}};')
     tables.append(f'__attribute__((constructor)) static void register_(void) {{ rt64_register(&{symbol}); }}')
     ordered = [rename(bodies[e]) for e in sorted(bodies)]
     if shards <= 1:

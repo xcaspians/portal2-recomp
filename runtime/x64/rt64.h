@@ -200,6 +200,9 @@ enum {
 typedef struct { uint64_t offset; uint32_t kind, index; int64_t addend; } RT64Reloc;
 enum { RT64_IMPORT_WEAK = 1, RT64_IMPORT_OBJECT = 2 };
 typedef struct { const char *name; uint32_t flags; } RT64Import;
+// A PE32+ module's mapped piece (tools/peprep64.py): virtual_size bytes at
+// rva, the first raw_size of them read from the original file at raw_offset.
+typedef struct { uint64_t rva, virtual_size, raw_offset, raw_size; } RT64Section;
 typedef struct RT64Module {
     const char *name;
     const char *image_path;        // flat memory image written by tools/elfprep64.py
@@ -215,6 +218,11 @@ typedef struct RT64Module {
     uint64_t tls_vaddr, tls_filesz, tls_memsz, tls_align;   // PT_TLS (memsz 0: none)
     const char *const *needed; size_t needed_count;         // DT_NEEDED
     uint64_t entry;                                          // e_entry (_start of a program)
+    // PE32+ modules: mapped section by section from image_path (the original
+    // .exe/.dll, read in place) instead of a flat image; TLS through the TEB
+    // (pe64.c), pe_tls_index the RVA of the module's TLS index slot.
+    const RT64Section *sections; size_t section_count;
+    uint64_t pe_tls_index;
 } RT64Module;
 
 // Modules (loader64.c). Each generated module registers itself at start-up;
@@ -227,6 +235,7 @@ typedef struct RT64Loaded RT64Loaded;
 RT64Loaded *rt64_open(CPU64 *c, const char *name);       // NULL if unknown or failed
 int rt64_load(const RT64Module *module, const char *image_path);   // load without constructors; 0 on success
 void rt64_run_constructors(CPU64 *c, const RT64Module *module);
+void rt64_pe_loaded(const RT64Module *module, uint64_t base);   // pe64.c: a PE module's TLS index and blocks
 // Runs a lifted program like the kernel and ld.so do: argc, argv, envp and
 // an auxiliary vector on a fresh guest stack, then its _start (which calls
 // __libc_start_main, cxa64.c). Returns main's status (or exit()'s).
