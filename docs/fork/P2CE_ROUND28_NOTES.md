@@ -153,3 +153,50 @@ opensslconnection.cpp (1519) : Assertion Failed: unable to load trusted SSL root
 - **So OpenSSL's PEM reader, lifted inside libvideo.so, decides wrongly.** That's most likely a lifter
   semantics error in that code (no trap is reported, so it's a wrong result, not a missing instruction).
 - **Finding it means stepping through OpenSSL's PEM code instruction by instruction.**
+
+## Round 29: the OpenSSL bug, and the next wall on the dedicated path
+
+**The bug was the lifter's, as suspected: `repe cmpsb` ran as `repne cmpsb`.**
+- objdump prints the F3 prefix on `cmps`/`scas` as plain `rep`, which means
+  REPE (repeat while equal). The x86-64 lifter treated a bare `rep` on those
+  two like REPNE and stopped at the first *equal* byte.
+- OpenSSL 1.0.2j's `PEM_read_bio`, inside libvideo.so, checks each line
+  against `"-----END "` with `repe cmpsb`. Any base64 line with one byte in the
+  same place counted as the END line. The first certificate's last line,
+  `jLMi6Et8V…`, has an `E` at index 5, so the certificate ended there and every
+  load failed.
+- **Fixed** in `tools/lift64.py` (PR #27). Checked in `make check` by
+  `test_lift64` and `x64_repe_cmps`, which fails without the fix.
+- The i386 lifter already had it right.
+
+**Dedicated now runs past libvideo** (no more SSL assertion), and through
+Steam's game-server init. Game-server init fails, but that isn't fatal: the
+engine says "Unable to load Steam support library … LAN mode only" (that text
+doesn't reach the terminal; see below) and carries on. Then it stops:
+
+```
+steam64: SteamAPI_InitSafe ok (app 440000)
+Timed out waiting for game mapping!
+steam64: SteamInternal_SteamAPI_Init ok (app 440000)
+steam64: SteamAPI_RestartAppIfNecessary(440000): no (never relaunched through Steam)
+rt64: _exit(1) called from:
+rt64:   [rsp+0] libtier0.so+0x86c7f      (Plat_ExitProcess)
+rt64:   [rsp+0x20] libtier0.so+0x847a6   (LoggingSystem_Log)
+rt64:   [rsp+0x80] engine.so+0x9f1f8b    (the engine's Error())
+```
+
+- **The message is "Could not load library matchmaking".**
+  - `p2ce/bin/linux64/matchmaking.so` isn't lifted: it's not in
+    `P2CE_SYSTEMS`.
+  - The next step is to add it (and whatever it loads after it), the same way
+    the round 28 modules were added.
+- **Engine messages go missing on the dedicated path.** `Msg` lines reach the
+  terminal, but `Warning` and `Error` text doesn't: the `Error()` text above
+  was read from the stack. Finding where the dedicated console sends them is
+  worth doing alongside.
+- **New:** with `RT64_VERBOSE=1`, `exit` and `_exit` print their status and a
+  rough guest backtrace.
+- **Why the logs used to say `RestartAppIfNecessary` here:** that was the last
+  line before the stop. objdump's PLT labels in engine.so sit 6 bytes into each
+  entry, after `mov r11d, index`, so `call <X@plt+0xa>` is really the *next*
+  import. Keep that in mind when reading engine.so disassembly.
