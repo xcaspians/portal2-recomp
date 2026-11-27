@@ -112,8 +112,14 @@ static void s_epoll_wait(CPU64 *c) { epoll_wait_ms(c, (int)ARG(c, 0), PTR(c, 1),
 // The signal mask (fifth argument) is ignored: the guest's signals aren't delivered through it.
 static void s_epoll_pwait(CPU64 *c) { s_epoll_wait(c); }
 
+// eventfd and timerfd have no macOS counterpart: they answer ENOSYS, as an
+// older Linux kernel would. The callers seen so far (asio's reactor, in
+// libvideo.so) then fall back to a pipe and to epoll_wait's own timeout.
+static void s_unsupported(CPU64 *c) { fail(c, ENOSYS); }
+
 static const RT64Shim shims[] = {
     {"epoll_create", s_epoll_create}, {"epoll_create1", s_epoll_create1}, {"epoll_ctl", s_epoll_ctl},
-    {"epoll_wait", s_epoll_wait}, {"epoll_pwait", s_epoll_pwait}, {0, 0},
+    {"epoll_wait", s_epoll_wait}, {"epoll_pwait", s_epoll_pwait},
+    {"eventfd", s_unsupported}, {"timerfd_create", s_unsupported}, {0, 0},
 };
 RT64_SHIMS(shims, NULL)

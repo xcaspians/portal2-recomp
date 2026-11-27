@@ -290,6 +290,12 @@ int main(void) {
         EXPECT(cpu.r[RAX] == 0);   // removed: nothing reported
         close(fds[0]);
         close(ep);
+        // eventfd/timerfd: ENOSYS (Linux 38), so asio falls back to a pipe and epoll_wait's timeout.
+        cpu.r[RDI] = 0; cpu.r[RSI] = 0;
+        rt64_find_shim("eventfd")(&cpu);
+        EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 38);
+        rt64_find_shim("timerfd_create")(&cpu);
+        EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 38);
     }
 
     if (failures) { fprintf(stderr, "x64-check: %d of %d checks failed\n", failures, checks); return 1; }
