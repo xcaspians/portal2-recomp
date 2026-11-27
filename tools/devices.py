@@ -63,16 +63,41 @@ def removable(game):
 
 # ---- devices ----
 
+def device_fix(d):
+    """What stands between the device and an install: (fix, problem sentence,
+    steps), or (None, None, []) when it's ready. fix: 'pair' (not trusted by
+    this Mac yet), 'developer-mode' (off), 'restarting' (not booted or not
+    reachable, as during the restart Developer Mode asks for). The window shows
+    the steps and, for every fix, waits for the device and installs by itself."""
+    cp, dp, hp = d.get('connectionProperties') or {}, d.get('deviceProperties') or {}, d.get('hardwareProperties') or {}
+    kind = hp.get('deviceType') or 'device'
+    if cp.get('pairingState') != 'paired':
+        return 'pair', ('Not paired with this Mac yet: pair it and tap Trust on it (pairing is also what makes '
+                        'the Developer Mode switch appear).'), [
+            f'Plug the {kind} into this Mac with a cable and unlock it.',
+            'Click Pair with this Mac below.',
+            f'On the {kind}, tap Trust in the “Trust This Computer?” message, then enter its passcode.',
+        ]
+    if dp.get('developerModeStatus') not in (None, 'enabled'):
+        return 'developer-mode', 'Developer Mode is off: turn it on once, then the install carries on by itself.', [
+            f'Keep the {kind} plugged into this Mac and unlocked. (The Developer Mode switch only appears once the '
+            f'{kind} has been paired with a Mac, which is done.)',
+            f'On the {kind}, open Settings → Privacy & Security, scroll to the bottom and tap Developer Mode.',
+            'Turn Developer Mode On, then tap Restart.',
+            f'When the {kind} has restarted, unlock it, tap Turn On in the message that appears, and enter the passcode.',
+            'That’s all: the installer sees it come back and starts the install by itself.',
+        ]
+    if cp.get('tunnelState') == 'unavailable' or dp.get('bootState') not in (None, 'booted'):
+        return 'restarting', 'Not reachable right now (restarting, asleep or out of reach).', [
+            f'Wait for the {kind} to finish starting up, then unlock it.',
+            'Keep it plugged into this Mac, or on the same Wi-Fi.',
+        ]
+    return None, None, []
+
+
 def device_problem(d):
     """A sentence when the device can't be used now, else None."""
-    cp, dp = d.get('connectionProperties') or {}, d.get('deviceProperties') or {}
-    if cp.get('pairingState') != 'paired':
-        return 'Not trusted yet: unlock it, plug it in, and tap Trust on its screen.'
-    if dp.get('developerModeStatus') not in (None, 'enabled'):
-        return 'Developer Mode is off: Settings > Privacy & Security > Developer Mode, then restart it.'
-    if cp.get('tunnelState') == 'unavailable' or dp.get('bootState') not in (None, 'booted'):
-        return "Not reachable: plug it in, or wake it on the same Wi-Fi as this Mac, and unlock it."
-    return None
+    return device_fix(d)[1]
 
 
 def parse_devices(report):
@@ -82,11 +107,11 @@ def parse_devices(report):
         hp, cp, dp = d.get('hardwareProperties') or {}, d.get('connectionProperties') or {}, d.get('deviceProperties') or {}
         if hp.get('reality') != 'physical' or hp.get('deviceType') not in ('iPhone', 'iPad'):
             continue
-        problem = device_problem(d)
+        fix, problem, steps = device_fix(d)
         out.append({'udid': hp.get('udid') or d.get('identifier'), 'name': dp.get('name') or hp.get('marketingName'),
                     'model': hp.get('marketingName') or hp.get('productType'), 'kind': hp.get('deviceType'),
                     'link': 'USB' if cp.get('transportType') == 'wired' else 'Wi-Fi',
-                    'ready': problem is None, 'problem': problem})
+                    'ready': problem is None, 'problem': problem, 'fix': fix, 'steps': steps})
     out.sort(key=lambda x: (not x['ready'], x['name'] or ''))
     return out
 

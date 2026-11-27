@@ -68,6 +68,8 @@ struct DeviceInfo: Decodable, Identifiable, Equatable {
     let link: String
     let ready: Bool
     let problem: String?
+    var fix: String? = nil        // "pair", "developer-mode", "restarting" (tools/devices.py device_fix)
+    var steps: [String]? = nil    // what to do on the device, in order
     var id: String { udid }
     var kindName: String { kind ?? "device" }
 }
@@ -122,7 +124,7 @@ func plainError(_ text: String, kind: String) -> String {
     let t = text.lowercased()
     if t.contains("locked") || t.contains("passcode") { return "The \(kind) is locked: unlock it and press Retry." }
     if t.contains("trust") || t.contains("pair") { return "The \(kind) doesn't trust this Mac yet: plug it in, unlock it, tap Trust, then press Retry." }
-    if t.contains("developer mode") { return "Developer Mode is off on the \(kind): Settings > Privacy & Security > Developer Mode, restart it, then press Retry." }
+    if t.contains("developer mode") { return "Developer Mode is off on the \(kind): on it, Settings → Privacy & Security → Developer Mode → On → Restart, then unlock it and tap Turn On. Then press Retry." }
     if t.contains("not enough space") || t.contains("no space") { return text }
     if t.contains("timed out") || t.contains("not connected") || t.contains("unavailable") || t.contains("stopped answering")
         || t.contains("no longer valid") || t.contains("connection") {
@@ -157,6 +159,8 @@ final class DeviceHub: ObservableObject {
     @Published var toolChecks: [ToolCheck] = []
     @Published var toolsChecked = false
     @Published var settingUp: Job?        // the "Setting up tools" run, while it goes and after a failure
+    @Published var waitingFor: String?    // Install pressed before the device was ready (Developer Mode, pairing, restart)
+    @Published var pairing = false
     private var process: Process?
     private var timer: Timer?
     private var unpacked = false
@@ -255,7 +259,7 @@ final class DeviceHub: ObservableObject {
         searching = true
         defer { searching = false }
         list = (try? JSONDecoder().decode([DeviceInfo].self, from: await devicesTool(["list"]))) ?? []
-        if selected == nil || !list.contains(where: { $0.udid == selected }) {
+        if waitingFor == nil, selected == nil || !list.contains(where: { $0.udid == selected }) {
             selected = list.first(where: { $0.ready })?.udid ?? list.first?.udid
         }
         if withStatus, let d = device, d.ready { await readStatus(d) }
@@ -336,15 +340,57 @@ final class DeviceHub: ObservableObject {
 
     func install() {
         let games = allGames.filter { picks.contains($0.id) }
-        Task {
-            // The tools first, all at once: never one missing tool per failed build.
-            if !(await setUpTools()) {
-                for g in games {
-                    jobs[g.id] = Job(state: .failed("The tools aren't all set up yet: see step 1 above."), fraction: 0, text: "")
-                }
-                return
+        guard let d = device else { return }
+        if !d.ready {   // Developer Mode, pairing or a restart first: wait for it, then go on by itself
+            waitForDevice(d.udid, then: games)
+            return
+        }
+        Task { await toolsThenPerform(games) }
+    }
+
+    private func toolsThenPerform(_ games: [Game]) async {
+        // The tools first, all at once: never one missing tool per failed build.
+        if !(await setUpTools()) {
+            for g in games {
+                jobs[g.id] = Job(state: .failed("The tools aren't all set up yet: see step 1 above."), fraction: 0, text: "")
             }
-            perform(games: games)
+            return
+        }
+        perform(games: games)
+    }
+
+    /// Watches the device through the steps on its screen (pairing, Developer
+    /// Mode and its restart) and starts the install as soon as it's ready; the
+    /// tools are set up in the meantime.
+    func waitForDevice(_ udid: String, then games: [Game]) {
+        waitingFor = udid
+        Task {
+            _ = await setUpTools()
+            while waitingFor == udid {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard waitingFor == udid else { return }
+                await refreshDevices(withStatus: false)
+                if let d = list.first(where: { $0.udid == udid }), d.ready {
+                    waitingFor = nil
+                    selected = udid
+                    await readStatus(d)
+                    await toolsThenPerform(games)
+                    return
+                }
+            }
+        }
+    }
+
+    func stopWaiting() { waitingFor = nil }
+
+    /// devicectl's pairing: the device shows "Trust This Computer?" (it must be unlocked).
+    func pair(_ d: DeviceInfo) {
+        pairing = true
+        Task {
+            _ = await launch(URL(fileURLWithPath: "/usr/bin/xcrun"), ["devicectl", "manage", "pair", "--device", d.udid],
+                             device: "") { _ in }
+            pairing = false
+            await refreshDevices(withStatus: false)
         }
     }
     func retry(_ game: Game) { perform(games: [game]) }
@@ -678,6 +724,15 @@ struct DeviceFlowView: View {
                         if let problem = d.problem ?? hub.status[d.udid]?.problem {
                             Text(problem).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                         }
+                        if let steps = d.steps, !steps.isEmpty {
+                            ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
+                                Text("\(i + 1). \(s)").fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        if d.fix == "pair" {
+                            Button(hub.pairing ? "Pairing… tap Trust on the \(d.kindName)" : "Pair with this Mac") { hub.pair(d) }
+                                .disabled(hub.pairing)
+                        }
                     }
                 }
                 .contentShape(Rectangle())
@@ -734,13 +789,20 @@ struct DeviceFlowView: View {
                     }
                 }
             }
+            if let udid = hub.waitingFor {
+                let name = hub.list.first { $0.udid == udid }?.kindName ?? "device"
+                Text("Waiting for the \(name): follow the steps above. The install starts by itself as soon as it's ready.")
+                    .foregroundStyle(.blue).fixedSize(horizontal: false, vertical: true)
+            }
             HStack {
                 Button(showLog ? "Hide details" : "Show details") { showLog.toggle() }.buttonStyle(.link)
                 Spacer()
                 if hub.running { Button("Stop") { hub.cancel() } }
+                if hub.waitingFor != nil { Button("Stop waiting") { hub.stopWaiting() } }
                 Button(installTitle(chosen)) { hub.install() }
                     .keyboardShortcut(.defaultAction).controlSize(.large)
-                    .disabled(chosen.isEmpty || hub.running || hub.device?.ready != true || !tools.tools || hub.spaceWarning != nil
+                    .disabled(chosen.isEmpty || hub.running || hub.waitingFor != nil || hub.device == nil
+                               || (hub.device?.ready != true && hub.device?.fix == nil) || !tools.tools || hub.spaceWarning != nil
                                || hub.missingTools.contains { $0.action != "install" })
             }
             if showLog {
