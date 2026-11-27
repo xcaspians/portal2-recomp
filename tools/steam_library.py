@@ -19,21 +19,21 @@ from pathlib import Path
 
 STEAM = Path.home() / 'Library/Application Support/Steam'
 
-# Every game Sauce plays, in the installer's order: (game, title, Steam app,
-# Linux binaries depot, data depot, steamapps/common folder, file only a
-# complete install has). Half-Life 2's episodes and Lost Coast come with it
-# (the 20th anniversary install: episodic, ep2, lostcoast).
-GAMES = (
-    ('portal2', 'Portal 2', 620, 661, 621, 'Portal 2', 'portal2/pak01_dir.vpk'),
-    ('mel', 'Portal Stories: Mel', 317400, 317404, 317401, 'Portal Stories Mel', 'portal_stories/bin/server.so'),
-    ('portal1', 'Portal', 400, 404, 401, 'Portal', 'portal/gameinfo.txt'),
-    ('hl2', 'Half-Life 2', 220, 224, 221, 'Half-Life 2', 'hl2_complete/gameinfo.txt'),
-    ('l4d2', 'Left 4 Dead 2', 550, 554, 551, 'Left 4 Dead 2', 'left4dead2/pak01_dir.vpk'),
-)
-# Half-Life 2's folder also holds these, each a game in Sauce's picker.
-HL2_EXTRAS = (('ep1', 'Episode One', 'episodic'), ('ep2', 'Episode Two', 'ep2'), ('lostcoast', 'Lost Coast', 'lostcoast'))
-# Mel runs on Portal 2's files on the device (tools/mel_slim.py).
-NEEDS = {'mel': 'portal2'}
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import games  # noqa: E402
+
+# Every game Sauce plays, in the installer's order, from tools/games.py (its
+# installer entries, the one table): (game, title, Steam app, Linux binaries
+# depot, data depot, steamapps/common folder, file only a complete install has).
+GAMES = tuple((n, i['title'], games.GAMES[n]['steam_appid'], games.GAMES[n]['depot_id'], i['data_depot'],
+               i['steam_folder'], i['data_files'][0])
+              for n in games.installer_games() for i in [games.GAMES[n]['installer']])
+# What comes with a game's folder, each a game in Sauce's picker (Half-Life 2's
+# episodes and Lost Coast): {game: [(id, title, folder)]}.
+EXTRAS = {n: games.extras(n) for n in games.installer_games() if games.extras(n)}
+# A game that runs on another's files on the device (Mel on Portal 2's).
+NEEDS = {n: games.GAMES[n]['installer']['needs'] for n in games.installer_games()
+         if games.GAMES[n]['installer'].get('needs')}
 
 
 def parse_vdf(text):
@@ -126,8 +126,8 @@ def scan(steam=STEAM):
             size = folder_size(folder)
         linux = depot_folder(steam, app, linux_depot)
         extras = []
-        if game == 'hl2' and folder is not None:
-            extras = [{'id': e, 'title': t, 'installed': (folder / sub).is_dir()} for e, t, sub in HL2_EXTRAS]
+        if folder is not None:
+            extras = [{'id': e, 'title': t, 'installed': (folder / sub).is_dir()} for e, t, sub in EXTRAS.get(game, ())]
         hint = None
         if not installed:
             hint = 'Install it in Steam first.'

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Builds "Natif Installer.app" (installer/Installer.swift; Portal 2 and
-# Half-Life 2) with a snapshot of the committed repository inside, and a zip
+# Builds "Natif Installer.app" (installer/Installer.swift; every game of
+# tools/games.py's installer table) with a snapshot of the committed repository inside, and a zip
 # for a GitHub release:
 #   build/installer/Natif Installer.app
 #   build/installer/Natif-Installer-<version>.zip
@@ -50,6 +50,8 @@ done
 lipo -create "${SLICES[@]}" -output "$APP/Contents/MacOS/installer"
 rm -f "${SLICES[@]}"
 git archive --format=tar.gz -o "$APP/Contents/Resources/source.tar.gz" HEAD
+# The games both tabs offer: tools/games.py's table, as the app reads it (Game in installer/Installer.swift).
+python3 tools/games.py --installer-json >"$APP/Contents/Resources/games.json"
 cat >"$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

@@ -107,7 +107,7 @@ class DevicesTest(unittest.TestCase):
 
 
     def test_status_asks_every_game_in_the_app(self):
-        self.assertEqual(devices.IN_APP, ('portal2', 'mel', 'portal1', 'hl2', 'l4d2'))
+        self.assertEqual(devices.IN_APP, tuple(devices.games.installer_games()))
 
     def test_device_tools_get_home(self):
         # Round 28: status ran ios_device.sh without HOME, so has-data failed and
@@ -120,10 +120,7 @@ class DevicesTest(unittest.TestCase):
 
 class InstallerMatchesDevicesTest(unittest.TestCase):
     def test_installer_lists_every_download_and_names_the_one_app(self):
-        import re
         swift = (devices.ROOT / 'installer/Devices.swift').read_text()
-        listed = re.findall(r'\("(\w+)", "[^"]+"\)', swift.split('let downloads')[1].split('\n\n')[0])
-        self.assertEqual(tuple(listed), devices.DOWNLOADS)
         self.assertIn(f'let deviceAppName = "{devices.games.APP_NAME}"', swift)   # rename: both, tests keep them equal
 
 

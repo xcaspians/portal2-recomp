@@ -78,7 +78,23 @@ You must own each game on Steam. Left 4 Dead 2 builds never connect to Valve's o
   which takes one click ([what a free Apple ID can do](docs/fork/FREE_APPLE_ID.md)).
 - **TestFlight**: invite only, and not open yet ([proposal](docs/fork/TESTFLIGHT_PROPOSAL.md)).
 
-The same installer builds the Mac apps too (its **Mac** tab, Apple silicon only).
+The same installer builds the Mac apps too (its **Mac** tab, Apple silicon only): the same games, the
+same Steam scan, the same console line, then **Build**.
+
+**What each game needs from Steam.** The game itself, installed by Steam as usual, plus its Linux
+files: open Steam's console (the installer's **Open Steam console** button, or `steam://open/console`
+in a browser), paste the line, and wait for “Depot download complete”.
+
+| Game | Linux files (Steam console) | Size | First Mac build |
+|---|---|---|---|
+| Portal 2 | `download_depot 620 661` | about 90 MB | about 10 min |
+| Half-Life 2 (with Episode One, Episode Two, Lost Coast) | `download_depot 220 224` | about 320 MB | about 20 min |
+| Portal | `download_depot 400 404` | about 150 MB | about 10 min |
+| Portal Stories: Mel | `download_depot 317400 317404` | about 90 MB | about 15 min |
+| Left 4 Dead 2 (offline only) | `download_depot 550 554` | about 510 MB | about 20 min |
+
+The list comes from one table, `tools/games.py`, which the installer, `setup.sh` and the Steam scan all
+read.
 
 ## Building it yourself
 
@@ -306,8 +322,8 @@ Portal 2 installer, so an update rebuilds only what changed; its log is
 ```sh
 git clone https://github.com/xcaspians/portal2-recomp.git
 cd portal2-recomp
-./setup.sh                    # every game found: Portal 2, Half-Life 2, Portal, Mel
-./setup.sh --game hl2         # one game (portal2, hl2, portal1, mel), or --game all
+./setup.sh                    # every game found: Portal 2, Half-Life 2, Portal, Mel, Left 4 Dead 2
+./setup.sh --game hl2         # one game (portal2, hl2, portal1, mel, l4d2), or --game all
 ./setup.sh --puzzle-maker     # Portal 2 with its map compilers, for the Puzzle Maker (docs/puzzlemaker.md)
 ./setup.sh "/path/to/Portal 2" "/path/to/depot_661"   # folders Steam did not put in the usual place
 ```
@@ -317,15 +333,16 @@ Linux binaries, and builds each game it finds complete (`./setup.sh --detect`
 lists them without building). It downloads Valve's `libsteam_api.dylib`
 (from Steamworks.NET, SHA-256 checked), builds each game (about 10 minutes
 for Portal 2, 10 to 20 for Half-Life 2, about 10 for Portal and about 15 for
-Portal Stories: Mel the first time) and creates `~/Applications/Portal 2 Natif.app`,
-`Half-Life 2 Natif.app`, `Portal Natif.app` and/or `Portal Stories Mel Natif.app`.
+Portal Stories: Mel, about 20 for Left 4 Dead 2, the first time) and creates
+`~/Applications/Portal 2 Natif.app`, `Half-Life 2 Natif.app`, `Portal Natif.app`,
+`Portal Stories Mel Natif.app` and/or `Left 4 Dead 2 Natif.app`.
 Re-running it is safe and quick, and adding a game later does not rebuild
 the others. "Natif" is French for native; the name is kept so
 existing installs are updated in place.
 
 Each app contains its own executable and libraries; the game files stay
 where Steam put them. After a rebuild or a change to `config/local.json`, run
-`python3 tools/make_app.py` (`--game hl2|portal1` for another game) to update the app
+`python3 tools/make_app.py` (`--game hl2|portal1|mel|l4d2` for another game) to update the app
 (`--dest` for another folder).
 Downloads and iOS libraries go to `deps/` (`P2_DEPS` overrides it).
 `P2_HOST_DEPS=homebrew` or `bundle` forces where the host libraries come
@@ -499,6 +516,23 @@ complete”, then tick it in the installer or run `./setup.sh --game mel`.
 
 Details, manual setup and what differs from Portal 2:
 [docs/mel.md](docs/mel.md).
+
+## Left 4 Dead 2 (experimental, offline only)
+
+The same recompiler turns the Linux version of **Left 4 Dead 2** (Steam app
+550) into a Mac app and a game inside Sauce on iPad and iPhone. **You must
+own it on Steam.** Every launch gets `-insecure +sv_lan 1 -nomaster`: play
+the campaigns with bots on a local listen server, never on internet servers.
+
+Install Left 4 Dead 2 with Steam and fetch its Linux binaries with
+`download_depot 550 554` (about 510 MB). Wait for “Depot download complete”,
+then tick it in the installer (either tab) or run `./setup.sh --game l4d2`.
+`setup.sh` also fetches Debian bullseye's i386 `libstdc++.so.6` and
+`libgcc_s.so.1` (SHA-256 checked), builds under `build/l4d2`, and creates
+`~/Applications/Left 4 Dead 2 Natif.app`. On the device it uses its own touch
+layout (shove, reload, item slots, flashlight), editable in the layout editor.
+
+Details: [docs/l4d2.md](docs/l4d2.md).
 
 ## Troubleshooting
 

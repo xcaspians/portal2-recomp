@@ -49,7 +49,8 @@ class SteamLibraryTests(unittest.TestCase):
 
     def test_nothing_installed_is_greyed_with_a_hint(self):
         rows = self.rows()
-        self.assertEqual(list(rows), ['portal2', 'mel', 'portal1', 'hl2', 'l4d2'])
+        # Every game of the shared table (tools/games.py), in its order; Left 4 Dead 2 included.
+        self.assertEqual(list(rows), ['portal2', 'hl2', 'portal1', 'mel', 'l4d2'])
         for r in rows.values():
             self.assertFalse(r['installed'])
             self.assertEqual(r['hint'], 'Install it in Steam first.')
@@ -81,6 +82,26 @@ class SteamLibraryTests(unittest.TestCase):
         (self.steam / 'steamapps/common/Half-Life 2/ep2').mkdir()
         extras = {e['id']: e['installed'] for e in self.rows()['hl2']['extras']}
         self.assertEqual(extras, {'ep1': False, 'ep2': True, 'lostcoast': False})
+
+    def test_l4d2_needs_its_linux_depot_then_is_ready(self):
+        touch(self.steam / 'steamapps/common/Left 4 Dead 2/left4dead2/pak01_dir.vpk')
+        row = self.rows()['l4d2']
+        self.assertTrue(row['installed'])
+        self.assertIsNone(row['linux'])
+        self.assertEqual(row['linux_command'], 'download_depot 550 554')
+        self.assertIn('download_depot 550 554', row['hint'])
+        # Steam's console puts the depot inside its app bundle on a Mac.
+        touch(self.steam / 'Steam.AppBundle/Steam/Contents/MacOS/steamapps/content/app_550/depot_554/hl2_linux')
+        row = self.rows()['l4d2']
+        self.assertTrue(row['linux'].endswith('app_550/depot_554'))
+        self.assertIsNone(row['hint'])
+        self.assertEqual(row['extras'], [])
+
+    def test_l4d2_data_depot_without_a_steam_install(self):
+        touch(self.steam / 'steamapps/content/app_550/depot_551/left4dead2/pak01_dir.vpk')
+        row = self.rows()['l4d2']
+        self.assertTrue(row['installed'])
+        self.assertTrue(row['folder'].endswith('app_550/depot_551'))
 
     def test_never_reads_credentials(self):
         source = (Path(steam_library.__file__)).read_text()

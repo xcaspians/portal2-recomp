@@ -29,14 +29,18 @@ import games  # noqa: E402
 import localconfig  # noqa: E402
 from ios_bundle_id import bundle_id  # noqa: E402
 
+BASE_GAME_NAME = games.DEFAULT   # Portal 2: the one app's own game
 MARGIN = 1 << 30   # kept free on the device (tools/workshop_push.py)
-DOWNLOADS = ('portal2', 'mel', 'portal1', 'hl2', 'l4d2', 'workshop')
-TITLES = {'portal2': 'Portal 2', 'mel': 'Portal Stories: Mel', 'portal1': 'Portal', 'hl2': 'Half-Life 2',
-          'l4d2': 'Left 4 Dead 2', 'workshop': "Workshop maps (the Mac's)"}
+# Every game of the installer's table (tools/games.py installer_games), then the Workshop maps.
+DOWNLOADS = (*games.installer_games(), 'workshop')
+TITLES = {**{g: games.GAMES[g]['installer']['title'] for g in games.installer_games()},
+          'workshop': "Workshop maps (the Mac's)"}
 # Games with their own app on the device (none since round 19: every game is in
 # the one app); the others live in the Portal app.
 OWN_APP = tuple(g for g, p in games.GAMES.items() if p.get('ios') and g != 'portal2' and not p.get('ios_host'))
-SIZES = {'portal1': 'about 4.4 GB', 'hl2': 'about 10 GB', 'l4d2': 'about 14 GB'}
+# Games copied with their own data alone (Portal 2 has its own step, Mel needs Portal 2's).
+SIZES = {g: f"about {games.GAMES[g]['installer']['device_bytes'] / 1e9:g} GB" for g in games.installer_games()
+         if g != BASE_GAME_NAME and not games.GAMES[g]['installer'].get('needs')}
 
 
 # The games whose data lives in the one app (round 19): status asks each. Before
@@ -153,7 +157,7 @@ def mac_builds(config=None):
     mel = localconfig.game_config(config, 'mel') if (config.get('games') or {}).get('mel') else {}
     out['mel'] = None if 'mel' in in_app and mel.get('game_root') else \
         'Portal Stories: Mel isn\'t in this Mac\'s iPhone app yet: install Mel on the Mac, then build Portal 2 for iPhone again.'
-    for game in ('portal1', 'hl2', 'l4d2'):   # in the one app (round 19), when this Mac has them
+    for game in SIZES:   # in the one app (round 19), when this Mac has them
         if game in OWN_APP:
             continue
         cfg = localconfig.game_config(config, game) if (config.get('games') or {}).get(game) else {}

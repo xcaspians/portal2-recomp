@@ -8,35 +8,7 @@ import AppKit
 import SwiftUI
 import UserNotifications
 
-// MARK: - Games in Steam (same table as tools/steam_library.py GAMES)
-
-struct SauceGame: Identifiable, Equatable {
-    let id: String             // tools/devices.py download id
-    let title: String
-    let appID: Int
-    let linuxDepot: Int
-    let dataDepot: Int
-    let folder: String         // steamapps/common/<folder>
-    let marker: String         // a file only a complete install has
-    let deviceBytes: Int64     // about what lands on the device (tools/devices.py SIZES and plan labels)
-    let setupGame: String?     // setup.sh --game; nil: the installer can't build it yet
-    var needs: String? = nil   // another game it runs on, on the device
-}
-
-let sauceGames = [
-    SauceGame(id: "portal2", title: "Portal 2", appID: 620, linuxDepot: 661, dataDepot: 621, folder: "Portal 2",
-              marker: "portal2/pak01_dir.vpk", deviceBytes: 11_500_000_000, setupGame: "portal2"),
-    SauceGame(id: "mel", title: "Portal Stories: Mel", appID: 317400, linuxDepot: 317404, dataDepot: 317401,
-              folder: "Portal Stories Mel", marker: "portal_stories/bin/server.so", deviceBytes: 6_800_000_000,
-              setupGame: "mel", needs: "portal2"),
-    SauceGame(id: "portal1", title: "Portal", appID: 400, linuxDepot: 404, dataDepot: 401, folder: "Portal",
-              marker: "portal/gameinfo.txt", deviceBytes: 4_400_000_000, setupGame: "portal1"),
-    SauceGame(id: "hl2", title: "Half-Life 2", appID: 220, linuxDepot: 224, dataDepot: 221, folder: "Half-Life 2",
-              marker: "hl2_complete/gameinfo.txt", deviceBytes: 10_000_000_000, setupGame: "hl2"),
-    SauceGame(id: "l4d2", title: "Left 4 Dead 2", appID: 550, linuxDepot: 554, dataDepot: 551, folder: "Left 4 Dead 2",
-              marker: "left4dead2/pak01_dir.vpk", deviceBytes: 14_000_000_000, setupGame: nil),
-]
-let hl2Extras = [("episodic", "Episode One"), ("ep2", "Episode Two"), ("lostcoast", "Lost Coast")]
+// MARK: - Games in Steam (allGames: tools/games.py's table, installer/Installer.swift Game)
 
 struct LibraryEntry: Equatable {
     var folder: URL?
@@ -71,26 +43,10 @@ func manifestValue(_ text: String, _ key: String) -> String? {
     return nil
 }
 
-func scanLibrary(_ game: SauceGame, libraries: [URL]) -> LibraryEntry {
-    var entry = LibraryEntry()
-    for lib in libraries {
-        let manifest = try? String(contentsOf: lib.appendingPathComponent("steamapps/appmanifest_\(game.appID).acf"), encoding: .utf8)
-        let dir = manifest.flatMap { manifestValue($0, "installdir") } ?? game.folder
-        let candidate = lib.appendingPathComponent("steamapps/common/\(dir)")
-        if FileManager.default.fileExists(atPath: candidate.appendingPathComponent(game.marker).path) {
-            entry.folder = candidate
-            break
-        }
-    }
-    if entry.folder == nil, let depot = findDepot(game.appID, game.dataDepot),
-       FileManager.default.fileExists(atPath: depot.appendingPathComponent(game.marker).path) {
-        entry.folder = depot
-    }
-    entry.linux = findDepot(game.appID, game.linuxDepot)
-    if game.id == "hl2", let folder = entry.folder {
-        entry.extras = hl2Extras.filter { isDir(folder.appendingPathComponent($0.0)) }.map { $0.1 }
-    }
-    return entry
+/// The Mac tab's scan too (Game.findGame): every Steam library, then the data depot.
+func scanLibrary(_ game: Game, libraries: [URL]) -> LibraryEntry {
+    let folder = game.findGame(libraries: libraries)
+    return LibraryEntry(folder: folder, linux: game.findLinux(), extras: game.extrasIn(folder))
 }
 
 func gigabytes(_ bytes: Int64) -> String { String(format: "%.1f GB", Double(bytes) / 1e9) }
@@ -127,10 +83,6 @@ struct DeviceStatus: Decodable, Equatable {
 struct PlanStep: Decodable { let label: String; let command: [String] }
 struct DownloadPlan: Decodable { let steps: [PlanStep]; let need_bytes: Int64; let problem: String? }
 
-// tools/devices.py DOWNLOADS: every game, all in the one app (round 19).
-let downloads: [(id: String, title: String)] = [("portal2", "Portal 2"), ("mel", "Portal Stories: Mel"),
-                                                ("portal1", "Portal"), ("hl2", "Half-Life 2"),
-                                                ("l4d2", "Left 4 Dead 2"), ("workshop", "Workshop maps")]
 // The one app every game lives in on the device (tools/games.py APP_NAME, round 19).
 let deviceAppName = "Sauce"
 
@@ -185,13 +137,13 @@ final class DeviceHub: ObservableObject {
     var sauceOnDevice: Bool { deviceStatus?.app_installed == true }
     var canBuildSauce: Bool { hasXcode && hasSigningAccount && isAppleSilicon }
 
-    func entry(_ game: SauceGame) -> LibraryEntry { library[game.id] ?? LibraryEntry() }
-    func onDevice(_ game: SauceGame) -> Bool { deviceStatus?.data?[game.id] == true }
-    func pickable(_ game: SauceGame) -> Bool { entry(game).ready && !running }
+    func entry(_ game: Game) -> LibraryEntry { library[game.id] ?? LibraryEntry() }
+    func onDevice(_ game: Game) -> Bool { deviceStatus?.data?[game.id] == true }
+    func pickable(_ game: Game) -> Bool { entry(game).ready && !running }
 
     /// What Install would write: games not on the device yet (an update is far smaller).
     var needBytes: Int64 {
-        sauceGames.filter { picks.contains($0.id) && !onDevice($0) }.map(\.deviceBytes).reduce(0, +)
+        allGames.filter { picks.contains($0.id) && !onDevice($0) }.map(\.deviceBytes).reduce(0, +)
     }
     var spaceWarning: String? {
         guard let free = deviceStatus?.free_bytes, needBytes > 0, free < needBytes + 1_000_000_000 else { return nil }
@@ -206,7 +158,7 @@ final class DeviceHub: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 6, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, !self.running else { return }
-                if sauceGames.contains(where: { !self.entry($0).ready }) || !self.hasSigningAccount { self.rescan() }
+                if allGames.contains(where: { !self.entry($0).ready }) || !self.hasSigningAccount { self.rescan() }
             }
         }
     }
@@ -214,7 +166,7 @@ final class DeviceHub: ObservableObject {
     func rescan() {
         Task.detached {
             let libs = steamLibraries()
-            let found = Dictionary(uniqueKeysWithValues: sauceGames.map { ($0.id, scanLibrary($0, libraries: libs)) })
+            let found = Dictionary(uniqueKeysWithValues: allGames.map { ($0.id, scanLibrary($0, libraries: libs)) })
             let xcode = FileManager.default.fileExists(atPath: "/Applications/Xcode.app")
                 || run("/usr/bin/xcode-select", ["-p"]).output.contains("Xcode")
             let account = run("/usr/bin/security", ["find-certificate", "-c", "Apple Development"]).status == 0
@@ -226,21 +178,21 @@ final class DeviceHub: ObservableObject {
                 self.hasSigningAccount = account
                 self.expiry = expiry
                 if !self.userPicked {   // everything ready starts ticked, until the user changes it
-                    self.picks = Set(sauceGames.filter { found[$0.id]?.ready == true }.map(\.id))
+                    self.picks = Set(allGames.filter { found[$0.id]?.ready == true }.map(\.id))
                 }
                 self.picks = self.picks.filter { found[$0]?.ready == true }
             }
         }
     }
 
-    func toggle(_ game: SauceGame, _ on: Bool) {
+    func toggle(_ game: Game, _ on: Bool) {
         userPicked = true
         if on {
             picks.insert(game.id)
-            if let base = game.needs, entry(sauceGames.first { $0.id == base }!).ready { picks.insert(base) }
+            if let base = game.needs.flatMap(gameNamed), entry(base).ready { picks.insert(base.id) }
         } else {
             picks.remove(game.id)
-            for other in sauceGames where other.needs == game.id && !onDevice(game) { picks.remove(other.id) }
+            for other in allGames where other.needs == game.id && !onDevice(game) { picks.remove(other.id) }
         }
     }
 
@@ -296,10 +248,10 @@ final class DeviceHub: ObservableObject {
 
     // MARK: Install
 
-    func install() { perform(games: sauceGames.filter { picks.contains($0.id) }) }
-    func retry(_ game: SauceGame) { perform(games: [game]) }
+    func install() { perform(games: allGames.filter { picks.contains($0.id) }) }
+    func retry(_ game: Game) { perform(games: [game]) }
 
-    private func perform(games: [SauceGame]) {
+    private func perform(games: [Game]) {
         guard let d = device, !games.isEmpty, !running else { return }
         running = true
         for g in games { jobs[g.id] = Job() }
@@ -330,22 +282,19 @@ final class DeviceHub: ObservableObject {
     }
 
     /// nil when it worked, else the sentence to show.
-    private func installOne(_ g: SauceGame, on d: DeviceInfo, backup: URL) async -> String? {
+    private func installOne(_ g: Game, on d: DeviceInfo, backup: URL) async -> String? {
         guard let entry = library[g.id], let folder = entry.folder, let linux = entry.linux else {
             return "\(g.title) isn't complete in Steam yet: \(library[g.id]?.installed == true ? "the Linux files are missing" : "install it in Steam first")."
         }
         // 1. Built into this Mac's Sauce? If not, build it (setup.sh --ios: Xcode signs with the user's account).
         var plan = await planFor(g, on: d, backup: backup)
         if let problem = plan?.problem, problem.contains("isn't built") || problem.contains("isn't in this Mac's") {
-            guard let setupGame = g.setupGame else {
-                return "\(g.title) can't be built by the installer yet. It works when built by hand (docs/l4d2.md)."
-            }
             guard canBuildSauce else { return buildBlocker() }
             jobs[g.id]?.text = "Backing up the saves on the \(d.kindName) first"
             if sauceOnDevice, !(await step(["saves-backup", backup.path], device: d.udid, game: g)) {
                 return plainError(lastLine, kind: d.kindName)
             }
-            let ok = await setup(setupGame, folder: folder, linux: linux, device: d, game: g)
+            let ok = await setup(g, folder: folder, linux: linux, device: d, job: g)
             if !ok { return plainError(lastError ?? lastLine, kind: d.kindName) }
             await readStatus(d)
             scheduleExpiryReminder()
@@ -363,7 +312,7 @@ final class DeviceHub: ObservableObject {
         return nil
     }
 
-    private func planFor(_ g: SauceGame, on d: DeviceInfo, backup: URL) async -> DownloadPlan? {
+    private func planFor(_ g: Game, on d: DeviceInfo, backup: URL) async -> DownloadPlan? {
         var args = ["plan", "--device", d.udid, "--game", g.id, "--backup", backup.path]
         if status[d.udid]?.hasUpdate(g.id) == true { args.append("--update") }
         return try? JSONDecoder().decode(DownloadPlan.self, from: await devicesTool(args))
@@ -379,7 +328,7 @@ final class DeviceHub: ObservableObject {
     private var lastError: String?
 
     /// One tools/ios_device.sh step; "copy i/n" lines move the game's bar inside its share.
-    private func step(_ words: [String], device: String, game: SauceGame, share: (Double, Double) = (0, 1)) async -> Bool {
+    private func step(_ words: [String], device: String, game: Game, share: (Double, Double) = (0, 1)) async -> Bool {
         await launch(repoDir.appendingPathComponent("tools/ios_device.sh"), words, device: device) { line in
             if line.hasPrefix("copy "), let frac = line.dropFirst(5).split(separator: " ").first?.split(separator: "/"),
                frac.count == 2, let a = Double(frac[0]), let b = Double(frac[1]), b > 0 {
@@ -389,18 +338,19 @@ final class DeviceHub: ObservableObject {
     }
 
     /// setup.sh --ios for one game, with the device chosen (it builds, signs, installs, copies).
-    private func setup(_ id: String, folder: URL, linux: URL, device d: DeviceInfo, game: SauceGame) async -> Bool {
+    /// A game that runs on another's files on the device (needs: Mel on Portal 2)
+    /// is built for the Mac first, then that game's iPhone build takes it in.
+    private func setup(_ game: Game, folder: URL, linux: URL, device d: DeviceInfo, job: Game) async -> Bool {
         var p = 0.0
         let ok = await launch(URL(fileURLWithPath: "/bin/bash"),
-                              [sourceDir.appendingPathComponent("setup.sh").path, "--game", id] + (id == "mel" ? [] : ["--ios"])
+                              [sourceDir.appendingPathComponent("setup.sh").path, "--game", game.id] + (game.needs == nil ? ["--ios"] : [])
                                   + [folder.path, linux.path], device: d.udid) { line in
             p = Installer.progress(after: line, from: p)
-            self.jobs[game.id]?.fraction = p * 0.9
-            if line.hasPrefix("==> ") { self.jobs[game.id]?.text = String(line.dropFirst(4)) }
+            self.jobs[job.id]?.fraction = p * 0.9
+            if line.hasPrefix("==> ") { self.jobs[job.id]?.text = String(line.dropFirst(4)) }
         }
-        // Mel joins Portal 2's app: its Mac build first, then Portal 2's iPhone build takes it in.
-        if ok && id == "mel", let p2 = library["portal2"], let f = p2.folder, let l = p2.linux {
-            return await setup("portal2", folder: f, linux: l, device: d, game: game)
+        if ok, let base = game.needs.flatMap(gameNamed), let e = library[base.id], let f = e.folder, let l = e.linux {
+            return await setup(base, folder: f, linux: l, device: d, job: job)
         }
         return ok
     }
@@ -448,7 +398,7 @@ final class DeviceHub: ObservableObject {
     // MARK: Refresh Sauce (a free Apple ID's 7 days)
 
     func refreshSauce() {
-        guard let p2 = sauceGames.first(where: { $0.id == "portal2" }) else { return }
+        guard let p2 = allGames.first(where: { $0.id == "portal2" }) else { return }
         perform(games: [p2])   // with Sauce built: a new profile, the same build re-signed, reinstalled; data kept
     }
 
@@ -537,7 +487,7 @@ struct DeviceFlowView: View {
     var gamesList: some View {
         VStack(alignment: .leading, spacing: 8) {
             if !hub.scanned { Text("Looking in your Steam library…") }
-            ForEach(sauceGames) { g in
+            ForEach(allGames) { g in
                 let e = hub.entry(g)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
@@ -564,7 +514,7 @@ struct DeviceFlowView: View {
                             }
                         } else if !e.extras.isEmpty {
                             Text("With \(e.extras.joined(separator: ", ")).")
-                        } else if let base = g.needs, let b = sauceGames.first(where: { $0.id == base }) {
+                        } else if let b = g.needs.flatMap(gameNamed) {
                             Text("Plays on \(b.title)'s files, so \(b.title) comes along.")
                         }
                     }
@@ -626,7 +576,7 @@ struct DeviceFlowView: View {
 
     @ViewBuilder var installSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            let chosen = sauceGames.filter { hub.picks.contains($0.id) }
+            let chosen = allGames.filter { hub.picks.contains($0.id) }
             if chosen.isEmpty {
                 Text("Tick at least one game above.")
             } else if hub.needBytes > 0 {
@@ -674,7 +624,7 @@ struct DeviceFlowView: View {
         }
     }
 
-    func installTitle(_ chosen: [SauceGame]) -> String {
+    func installTitle(_ chosen: [Game]) -> String {
         let updates = chosen.filter { hub.deviceStatus?.hasUpdate($0.id) == true }.count
         if !chosen.isEmpty && chosen.allSatisfy({ hub.onDevice($0) }) { return updates > 0 ? "Update" : "Install again" }
         return "Install \(chosen.count == 1 ? chosen[0].title : "\(chosen.count) games")"

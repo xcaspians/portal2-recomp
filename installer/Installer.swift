@@ -1,7 +1,7 @@
 // Natif installer: a window around ./setup.sh for people who do not use
 // Terminal. It carries a snapshot of the repository (Resources/source.tar.gz,
 // made by tools/build_installer.sh), unpacks it in Application Support, finds
-// Portal 2 and Half-Life 2 the way setup.sh does, then runs setup.sh once per
+// every game of tools/games.py's table the way setup.sh does, then runs setup.sh once per
 // game the user ticked and shows its steps. It never downloads a game: the
 // Steam console does, by the user's hand.
 //
@@ -20,25 +20,38 @@ let sourceDir = home.appendingPathComponent("Library/Application Support/Portal 
 let steamSupport = home.appendingPathComponent("Library/Application Support/Steam")
 let logFile = home.appendingPathComponent("Library/Logs/NatifInstaller.log")
 
-// MARK: - Games (tools/games.py, setup.sh)
+// MARK: - Games (tools/games.py, the one table)
 
-struct Game: Identifiable, Equatable {
-    let id: String              // setup.sh --game
+/// One game of the shared table: tools/games.py's installer entries, which
+/// tools/build_installer.sh writes into Resources/games.json. Both tabs (Mac,
+/// and iPad and iPhone), setup.sh, tools/steam_library.py and tools/devices.py
+/// read the same table; a new game is one entry there, nothing here.
+struct Extra: Decodable, Equatable { let id: String; let title: String; let folder: String }
+
+struct Game: Decodable, Identifiable, Equatable {
+    let id: String              // setup.sh --game, tools/devices.py download id
     let title: String
     let appID: Int
     let dataDepot: Int          // depot with the game data, separate from the Linux binaries
     let linuxDepot: Int
     let linuxSize: String
-    let marker: String          // folder inside the game folder
+    let folder: String          // steamapps/common/<folder>
+    let mod: String             // the mod folder inside the game folder
     let markerFile: String      // file that only a complete install has (Steam can leave an empty marker folder)
-    let installFolder: String   // under steamapps/common
+    let dataFiles: [String]
     let linuxFiles: [String]    // files of the Linux depot (setup.sh's checks)
-    let minutes: Int
-    var mapCompiler: String? = nil   // Linux depot file of the Puzzle Maker's map compilers (setup.sh --puzzle-maker)
+    let minutes: Int            // first build on the Mac
+    let deviceBytes: Int64      // about what lands on the device
+    let appName: String         // the Mac app, in ~/Applications
+    let needs: String?          // another game it runs on, on the device (Mel: Portal 2)
+    let mapCompiler: String?    // Linux depot file of the Puzzle Maker's map compilers (setup.sh --puzzle-maker)
+    let experimental: Bool
+    let note: String?
+    let extras: [Extra]         // games inside its folder (Half-Life 2's episodes and Lost Coast)
 
-    var appName: String { "\(title) Natif" }
     var installedApp: URL { home.appendingPathComponent("Applications/\(appName).app") }
     var depotCommand: String { "download_depot \(appID) \(linuxDepot)" }
+    var dataCommand: String { "download_depot \(appID) \(dataDepot)" }
 
     func isGameFolder(_ url: URL) -> Bool {
         FileManager.default.fileExists(atPath: url.appendingPathComponent(markerFile).path)
@@ -61,34 +74,48 @@ struct Game: Identifiable, Equatable {
         guard let mapCompiler, let linux else { return false }
         return FileManager.default.fileExists(atPath: linux.appendingPathComponent(mapCompiler).path)
     }
-    func findGame() -> URL? {
-        let installed = steamSupport.appendingPathComponent("steamapps/common/\(installFolder)")
-        let candidates = [installed, findDepot(appID, dataDepot)].compactMap { $0 }.filter(isGameFolder)
+    /// The game in any Steam library (its manifest's installdir, else its usual
+    /// folder), else its data depot; a complete copy before an incomplete one.
+    func findGame(libraries: [URL] = steamLibraries()) -> URL? {
+        var candidates: [URL] = libraries.map { lib in
+            let manifest = try? String(contentsOf: lib.appendingPathComponent("steamapps/appmanifest_\(appID).acf"), encoding: .utf8)
+            return lib.appendingPathComponent("steamapps/common/\(manifest.flatMap { manifestValue($0, "installdir") } ?? folder)")
+        }
+        if let depot = findDepot(appID, dataDepot) { candidates.append(depot) }
+        candidates = candidates.filter(isGameFolder)
         return candidates.first(where: { dataIssue($0) == nil }) ?? candidates.first
     }
     func findLinux() -> URL? {
         if let depot = findDepot(appID, linuxDepot), isLinuxDepot(depot) { return depot }
         return nil
     }
+    /// The extras whose folder is in this copy of the game.
+    func extrasIn(_ url: URL?) -> [String] {
+        guard let url else { return [] }
+        return extras.filter { isDir(url.appendingPathComponent($0.folder)) }.map(\.title)
+    }
+}
+
+/// The table, from the app's games.json (P2_GAMES_JSON for tests and development runs).
+func loadGames() -> [Game] {
+    let url = ProcessInfo.processInfo.environment["P2_GAMES_JSON"].map { URL(fileURLWithPath: $0) }
+        ?? Bundle.main.url(forResource: "games", withExtension: "json")
+    guard let url, let data = try? Data(contentsOf: url),
+          let list = try? JSONDecoder().decode([Game].self, from: data), !list.isEmpty else {
+        FileHandle.standardError.write(Data("games.json is missing or unreadable: rebuild the app with tools/build_installer.sh\n".utf8))
+        exit(1)
+    }
+    return list
+}
+let allGames = loadGames()
+func gameNamed(_ id: String) -> Game? { allGames.first { $0.id == id } }
+
+/// "A, B and C".
+func listed(_ items: [String]) -> String {
+    items.count < 2 ? items.joined() : items.dropLast().joined(separator: ", ") + " and " + items.last!
 }
 
 let mapCompilerMinutes = 10
-
-let allGames = [
-    Game(id: "portal2", title: "Portal 2", appID: 620, dataDepot: 621, linuxDepot: 661, linuxSize: "about 90 MB",
-         marker: "portal2", markerFile: "portal2/pak01_dir.vpk", installFolder: "Portal 2",
-         linuxFiles: ["bin/linux32/engine.so", "portal2/bin/linux32/server.so"], minutes: 10,
-         mapCompiler: "bin/linux32/vbsp_linux"),
-    Game(id: "hl2", title: "Half-Life 2", appID: 220, dataDepot: 221, linuxDepot: 224, linuxSize: "about 320 MB",
-         marker: "hl2_complete", markerFile: "hl2_complete/gameinfo.txt", installFolder: "Half-Life 2",
-         linuxFiles: ["hl2_linux", "bin/engine.so", "hl2_complete/bin/server.so"], minutes: 20),
-    Game(id: "portal1", title: "Portal", appID: 400, dataDepot: 401, linuxDepot: 404, linuxSize: "about 150 MB",
-         marker: "portal", markerFile: "portal/gameinfo.txt", installFolder: "Portal",
-         linuxFiles: ["hl2_linux", "bin/engine.so", "portal/bin/server.so", "bin/shaderapivk.so"], minutes: 10),
-    Game(id: "mel", title: "Portal Stories Mel", appID: 317400, dataDepot: 317401, linuxDepot: 317404, linuxSize: "about 90 MB",
-         marker: "portal_stories", markerFile: "portal_stories/bin/server.so", installFolder: "Portal Stories Mel",
-         linuxFiles: ["portal2_linux", "bin/engine.so", "bin/shaderapivk.so"], minutes: 15),
-]
 
 // MARK: - Detection (same rules as setup.sh)
 
@@ -191,7 +218,8 @@ final class Installer: ObservableObject {
     func refresh() {
         Task.detached {
             let t = hasCommandLineTools()
-            let found = allGames.map { ($0, $0.findGame(), $0.findLinux()) }
+            let libs = steamLibraries()
+            let found = allGames.map { ($0, $0.findGame(libraries: libs), $0.findLinux()) }
             await MainActor.run {
                 self.tools = t
                 for (game, g, l) in found {
@@ -525,14 +553,16 @@ struct GameRow: View {
             VStack(alignment: .leading, spacing: 6) {
                 if let url = s.game {
                     PathLine(url: url, missing: "")
+                    let extras = game.extrasIn(url)
+                    if !extras.isEmpty { Text("With \(listed(extras)): they start from \(game.title)'s own menu.") }
                     if let issue = s.dataIssue {
                         Text(issue).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
-                        Command(text: "download_depot \(game.appID) \(game.dataDepot)", copy: model.copy)
+                        Command(text: game.dataCommand, copy: model.copy)
                     }
                 } else {
                     Text("Game data not found: install \(game.title) with Steam (the current version), choose its folder, or paste this in the Steam console and wait for “Depot download complete”:")
                         .fixedSize(horizontal: false, vertical: true)
-                    Command(text: "download_depot \(game.appID) \(game.dataDepot)", copy: model.copy)
+                    Command(text: game.dataCommand, copy: model.copy)
                 }
                 if let url = s.linux {
                     PathLine(url: url, missing: "")
@@ -541,11 +571,13 @@ struct GameRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Command(text: game.depotCommand, copy: model.copy)
                 }
+                if s.ready { Text("Ready. About \(game.minutes) minutes to build the first time.") }
+                if let note = game.note { Text(note).font(.caption) }
                 HStack {
                     if !s.ready { Button("Open Steam console") { model.openSteamConsole() } }
                     if s.game == nil || s.dataIssue != nil {
                         Button("Choose game folder…") {
-                            model.choose("Choose the \(game.title) folder (it contains \(game.marker))", expected: "the \(game.marker) folder",
+                            model.choose("Choose the \(game.title) folder (it contains \(game.mod))", expected: "the \(game.mod) folder",
                                          valid: game.isGameFolder) { model.setGame(game, $0) }
                         }
                     }
@@ -591,7 +623,8 @@ struct ContentView: View {
                 StepRow(number: 2, title: "Games to build", ok: !model.chosen.isEmpty) {
                     VStack(alignment: .leading, spacing: 14) {
                         ForEach(allGames) { GameRow(model: model, game: $0) }
-                        Text("Half-Life 2 and Portal are experimental: they play on Mac, with fewer hours of testing.")
+                        let experimental = allGames.filter(\.experimental).map(\.title)
+                        Text("\(listed(experimental)) are experimental: they play on Mac, with fewer hours of testing.")
                             .font(.caption)
                     }
                 }
@@ -681,7 +714,7 @@ struct RootView: View {
                 Spacer()
                 Text("Version \(installerVersion)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             }
-            Text("Plays your own Steam copies of Portal, Portal 2, Mel, Half-Life 2 and Left 4 Dead 2. Nothing from the games is downloaded by this installer, and it never asks for your Steam password.")
+            Text("Plays your own Steam copies of \(listed(allGames.map(\.title))). Nothing from the games is downloaded by this installer, and it never asks for your Steam password.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let newer = update.newer {
                 HStack {
@@ -744,6 +777,9 @@ func snapshot(to path: String, state: String) {
         model.states["mel"] = GameState(game: steamSupport.appendingPathComponent("steamapps/common/Portal Stories Mel"),
                                         linux: state == "missing" ? nil : URL(fileURLWithPath: "/depot_317404"),
                                         selected: state != "missing")
+        model.states["l4d2"] = GameState(game: steamSupport.appendingPathComponent("steamapps/common/Left 4 Dead 2"),
+                                         linux: state == "missing" ? nil : URL(fileURLWithPath: "/depot_554"),
+                                         selected: state != "missing")
     }
     switch state {
     case "incomplete":
@@ -754,7 +790,7 @@ func snapshot(to path: String, state: String) {
         model.step = "Recompiling Portal 2 (about 10 minutes the first time, seconds afterwards)"; model.progress = 0.25
         model.showLog = true; model.log = ["==> Preparing the Linux modules of Portal 2", "[lift] engine.so: 41 233 functions", "[cc] 312/1024"]
     case "done": model.phase = .done
-        for id in ["portal2", "hl2", "portal1", "mel"] { model.states[id]?.built = true }
+        for game in allGames { model.states[game.id]?.built = true }
     case "failed": model.phase = .failed("Half-Life 2: lib/libSDL2.dylib not found")
     default: break
     }
@@ -765,8 +801,9 @@ func snapshot(to path: String, state: String) {
         hub.library = ["portal2": LibraryEntry(folder: home.appendingPathComponent("Portal 2"), linux: URL(fileURLWithPath: "/depot_661")),
                        "mel": LibraryEntry(folder: home.appendingPathComponent("Portal Stories Mel"), linux: nil),
                        "hl2": LibraryEntry(folder: home.appendingPathComponent("Half-Life 2"), linux: URL(fileURLWithPath: "/depot_224"),
-                                           extras: ["Episode One", "Episode Two", "Lost Coast"])]
-        hub.picks = ["portal2", "hl2"]
+                                           extras: ["Episode One", "Episode Two", "Lost Coast"]),
+                       "l4d2": LibraryEntry(folder: home.appendingPathComponent("Left 4 Dead 2"), linux: URL(fileURLWithPath: "/depot_554"))]
+        hub.picks = ["portal2", "hl2", "l4d2"]
         hub.hasXcode = true
         hub.list = [DeviceInfo(udid: "A", name: "My iPad Pro", model: "iPad Pro 11-inch (M5)", kind: "iPad", link: "USB", ready: true, problem: nil),
                     DeviceInfo(udid: "B", name: "iPhone", model: "iPhone 18 Pro", kind: "iPhone", link: "Wi-Fi", ready: false,
@@ -825,19 +862,26 @@ enum Main {
             do { try unpackSource(); print("unpacked into", sourceDir.path) } catch { print("error:", error.localizedDescription); exit(1) }
             return
         }
+        if args.contains("--games") {   // tests: the table as this app decodes it
+            for g in allGames {
+                print([g.id, g.title, "\(g.appID)", "\(g.dataDepot)", "\(g.linuxDepot)", g.folder, g.markerFile,
+                       g.linuxFiles.joined(separator: ","), "\(g.minutes)", "\(g.deviceBytes)", g.needs ?? "-",
+                       g.extras.map(\.folder).joined(separator: ",")].joined(separator: "|"))
+            }
+            return
+        }
         if args.contains("--detect") {
             print("command line tools:", hasCommandLineTools())
-            for game in allGames {
-                let g = game.findGame(), l = game.findLinux()
-                let issue = g.flatMap { game.dataIssue($0) }
-                print("\(game.id): game \(g?.path ?? "-"), linux \(l?.path ?? "-")\(g != nil && l != nil && issue == nil ? " (ticked)" : "")")
-                if let issue { print(issue) }
-            }
-            let libs = steamLibraries()   // the iPad and iPhone tab's scan
+            let libs = steamLibraries()   // both tabs' scan
             print("steam libraries:", libs.map(\.path).joined(separator: ", "))
-            for game in sauceGames {
-                let e = scanLibrary(game, libraries: libs)
-                print("sauce \(game.id): \(e.folder?.path ?? "not installed"), linux \(e.linux != nil ? "yes" : "no")\(e.extras.isEmpty ? "" : ", with " + e.extras.joined(separator: ", "))")
+            for game in allGames {
+                let g = game.findGame(libraries: libs), l = game.findLinux()
+                let issue = g.flatMap { game.dataIssue($0) }
+                let extras = game.extrasIn(g)
+                let ready = g != nil && l != nil && issue == nil
+                print("\(game.id): game \(g?.path ?? "-"), linux \(l?.path ?? "-")\(extras.isEmpty ? "" : ", with " + extras.joined(separator: ", "))"
+                      + (ready ? " (ready)" : g == nil ? " (install it in Steam)" : l == nil ? " (needs: \(game.depotCommand))" : ""))
+                if let issue { print(issue) }
             }
             print("apple silicon:", isAppleSilicon, "· Sauce profile expires:", sauceProfileExpiry().map { "\($0)" } ?? "-")
             return

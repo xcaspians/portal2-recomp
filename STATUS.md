@@ -245,6 +245,13 @@ forcing buffer usage, `gl_bufmode`, an order file of hot functions
 
 ## History
 
+- **27 Nov. 2026** (fork, round 29): one game table for the Natif Installer.
+  `tools/games.py` installer entries feed setup.sh, the Steam scan, the device
+  planner and both installer tabs (`games.json` in the app). Left 4 Dead 2
+  now installs from both tabs and `./setup.sh --game l4d2` (first Mac build in
+  a fresh tree: 14 min on an M-series Mac, including Steamworks, the Debian
+  i386 libraries and libd3d9metal); `tests/test_installer_table.py` fails when
+  a reader keeps its own list.
 - **18 Nov. 2026** (v0.4.0): Puzzle Maker export and native map compilers
   (#42, opt-in since #48), SIGCHLD delivery hardened (#47), PIC switches
   that jump through a copy of the GOT register recognised by the lifter
