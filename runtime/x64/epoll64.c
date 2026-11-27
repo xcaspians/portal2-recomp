@@ -8,6 +8,9 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
+#include <pthread.h>
+#include <sys/socket.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/event.h>
@@ -112,14 +115,101 @@ static void s_epoll_wait(CPU64 *c) { epoll_wait_ms(c, (int)ARG(c, 0), PTR(c, 1),
 // The signal mask (fifth argument) is ignored: the guest's signals aren't delivered through it.
 static void s_epoll_pwait(CPU64 *c) { s_epoll_wait(c); }
 
-// eventfd and timerfd have no macOS counterpart: they answer ENOSYS, as an
-// older Linux kernel would. The callers seen so far (asio's reactor, in
-// libvideo.so) then fall back to a pipe and to epoll_wait's own timeout.
+// eventfd: a 64-bit counter behind one descriptor (libvideo.so's completion
+// port manager needs it, with no fallback). The guest gets one end of a
+// socket pair; a write adds to the counter and, from zero, puts a byte in
+// through the other end, so the guest's end polls readable (epoll above,
+// poll, select); a read drains those bytes and returns the counter, reset
+// to zero (or one, with EFD_SEMAPHORE). read/write/close in posix64.c ask
+// rt64_eventfd_io first.
+#define MAX_EVENTFDS 64
+static struct { int fd, other, flags; uint64_t count; } eventfds[MAX_EVENTFDS];
+static pthread_mutex_t eventfd_lock = PTHREAD_MUTEX_INITIALIZER;
+enum { L_EFD_SEMAPHORE = 1, L_EFD_NONBLOCK = 04000, L_EFD_CLOEXEC = 02000000 };
+
+static int eventfd_slot(int fd) {
+    for (int i = 0; i < MAX_EVENTFDS; ++i)
+        if (eventfds[i].fd == fd && eventfds[i].other > 0) return i;
+    return -1;
+}
+
+static void s_eventfd(CPU64 *c) {
+    int fds[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) < 0) { fail(c, errno); return; }
+    int flags = (int)ARG(c, 1);
+    fcntl(fds[1], F_SETFL, O_NONBLOCK);
+    if (flags & L_EFD_CLOEXEC) { fcntl(fds[0], F_SETFD, FD_CLOEXEC); fcntl(fds[1], F_SETFD, FD_CLOEXEC); }
+    pthread_mutex_lock(&eventfd_lock);
+    int slot = -1;
+    for (int i = 0; i < MAX_EVENTFDS && slot < 0; ++i) if (eventfds[i].other <= 0) slot = i;
+    if (slot < 0) { pthread_mutex_unlock(&eventfd_lock); close(fds[0]); close(fds[1]); fail(c, EMFILE); return; }
+    eventfds[slot].fd = fds[0];
+    eventfds[slot].other = fds[1];
+    eventfds[slot].flags = flags;
+    eventfds[slot].count = (uint32_t)ARG(c, 0);
+    if (eventfds[slot].count) { char b = 1; (void)write(fds[1], &b, 1); }
+    pthread_mutex_unlock(&eventfd_lock);
+    RET(c, fds[0]);
+}
+
+int rt64_eventfd_io(int fd, int op, void *buf, size_t n, int64_t *result);
+int rt64_eventfd_io(int fd, int op, void *buf, size_t n, int64_t *result) {
+    pthread_mutex_lock(&eventfd_lock);
+    int slot = eventfd_slot(fd);
+    if (slot < 0) { pthread_mutex_unlock(&eventfd_lock); return 0; }
+    if (op == 2) {   // close: both ends
+        close(eventfds[slot].other);
+        eventfds[slot].other = 0;
+        eventfds[slot].fd = -1;
+        pthread_mutex_unlock(&eventfd_lock);
+        *result = close(fd) < 0 ? (rt64_set_errno(errno), -1) : 0;
+        return 1;
+    }
+    if (n < 8) { pthread_mutex_unlock(&eventfd_lock); rt64_set_errno(EINVAL); *result = -1; return 1; }
+    if (op == 1) {   // write: add
+        uint64_t v;
+        memcpy(&v, buf, 8);
+        if (v == UINT64_MAX) { pthread_mutex_unlock(&eventfd_lock); rt64_set_errno(EINVAL); *result = -1; return 1; }
+        int was_zero = eventfds[slot].count == 0;
+        eventfds[slot].count += v;
+        if (was_zero && v) { char b = 1; (void)write(eventfds[slot].other, &b, 1); }
+        pthread_mutex_unlock(&eventfd_lock);
+        *result = 8;
+        return 1;
+    }
+    // read: wait for a non-zero counter unless non-blocking.
+    while (eventfds[slot].count == 0) {
+        int nonblock = eventfds[slot].flags & L_EFD_NONBLOCK;
+        pthread_mutex_unlock(&eventfd_lock);
+        if (nonblock) { rt64_set_errno(EAGAIN); *result = -1; return 1; }
+        struct pollfd p = {fd, POLLIN, 0};
+        poll(&p, 1, -1);
+        pthread_mutex_lock(&eventfd_lock);
+        slot = eventfd_slot(fd);
+        if (slot < 0) { pthread_mutex_unlock(&eventfd_lock); rt64_set_errno(EBADF); *result = -1; return 1; }
+    }
+    uint64_t v = eventfds[slot].flags & L_EFD_SEMAPHORE ? 1 : eventfds[slot].count;
+    eventfds[slot].count -= v;
+    if (eventfds[slot].count == 0) {   // drain the wake-up bytes: no longer readable
+        char drain[64];
+        int flags = fcntl(fd, F_GETFL);
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        while (read(fd, drain, sizeof drain) > 0) {}
+        fcntl(fd, F_SETFL, flags);
+    }
+    pthread_mutex_unlock(&eventfd_lock);
+    memcpy(buf, &v, 8);
+    *result = 8;
+    return 1;
+}
+
+// timerfd has no counterpart here: ENOSYS, as an older Linux kernel would
+// answer. asio's reactor then times out through epoll_wait instead.
 static void s_unsupported(CPU64 *c) { fail(c, ENOSYS); }
 
 static const RT64Shim shims[] = {
     {"epoll_create", s_epoll_create}, {"epoll_create1", s_epoll_create1}, {"epoll_ctl", s_epoll_ctl},
     {"epoll_wait", s_epoll_wait}, {"epoll_pwait", s_epoll_pwait},
-    {"eventfd", s_unsupported}, {"timerfd_create", s_unsupported}, {0, 0},
+    {"eventfd", s_eventfd}, {"timerfd_create", s_unsupported}, {0, 0},
 };
 RT64_SHIMS(shims, NULL)

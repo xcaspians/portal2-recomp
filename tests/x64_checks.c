@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <poll.h>
 #include <unistd.h>
 
 extern const RT64Module x64_fixture, x64_second;
@@ -290,10 +291,32 @@ int main(void) {
         EXPECT(cpu.r[RAX] == 0);   // removed: nothing reported
         close(fds[0]);
         close(ep);
-        // eventfd/timerfd: ENOSYS (Linux 38), so asio falls back to a pipe and epoll_wait's timeout.
-        cpu.r[RDI] = 0; cpu.r[RSI] = 0;
+        // eventfd: one descriptor, a counter; readable while non-zero (libvideo's completion ports).
+        cpu.r[RDI] = 0; cpu.r[RSI] = 04000;   // EFD_NONBLOCK
         rt64_find_shim("eventfd")(&cpu);
-        EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 38);
+        int efd = (int)cpu.r[RAX];
+        EXPECT(efd >= 0);
+        uint64_t value = 0;
+        cpu.r[RDI] = (uint64_t)efd; cpu.r[RSI] = (uint64_t)(uintptr_t)&value; cpu.r[RDX] = 8;
+        rt64_find_shim("read")(&cpu);
+        EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 11);   // EAGAIN: counter at zero
+        value = 3;
+        rt64_find_shim("write")(&cpu);
+        value = 4;
+        rt64_find_shim("write")(&cpu);
+        EXPECT(cpu.r[RAX] == 8);
+        struct pollfd pfd = {efd, POLLIN, 0};
+        EXPECT(poll(&pfd, 1, 1000) == 1);
+        value = 0;
+        rt64_find_shim("read")(&cpu);
+        EXPECT(cpu.r[RAX] == 8 && value == 7);   // the sum, then reset
+        pfd.revents = 0;
+        EXPECT(poll(&pfd, 1, 0) == 0);   // drained: not readable any more
+        cpu.r[RDI] = (uint64_t)efd;
+        rt64_find_shim("close")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);
+        // timerfd: ENOSYS (Linux 38), so asio's reactor times out through epoll_wait.
+        cpu.r[RDI] = 0; cpu.r[RSI] = 0;
         rt64_find_shim("timerfd_create")(&cpu);
         EXPECT((int64_t)cpu.r[RAX] == -1 && *rt64_errno_slot() == 38);
     }

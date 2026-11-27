@@ -127,9 +127,22 @@ static void s_openat(CPU64 *c) {
     int dir = I(0) == -100 ? AT_FDCWD : I(0);
     CHECK(c, openat(dir, S(1), host_open_flags(I(2)), (mode_t)ARG(c, 3)));
 }
-static void s_close(CPU64 *c) { CHECK(c, close(I(0))); }
-static void s_read(CPU64 *c) { CHECK(c, read(I(0), PTR(c, 1), (size_t)ARG(c, 2))); }
-static void s_write(CPU64 *c) { CHECK(c, write(I(0), PTR(c, 1), (size_t)ARG(c, 2))); }
+// An eventfd (epoll64.c) answers read, write and close itself: 1 when fd is
+// one and the operation (0 read, 1 write, 2 close) was done, its result in
+// *result. Declared here, not in rt64.h, whose hash keys every lifted
+// module's compile cache.
+int rt64_eventfd_io(int fd, int op, void *buf, size_t n, int64_t *result);
+static void s_close(CPU64 *c) { int64_t r; if (rt64_eventfd_io(I(0), 2, NULL, 0, &r)) { RET(c, r); return; } CHECK(c, close(I(0))); }
+static void s_read(CPU64 *c) {
+    int64_t r;
+    if (rt64_eventfd_io(I(0), 0, PTR(c, 1), (size_t)ARG(c, 2), &r)) { RET(c, r); return; }
+    CHECK(c, read(I(0), PTR(c, 1), (size_t)ARG(c, 2)));
+}
+static void s_write(CPU64 *c) {
+    int64_t r;
+    if (rt64_eventfd_io(I(0), 1, PTR(c, 1), (size_t)ARG(c, 2), &r)) { RET(c, r); return; }
+    CHECK(c, write(I(0), PTR(c, 1), (size_t)ARG(c, 2)));
+}
 static void s_pread(CPU64 *c) { CHECK(c, pread(I(0), PTR(c, 1), (size_t)ARG(c, 2), (off_t)ARG(c, 3))); }
 static void s_pwrite(CPU64 *c) { CHECK(c, pwrite(I(0), PTR(c, 1), (size_t)ARG(c, 2), (off_t)ARG(c, 3))); }
 static void s_writev(CPU64 *c) { CHECK(c, writev(I(0), PTR(c, 1), I(2))); }   // struct iovec: same layout
