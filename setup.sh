@@ -163,12 +163,22 @@ case "${P2_HOST_DEPS:-auto}" in
     auto)     if brew_has_libs; then HOST_LIBS_FROM=homebrew; else HOST_LIBS_FROM=bundle; fi ;;
     *) die "P2_HOST_DEPS must be homebrew or bundle, not $P2_HOST_DEPS" ;;
 esac
+# Every build tool, checked up front (tools/build_tools.py: the installer's
+# "Setting up tools" step): its PATH (the installer's own copies, Homebrew's,
+# Rust's), DEVELOPER_DIR when Xcode is installed but not selected.
+eval "$(python3 "$REPO/tools/build_tools.py" env)"
 if [ $IOS = 1 ] && [ $DETECT = 0 ]; then   # --detect changes nothing: it needs no Xcode
-    need xcodebuild "Install Xcode from the App Store, open it once, then: sudo xcode-select -s /Applications/Xcode.app"
-    xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1 || die "no iOS SDK: install Xcode (not only the command line tools) and select it with xcode-select -s"
-    need xcodegen "brew install xcodegen"
-    need cmake "brew install cmake"
-    need ninja "brew install ninja"
+    if ! python3 "$REPO/tools/build_tools.py" check --for device >/dev/null; then
+        step "Setting up tools (XcodeGen, CMake, Ninja, Rust: whatever is missing, in one go)"
+        python3 "$REPO/tools/build_tools.py" install --for device \
+            || die "the tools aren't all there yet (the lines above say what to click), then try again"
+        eval "$(python3 "$REPO/tools/build_tools.py" env)"
+    fi
+    for t in xcodebuild xcodegen cmake ninja; do
+        need "$t" "Open the Natif Installer and click Set up tools (or: python3 tools/build_tools.py install)"
+    done
+    xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1 \
+        || die "Xcode has no iOS support yet: open Xcode, then Xcode > Settings > Components, and click Get next to iOS"
 fi
 echo "ok: $(python3 --version), $(objdump --version | head -1)"
 

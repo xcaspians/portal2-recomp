@@ -300,11 +300,9 @@ final class Installer: ObservableObject {
         p.arguments = [sourceDir.appendingPathComponent("setup.sh").path, "--game", game.id]
             + (runHasMapCompilers ? ["--puzzle-maker"] : []) + [gameDir.path, linux.path]
         p.currentDirectoryURL = sourceDir
-        var env = ProcessInfo.processInfo.environment
-        // A Finder app gets a bare PATH: add Rust's and Homebrew's, used when present.
-        let extra = [home.appendingPathComponent(".cargo/bin").path, "/opt/homebrew/bin"]
-        env["PATH"] = (extra + ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]).joined(separator: ":")
-        p.environment = env
+        // A Finder app gets a bare PATH: toolEnvironment adds Rust's and Homebrew's
+        // (setup.sh adds the installer's own tools, tools/build_tools.py env).
+        p.environment = toolEnvironment()
         let pipe = Pipe()
         p.standardOutput = pipe
         p.standardError = pipe
@@ -822,6 +820,15 @@ func snapshot(to path: String, state: String) {
             hub.jobs = ["portal2": Job(state: .failed("The iPad is locked: unlock it and press Retry."), fraction: 0.3, text: "")]
         }
         hub.expiry = Date().addingTimeInterval(3 * 86400)
+        hub.toolsChecked = true
+        if state == "devices-tools" {   // a fresh Mac: Xcode there, the build tools and Rust not yet
+            hub.toolChecks = [
+                ToolCheck(id: "xcodegen", title: "XcodeGen", ok: false, problem: "XcodeGen is missing (it is needed for signing Sauce with your Apple ID): Set up tools installs it.", action: "install", size_mb: 4),
+                ToolCheck(id: "cmake", title: "CMake", ok: false, problem: "CMake is missing (it is needed for building SDL2, FreeType and gl4es for Sauce): Set up tools installs it.", action: "install", size_mb: 89),
+                ToolCheck(id: "rust", title: "Rust", ok: false, problem: "Rust is not installed (it is needed for the Metal renderer on iPad and iPhone): Set up tools installs it.", action: "install", size_mb: 300),
+                ToolCheck(id: "xcode-first-launch", title: "Xcode's first launch", ok: false, problem: "Xcode needs its first-launch setup: click Open Xcode, then Install when it asks (it may ask for your Mac password), then come back here.", action: "open-xcode", size_mb: 0)]
+            hub.settingUp = Job(state: .running, fraction: 0.5, text: "Installing CMake (2 of 3, about 89 MB)")
+        }
     }
     let view: AnyView = state.hasPrefix("devices")
         ? AnyView(RootView(model: model, hub: hub, update: InstallerUpdate(), tab: 0, snapshot: true))
