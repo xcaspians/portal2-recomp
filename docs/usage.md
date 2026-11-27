@@ -323,22 +323,32 @@ Maintainer steps; users never need them.
    that every library is relocatable (`@rpath`), targets macOS 13 and holds
    no path of the build machine. Sources and checksums are Homebrew's.
 2. **Signing, once per Mac**: a "Developer ID Application" certificate in
-   the keychain (Xcode > Settings > Accounts > your team > Manage
+   the login keychain (Xcode > Settings > Accounts > your team > Manage
    Certificates > + > Developer ID Application; the team's Account Holder
-   creates it) and a notarytool profile with an app-specific password from
-   account.apple.com:
-   `xcrun notarytool store-credentials p2-notary --apple-id <Apple ID> --team-id <team ID>`.
-3. **Installer**: tag the release, run `make installer-dmg` (or
-   `tools/build_installer.sh --dmg`; the app embeds `git archive HEAD`, so
-   commit first) and upload `build/installer/Natif-Installer-<tag>.dmg` to
-   the GitHub release (the name is `INSTALLER_NAME` in the script; the
-   installer looks for a newer release there). The app is universal (Apple
-   silicon and Intel). With the certificate and the profile, the script signs
-   the app with the hardened runtime, notarizes and staples it, then signs,
-   notarizes and staples the DMG, and checks both with `spctl`; it prints
-   which of these it did. Signed without notarization (no profile, or Apple
-   has not answered yet), or ad hoc signed without the certificate, users go
-   through System Settings > Privacy & Security > Open Anyway once.
+   creates it) and a notarytool profile named `sauce-notary`, with an
+   app-specific password from account.apple.com, stored in the keychain once:
+   `xcrun notarytool store-credentials sauce-notary --apple-id <Apple ID> --team-id <team ID>`.
+   The scripts only name the profile: the password never appears in a
+   command, a file or a log.
+3. **Installer, every release**: signed and notarized, always.
+   1. Merge to `main`, then tag it: `git tag -a vX.Y.Z -m "vX.Y.Z" && git push fork vX.Y.Z`.
+   2. `make installer-release` (`tools/build_installer.sh --release`). It
+      refuses an uncommitted or untagged tree, a missing certificate or
+      profile. It signs the universal app (Apple silicon and Intel) with the
+      Developer ID and the hardened runtime, notarizes it and staples the
+      ticket, then signs, notarizes and staples the DMG, and checks both with
+      `spctl` (`stapler validate` too). Any failure stops it: a release is
+      never ad hoc. The last line reads `release: … accepted by Gatekeeper`.
+   3. Publish `build/installer/Natif-Installer-vX.Y.Z.dmg` on a GitHub
+      release for that tag, with the notes in
+      `docs/fork/releases/vX.Y.Z.md`:
+      `gh release create vX.Y.Z build/installer/Natif-Installer-vX.Y.Z.dmg --repo xcaspians/portal2-recomp --title "Sauce vX.Y.Z" --notes-file docs/fork/releases/vX.Y.Z.md`.
+      The installer checks that repository's latest release for updates.
+   4. Users open the DMG and drag the app to Applications: no Open Anyway
+      step, so the notes don't mention one.
+
+   `make installer-dmg` (`--dmg`) is the everyday build: it signs and
+   notarizes when it can, else signs ad hoc (users then need System Settings
+   > Privacy & Security > Open Anyway once), and is never published.
    `P2_SIGN_IDENTITY` picks another certificate (`-` forces ad hoc),
-   `P2_NOTARY_PROFILE` another profile. Without `--dmg` it makes the zip, as
-   before.
+   `P2_NOTARY_PROFILE` another profile. Without an option it makes a zip.
