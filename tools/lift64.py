@@ -298,6 +298,9 @@ class Module:
         return any(lo <= offset < hi for lo, hi in self.layout['code'])
 
     def previous(self, pc, count):
+        if pc not in self.position:          # decoded again since (resync): refresh the order
+            self.order = sorted(self.insns)
+            self.position = {p: i for i, p in enumerate(self.order)}
         i = self.position[pc]
         return [(p, self.insns[p]) for p in reversed(self.order[max(0, i - count):i])]
 
@@ -757,6 +760,10 @@ def translate(pc, insn, mod, entry, callees):
         # A code address taken with LEA (callbacks, thread entry points,
         # atexit destructors): lift the function there too.
         taken = int(re.search(r'0x[0-9a-f]+', ops[1].addr)[0], 16)
+        if taken not in mod.insns and hasattr(mod, 'resync') and mod.is_code(taken):
+            # The linear sweep ran through data (a jump table) into the start of
+            # the function whose address is taken here: decode from it.
+            mod.resync(taken)
         if taken in mod.insns and getattr(mod, 'is_code', lambda _: True)(taken):
             callees.add(taken)
     sse = translate_sse(op, ops, here)

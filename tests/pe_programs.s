@@ -206,6 +206,21 @@ pe_native_make3:
 .Lfour:
     .float 4.0
 
+# A function whose address is only taken by a lea, right after data that a
+# linear sweep decodes into its first bytes (0x05: add eax, imm32 swallows
+# the next four bytes), as MSVC lays out a jump table before a thunk.
+.globl pe_lea_call
+pe_lea_call:
+    sub rsp, 40
+    lea rax, [rip + pe_lea_target]
+    call rax
+    add rsp, 40
+    ret
+    .byte 0x05
+pe_lea_target:
+    mov eax, 77
+    ret
+
 # Imports through the IAT: by name, with five arguments, by ordinal.
 .globl pe_import_twice
 pe_import_twice:
