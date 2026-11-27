@@ -43,3 +43,7 @@ void rt64_win_each_teb(void (*fn)(uint64_t teb, void *arg), void *arg);
 uint64_t rt64_win_call(CPU64 *c, uint64_t target, int argc, const uint64_t *args);
 // Windows' GetLastError slot of the calling guest thread.
 #define WIN_SET_LAST_ERROR(c, e) W32((c)->gs_base + TEB_LAST_ERROR, (uint32_t)(e))
+// MSVC C++ exceptions (msvceh64.c, __CxxFrameHandler3 tables): _CxxThrowException's
+// work. Finds the catch, runs cleanups and the catch funclet, then leaves the guest in
+// the catching function at its continuation (c->transferred); traps if nothing catches.
+void rt64_msvc_throw(CPU64 *c, uint64_t object, uint64_t throw_info);
