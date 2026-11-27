@@ -15,8 +15,16 @@ static void s_cxa_atexit(CPU64 *c) { rt64_add_exit_handler(ARG(c, 0), ARG(c, 1),
 static void s_atexit(CPU64 *c) { rt64_add_exit_handler(ARG(c, 0), 0, 0, 0); RET(c, 0); }
 static void s_cxa_thread_atexit(CPU64 *c) { rt64_add_exit_handler(ARG(c, 0), ARG(c, 1), ARG(c, 2), 1); RET(c, 0); }
 static void s_cxa_finalize(CPU64 *c) { if (ARG(c, 0)) rt64_run_exit_handlers(c, ARG(c, 0)); }
+void rt64_print_backtrace(CPU64 *c);   // loader64.c
+// RT64_VERBOSE: who asked to leave, and with what status.
+static void report_exit(CPU64 *c, const char *how, int status) {
+    if (!getenv("RT64_VERBOSE")) return;
+    fprintf(stderr, "rt64: %s(%d) called from:\n", how, status);
+    rt64_print_backtrace(c);
+}
 static void s_exit(CPU64 *c) {
     int status = (int)ARG(c, 0);
+    report_exit(c, "exit", status);
     rt64_run_exit_handlers(c, 0);
     fflush(NULL);
     rt64_program_exit(c, status);
@@ -32,7 +40,7 @@ static void s_libc_start_main(CPU64 *c) {
     c->r[RDI] = (uint32_t)c->r[RAX];
     s_exit(c);
 }
-static void s_quick_exit(CPU64 *c) { fflush(NULL); _exit((int)ARG(c, 0)); }
+static void s_quick_exit(CPU64 *c) { report_exit(c, "_exit", (int)ARG(c, 0)); fflush(NULL); _exit((int)ARG(c, 0)); }
 // struct tls_index { unsigned long module, offset; }
 static void s_tls_get_addr(CPU64 *c) { RET(c, rt64_tls_get_addr(c, R64(ARG(c, 0)), R64(ARG(c, 0) + 8))); }
 static void s_stack_chk_fail(CPU64 *c) { rt64_trap(c, R64(c->r[RSP]), "stack smashing detected (__stack_chk_fail)"); }

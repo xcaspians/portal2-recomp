@@ -87,20 +87,26 @@ const RT64Module *rt64_module_at(uint64_t address, uint64_t *base) {
     return NULL;
 }
 
+// The guest return addresses on the stack, for a rough backtrace (traps, and
+// exit/_exit under RT64_VERBOSE). Declared where it's used, not in rt64.h.
+void rt64_print_backtrace(CPU64 *c);
+void rt64_print_backtrace(CPU64 *c) {
+    uint64_t base;
+    for (int i = 0, shown = 0; i < 512 && shown < 12; ++i) {
+        uint64_t word = R64(c->r[RSP] + 8 * (uint64_t)i);
+        const RT64Module *owner = rt64_module_at(word, &base);
+        if (owner) { fprintf(stderr, "rt64:   [rsp+%#x] %s+%#llx\n", 8 * i, owner->name,
+                             (unsigned long long)(word - base)); shown++; }
+    }
+}
+
 void rt64_trap(CPU64 *c, uint64_t pc, const char *why) {
     fprintf(stderr, "rt64: trap at %#llx: %s (rsp %#llx)\n", (unsigned long long)pc, why,
             c ? (unsigned long long)c->r[RSP] : 0ull);
     uint64_t base;
     const RT64Module *m = rt64_module_at(pc, &base);
     if (m) fprintf(stderr, "rt64:   %s+%#llx\n", m->name, (unsigned long long)(pc - base));
-    if (c) {   // the guest return addresses on the stack, for a rough backtrace
-        for (int i = 0, shown = 0; i < 512 && shown < 12; ++i) {
-            uint64_t word = R64(c->r[RSP] + 8 * (uint64_t)i);
-            const RT64Module *owner = rt64_module_at(word, &base);
-            if (owner) { fprintf(stderr, "rt64:   [rsp+%#x] %s+%#llx\n", 8 * i, owner->name,
-                                 (unsigned long long)(word - base)); shown++; }
-        }
-    }
+    if (c) rt64_print_backtrace(c);
     abort();
 }
 
