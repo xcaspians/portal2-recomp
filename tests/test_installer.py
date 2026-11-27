@@ -31,6 +31,9 @@ class PackagingTests(unittest.TestCase):
         self.assertIn('[ "$IDENTITY" != - ] || fail "--release: no Developer ID', SCRIPT)
         self.assertIn('xcrun stapler validate "$DMG_FILE"', SCRIPT)
         self.assertIn("flags=0x10000(runtime)", SCRIPT)
+        # Never `codesign ... | grep -q` under pipefail: grep's early exit SIGPIPEs codesign (exit 141)
+        # and the check fails on a correctly signed app (it stopped the v0.5.0 release build).
+        self.assertNotRegex(SCRIPT, r'codesign[^\n]*\|\s*grep -q')
         self.assertIn('--options runtime --timestamp', SCRIPT)
         # The published notes have no Open Anyway step.
         for notes in (ROOT / 'docs/fork/releases').glob('v*.md'):
