@@ -320,6 +320,7 @@ void rt64_cpu_init(CPU64 *c, uint64_t stack_top);
 void rt64_call(CPU64 *c, uint64_t target);
 // Calls from lifted code: target is a lifted function, an import, or unknown (trap).
 void rt64_dispatch(CPU64 *c, uint64_t target);
+void rt64_dispatch_stats(uint64_t *hits, uint64_t *misses);   // this thread's dispatch cache (checks)
 __attribute__((noreturn)) void rt64_trap(CPU64 *c, uint64_t pc, const char *why);
 __attribute__((noreturn)) void rt64_bad_return(CPU64 *c, uint64_t expected);
 void rt64_cpuid(CPU64 *c);
@@ -350,6 +351,7 @@ int rt64_is_native(uint64_t address);   // an address in a dyld-loaded (native) 
 int rt64_win_native_set_sig(uint64_t fn, const char *slots, int hidden);
 int rt64_win_native_set_vtable_sig(uint64_t object, int slot, const char *slots, int hidden);
 void rt64_native_call_win(CPU64 *c, uint64_t fn);
+uint64_t rt64_win_native_cache_hits(void);   // this thread's cached signature lookups (checks)
 // A host function that stands in for one native function when Windows code
 // calls it (a structure whose layout differs between Windows and the Mac):
 // it reads the Windows arguments itself and sets rax, like an import shim.
