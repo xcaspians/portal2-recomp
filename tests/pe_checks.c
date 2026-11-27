@@ -20,8 +20,28 @@ static int failures, passes;
 static void host_twice(CPU64 *c) { RET(c, 2 * WARG(c, 0)); }
 static void host_sum5(CPU64 *c) { RET(c, WARG(c, 0) + 10 * WARG(c, 1) + 100 * WARG(c, 2) + 1000 * WARG(c, 3) + 10000 * WARG(c, 4)); }
 static void host_seven(CPU64 *c) { RET(c, 7); }
+// MSVC's _JUMP_BUFFER: Frame, Rbx, Rsp, Rbp, Rsi, Rdi, R12-R15, Rip (Windows' own layout).
+static const int jump_saved[] = {RBX, -1, RBP, RSI, RDI, R12, R13, R14, R15};
+static void host_setjmp(CPU64 *c) {
+    uint64_t buf = WARG(c, 0);
+    W64(buf, WARG(c, 1));
+    for (int i = 0; i < 9; ++i) if (jump_saved[i] >= 0) W64(buf + 8 + 8 * (uint64_t)i, c->r[jump_saved[i]]);
+    W64(buf + 16, c->r[RSP] + 8);           // the stack after the return
+    W64(buf + 80, R64(c->r[RSP]));          // the return address
+    RET(c, 0);
+}
+static void host_longjmp(CPU64 *c) {
+    uint64_t buf = WARG(c, 0);
+    int value = (int)WARG(c, 1);
+    for (int i = 0; i < 9; ++i) if (jump_saved[i] >= 0) c->r[jump_saved[i]] = R64(buf + 8 + 8 * (uint64_t)i);
+    c->r[RSP] = R64(buf + 16);
+    c->rip = R64(buf + 80);
+    RET(c, (uint32_t)(value ? value : 1));
+    c->transferred = 1;
+}
 static const RT64Shim shims[] = {
-    {"pehost.dll!twice", host_twice}, {"pehost.dll!sum5", host_sum5}, {"pehost.dll!#7", host_seven}, {NULL, NULL}};
+    {"pehost.dll!twice", host_twice}, {"pehost.dll!sum5", host_sum5}, {"pehost.dll!#7", host_seven},
+    {"pehost.dll!_setjmp", host_setjmp}, {"pehost.dll!longjmp", host_longjmp}, {NULL, NULL}};
 static const RT64Data data[] = {{NULL, NULL}};
 RT64_SHIMS(shims, data)
 
@@ -68,6 +88,7 @@ int main(void) {
               "two-level MSVC jump table, base added from a second register, case %llu", (unsigned long long)i);
     CHECK(call(c, "pe_bnd", 1, (const uint64_t[]){0}) == 0 && call(c, "pe_bnd", 1, (const uint64_t[]){5}) == 1,
           "BND-prefixed branches and returns");
+    CHECK(call(c, "pe_setjmp", 1, (const uint64_t[]){5}) == 5, "longjmp back to the call after an MSVC _setjmp");
     CHECK(call(c, "pe_import_twice", 1, (const uint64_t[]){21}) == 42, "import by name");
     CHECK(call(c, "pe_import_sum5", 0, NULL) == 54321, "import with a stack argument");
     CHECK(call(c, "pe_import_ordinal", 0, NULL) == 7, "import by ordinal");

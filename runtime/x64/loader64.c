@@ -477,6 +477,9 @@ void rt64_dispatch(CPU64 *c, uint64_t target) {
         const RT64Loaded *l = &loaded[i];
         if (target >= l->imports && target < l->imports + RT64_IMPORT_STRIDE * l->module->import_count) {
             size_t index = (target - l->imports) / RT64_IMPORT_STRIDE;
+            static int trace = -1;
+            if (trace < 0) trace = getenv("RT64_TRACE_IMPORTS") != NULL;
+            if (trace) fprintf(stderr, "rt64: import %s\n", l->module->imports[index].name);
             if (!l->shims[index]) {
                 char why[200];
                 snprintf(why, sizeof why, "call to unimplemented import %s", l->module->imports[index].name);

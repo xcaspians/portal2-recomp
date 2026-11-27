@@ -134,6 +134,31 @@ pe_bnd:
     .byte 0xf2
     ret
 
+# MSVC's setjmp/longjmp through imports: the call after _setjmp is a resume
+# point, so a longjmp from a deeper lifted frame continues here.
+.globl pe_setjmp
+pe_setjmp:
+    push rbx
+    sub rsp, 32
+    mov ebx, ecx
+    lea rcx, [rip + pe_jmpbuf]
+    xor edx, edx
+    call qword ptr [rip + __imp__setjmp]
+    test eax, eax
+    jne .Ljumped
+    lea rcx, [rip + pe_jmpbuf]
+    mov edx, ebx
+    call pe_jumper
+    mov eax, -1
+.Ljumped:
+    add rsp, 32
+    pop rbx
+    ret
+pe_jumper:
+    sub rsp, 40
+    call qword ptr [rip + __imp_longjmp]
+    ud2
+
 # Imports through the IAT: by name, with five arguments, by ordinal.
 .globl pe_import_twice
 pe_import_twice:
@@ -216,6 +241,9 @@ pe_targets:
     .quad pe_plus1000
 hidden_rva:
     .long pe_hidden@IMGREL
+    .p2align 4
+pe_jmpbuf:
+    .zero 256
     .p2align 3
 .globl _tls_index
 _tls_index:
