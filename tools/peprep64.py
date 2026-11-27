@@ -241,8 +241,9 @@ def unwind_handler(pe, unwind_rva):
 
 
 def is_data_import(name):
-    """MSVC-mangled variables (`?cout@std@@3V...`, `?_Fac_tidy_reg@std@@3U...`) are data, not code."""
-    return bool(name) and name.startswith('?') and '@@3' in name
+    """MSVC-mangled variables are data, not code: globals (`?cout@std@@3V...`)
+    and static members (`?id@?$codecvt@DDU_Mbstatet@@@std@@2V0locale@2@A`)."""
+    return bool(name) and name.startswith('?') and ('@@3' in name or '@@2' in name)
 
 
 def layout(pe, real_entry=None):

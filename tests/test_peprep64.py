@@ -27,7 +27,7 @@ class PeFixture(unittest.TestCase):
         subprocess.run(['clang', '-target', 'x86_64-windows-msvc', '-c', str(ROOT / 'tests/pe_programs.s'), '-o', obj],
                        check=True)
         cls.dll = os.path.join(cls.dir.name, 'pefix.dll')
-        pe_link.link(obj, cls.dll, 'pefix.dll', ['twice=pehost.dll', 'sum5=pehost.dll', 'seven=pehost.dll#7'],
+        pe_link.link(obj, cls.dll, 'pefix.dll', ['twice=pehost.dll', 'sum5=pehost.dll', 'seven=pehost.dll#7', '_setjmp=pehost.dll', 'longjmp=pehost.dll'],
                      ['pe_add5', 'pe_switch', 'pe_switch3', 'pe_bnd', 'pe_hidden_call'])
         cls.layout = peprep64.prepare(cls.dll, cls.dir.name)
 
@@ -61,6 +61,12 @@ class PeFixture(unittest.TestCase):
             layout = peprep64.prepare(self.dll, out, exclude=('.text',))
         self.assertEqual(layout['code'], [])
         self.assertTrue(next(s for s in layout['sections'] if s['name'] == '.text')['excluded'])
+
+    def test_data_imports(self):
+        self.assertTrue(peprep64.is_data_import('?cout@std@@3V?$basic_ostream@DU?$char_traits@D@std@@@1@A'))
+        self.assertTrue(peprep64.is_data_import('?id@?$codecvt@DDU_Mbstatet@@@std@@2V0locale@2@A'))
+        self.assertFalse(peprep64.is_data_import('?_Xbad_alloc@std@@YAXXZ'))
+        self.assertFalse(peprep64.is_data_import('CreateFileW'))
 
     def test_msvc_jump_table(self):
         bodies, report = lift64.lift_module(self.layout, [], every=True, sweep=False)

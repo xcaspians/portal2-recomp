@@ -1277,7 +1277,8 @@ def lift_function(entry, mod, stats=None, keep_flags=None):
     # landing pad): continue here when the target is one of this function's
     # resume points, else leave this host frame too.
     find_import = getattr(mod, 'call_target_import', lambda insn: None)
-    resume = sorted(mod.insns[pc][0] for pc in done if pc in mod.insns and find_import(mod.insns[pc]) in SETJMP)
+    resume = sorted(mod.insns[pc][0] for pc in done
+                    if pc in mod.insns and (find_import(mod.insns[pc]) or '').split('!')[-1] in SETJMP)
     resume = [r for r in resume if r in done]
     resume += sorted(t for t in pads if t in done and t not in resume)
     lines = [f'void fn_{entry:x}(CPU64 *restrict c) {{',
@@ -1298,7 +1299,10 @@ def new_stats():
                 read_after_call=[], entry_live=[])
 
 
-SETJMP = frozenset(('_setjmp', 'setjmp', '__sigsetjmp', 'sigsetjmp'))
+# Imports after whose call a longjmp may return: Linux names, and MSVC's
+# (a PE import is `dll!name`: the name after the `!` counts).
+SETJMP = frozenset(('_setjmp', 'setjmp', '__sigsetjmp', 'sigsetjmp', '__intrinsic_setjmp', '__intrinsic_setjmpex',
+                    '_setjmpex'))
 IGNORED_WEAK = ('_ITM_', '_ZGTt', '__gmon_start__')
 
 

@@ -172,13 +172,13 @@ build/x64-check: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c build/x64
 # PE32+ (Windows x86-64) front end: tests/pe_programs.s assembled for
 # x86_64-windows-msvc, linked into a DLL by tests/pe_link.py (no PE linker on
 # the Mac), prepared by tools/peprep64.py, lifted and run by tests/pe_checks.c.
-PE_FIXTURE_EXPORTS = pe_add5 pe_teb_self pe_tls_bump pe_switch pe_switch2 pe_switch3 pe_bnd pe_import_twice pe_import_sum5 \
+PE_FIXTURE_EXPORTS = pe_add5 pe_teb_self pe_tls_bump pe_switch pe_switch2 pe_switch3 pe_bnd pe_setjmp pe_import_twice pe_import_sum5 \
 	pe_import_ordinal pe_guard_call pe_hidden_call
 build/pe/pefix.dll: tests/pe_programs.s tests/pe_link.py
 	@mkdir -p build/pe
 	$(CC) -target x86_64-windows-msvc -c tests/pe_programs.s -o build/pe/pe_programs.obj
 	$(PYTHON) tests/pe_link.py --name pefix.dll --import twice=pehost.dll --import sum5=pehost.dll \
-		--import seven=pehost.dll#7 $(addprefix --export ,$(PE_FIXTURE_EXPORTS)) build/pe/pe_programs.obj $@
+		--import seven=pehost.dll#7 --import _setjmp=pehost.dll --import longjmp=pehost.dll $(addprefix --export ,$(PE_FIXTURE_EXPORTS)) build/pe/pe_programs.obj $@
 build/pe/fixture.c: build/pe/pefix.dll tools/peprep64.py tools/lift64.py tools/simd64.py tools/x87_64.py
 	$(PYTHON) tools/peprep64.py --out build/pe build/pe/pefix.dll
 	$(PYTHON) tools/lift64.py --layout build/pe/pefix.dll.layout.json --all --symbol pe_fixture --out $@
