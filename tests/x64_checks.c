@@ -249,6 +249,49 @@ int main(void) {
     rt64_find_shim("SteamAPI_RestartAppIfNecessary")(&cpu);
     EXPECT(cpu.r[RAX] == 0);
 
+    // epoll on kqueue (epoll64.c, round 28): a pipe's read end, Linux's packed 12-byte epoll_event.
+    {
+        int fds[2];
+        EXPECT(pipe(fds) == 0);
+        rt64_cpu_init(&cpu, (uint64_t)(uintptr_t)(stack_ + 16384));
+        cpu.r[RDI] = 1;
+        rt64_find_shim("epoll_create")(&cpu);
+        int ep = (int)cpu.r[RAX];
+        EXPECT(ep >= 0);
+        uint8_t ev[12] = {0}, out[2 * 12] = {0};
+        uint32_t in = 0x001;
+        uint64_t data = 0x1122334455667788ull;
+        memcpy(ev, &in, 4);
+        memcpy(ev + 4, &data, 8);
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = 1; cpu.r[RDX] = (uint64_t)fds[0]; cpu.r[RCX] = (uint64_t)(uintptr_t)ev;
+        rt64_find_shim("epoll_ctl")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = (uint64_t)(uintptr_t)out; cpu.r[RDX] = 2; cpu.r[RCX] = 0;
+        rt64_find_shim("epoll_wait")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);   // nothing to read yet, no wait
+        EXPECT(write(fds[1], "x", 1) == 1);
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = (uint64_t)(uintptr_t)out; cpu.r[RDX] = 2; cpu.r[RCX] = 1000;
+        rt64_find_shim("epoll_wait")(&cpu);
+        uint32_t got_events;
+        uint64_t got_data;
+        memcpy(&got_events, out, 4);
+        memcpy(&got_data, out + 4, 8);
+        EXPECT(cpu.r[RAX] == 1 && (got_events & 0x001) && got_data == data);
+        close(fds[1]);   // the writer gone: EPOLLHUP
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = (uint64_t)(uintptr_t)out; cpu.r[RDX] = 2; cpu.r[RCX] = 1000;
+        rt64_find_shim("epoll_wait")(&cpu);
+        memcpy(&got_events, out, 4);
+        EXPECT(cpu.r[RAX] == 1 && (got_events & 0x010));
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = 2; cpu.r[RDX] = (uint64_t)fds[0]; cpu.r[RCX] = 0;
+        rt64_find_shim("epoll_ctl")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);
+        cpu.r[RDI] = (uint64_t)ep; cpu.r[RSI] = (uint64_t)(uintptr_t)out; cpu.r[RDX] = 2; cpu.r[RCX] = 0;
+        rt64_find_shim("epoll_wait")(&cpu);
+        EXPECT(cpu.r[RAX] == 0);   // removed: nothing reported
+        close(fds[0]);
+        close(ep);
+    }
+
     if (failures) { fprintf(stderr, "x64-check: %d of %d checks failed\n", failures, checks); return 1; }
     printf("x64-check: PASS, %d checks (System V calls, 16 registers, RIP-relative data, "
            "flags, jump tables, imports, atomics, SSE2 to SSE4.1, x87, MMX, BMI, two modules, TLS, setjmp, threads)\n", checks);
