@@ -821,6 +821,18 @@ func snapshot(to path: String, state: String) {
         }
         hub.expiry = Date().addingTimeInterval(3 * 86400)
         hub.toolsChecked = true
+        if state == "devices-devmode" {   // a fresh iPad: Developer Mode off, Install pressed, waiting
+            hub.list = [DeviceInfo(udid: "A", name: "My iPad", model: "iPad Air", kind: "iPad", link: "USB", ready: false,
+                                   problem: "Developer Mode is off: turn it on once, then the install carries on by itself.",
+                                   fix: "developer-mode",
+                                   steps: ["Keep the iPad plugged into this Mac and unlocked. (The Developer Mode switch only appears once the iPad has been paired with a Mac, which is done.)",
+                                           "On the iPad, open Settings → Privacy & Security, scroll to the bottom and tap Developer Mode.",
+                                           "Turn Developer Mode On, then tap Restart.",
+                                           "When the iPad has restarted, unlock it, tap Turn On in the message that appears, and enter the passcode.",
+                                           "That’s all: the installer sees it come back and starts the install by itself."])]
+            hub.status = [:]
+            hub.waitingFor = "A"
+        }
         if state == "devices-tools" {   // a fresh Mac: Xcode there, the build tools and Rust not yet
             hub.toolChecks = [
                 ToolCheck(id: "xcodegen", title: "XcodeGen", ok: false, problem: "XcodeGen is missing (it is needed for signing Sauce with your Apple ID): Set up tools installs it.", action: "install", size_mb: 4),

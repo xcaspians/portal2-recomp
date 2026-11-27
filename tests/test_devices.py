@@ -28,6 +28,27 @@ class DevicesTest(unittest.TestCase):
         self.assertIn('Trust', found['D']['problem'])
         self.assertIn('Developer Mode', found['E']['problem'])
         self.assertEqual([d['ready'] for d in devices.parse_devices(report)][:2], [True, True])   # ready ones first
+        self.assertEqual((found['A']['fix'], found['A']['steps']), (None, []))
+
+    def test_developer_mode_off_walks_through_turning_it_on(self):
+        found = {d['udid']: d for d in devices.parse_devices({'result': {'devices': [
+            dev('Pad', 'E', kind='iPad', devmode='disabled'), dev('New', 'D', paired='unpaired', devmode=None),
+            dev('Rebooting', 'R', tunnel='unavailable', boot='booting')]}})}
+        pad = found['E']
+        self.assertFalse(pad['ready'])
+        self.assertEqual(pad['fix'], 'developer-mode')
+        steps = ' '.join(pad['steps'])
+        # Settings → Privacy & Security → Developer Mode → On → restart → confirm, in that order.
+        order = [steps.index(w) for w in ('Settings → Privacy & Security', 'tap Developer Mode', 'On, then tap Restart',
+                                          'restarted', 'tap Turn On', 'by itself')]
+        self.assertEqual(order, sorted(order))
+        self.assertIn('only appears once the iPad has been paired with a Mac', steps)
+        # Not paired yet: pairing comes first (Developer Mode isn't even reported before it).
+        self.assertEqual(found['D']['fix'], 'pair')
+        self.assertIn('Trust', ' '.join(found['D']['steps']))
+        self.assertIn('Developer Mode', found['D']['problem'])
+        # During the restart: waited for, not an error.
+        self.assertEqual(found['R']['fix'], 'restarting')
 
     def test_pick_for_setup(self):
         # devicectl lists an Apple TV first on the maintainer's Mac: setup.sh picked it.
@@ -122,6 +143,18 @@ class InstallerMatchesDevicesTest(unittest.TestCase):
     def test_installer_lists_every_download_and_names_the_one_app(self):
         swift = (devices.ROOT / 'installer/Devices.swift').read_text()
         self.assertIn(f'let deviceAppName = "{devices.games.APP_NAME}"', swift)   # rename: both, tests keep them equal
+
+
+class DeveloperModeWindowTest(unittest.TestCase):
+    def test_window_shows_the_steps_pairs_and_waits_to_install(self):
+        swift = (devices.ROOT / 'installer/Devices.swift').read_text()
+        self.assertIn('var steps: [String]? = nil', swift)            # decoded from devices.py list
+        self.assertIn('Text("\\(i + 1). \\(s)")', swift)             # numbered, as devices.py orders them
+        self.assertIn('["devicectl", "manage", "pair", "--device", d.udid]', swift)   # pair first
+        self.assertIn('if !d.ready {   // Developer Mode, pairing or a restart first', swift)
+        self.assertIn('waitForDevice(d.udid, then: games)', swift)
+        self.assertIn('if let d = list.first(where: { $0.udid == udid }), d.ready {', swift)   # then carries on
+        self.assertIn('if waitingFor == nil, selected == nil', swift)  # the device keeps its place while it restarts
 
 
 class BaseGameTest(unittest.TestCase):
