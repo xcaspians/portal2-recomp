@@ -182,12 +182,26 @@ for f in r.get("files") or []:
     name = str(f.get("relativePath") or f.get("name") or "").strip("/").split("/")[-1]
     if name.endswith("-userdata"): print(name)' "$listing" | sort -u)
   rm -f "$listing"
+  backed=0
   for f in $folders; do
-    dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" --source "Documents/$f" \
-      --destination "$2/$f" >/dev/null </dev/null || { echo "couldn't back up Documents/$f: stopping before anything is replaced"; exit 1; }
-    echo "backed up $f"
+    if dc device copy from --domain-type appDataContainer --domain-identifier "$APP_ID" --source "Documents/$f" \
+         --destination "$2/$f" >/dev/null 2>&1 </dev/null; then
+      echo "backed up $f"; backed=$((backed + 1)); continue
+    fi
+    # devicectl refuses to copy a folder that is empty or gone (error 7000): a
+    # Sauce just installed, or reinstalled after being deleted, has nothing to
+    # lose there. Only a folder holding files that won't copy stops the install.
+    inner=$(mktemp)
+    if dc device info files --domain-type appDataContainer --domain-identifier "$APP_ID" --subdirectory "Documents/$f" \
+         --json-output "$inner" >/dev/null 2>&1 </dev/null && python3 -c '
+import json, sys
+files = (json.load(open(sys.argv[1])).get("result") or {}).get("files") or []
+sys.exit(0 if any((e.get("metadata") or {}).get("type", "file") != "directory" for e in files) else 1)' "$inner"; then
+      rm -f "$inner"; echo "couldn't back up Documents/$f: stopping before anything is replaced"; exit 1
+    fi
+    rm -f "$inner"; echo "nothing to back up in $f (empty)"
   done
-  echo "saves backed up in $2"
+  if [ $backed = 0 ]; then echo "no saves to back up (nothing saved on the device yet)"; else echo "saves backed up in $2"; fi
   ;;
 has-data)
   state=$(mktemp)
