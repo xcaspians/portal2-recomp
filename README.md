@@ -613,6 +613,15 @@ a pull request: they contain Valve's game.
   the Direct3D 9 on Metal behind the Metal renderer; its Wine-free build is
   discussed in [athei/mtld3d#1193](https://github.com/athei/mtld3d/issues/1193).
 - [gl4es](https://github.com/ptitSeb/gl4es) (MIT) by ptitSeb, patched for iOS.
+- For Portal 2: Community Edition's Direct3D 11 renderer (Mac, in progress), all fetched and built from source
+  by `tools/build_dxvk_macos.sh`:
+  - [DXVK](https://github.com/doitsujin/dxvk) (zlib) by Philip Rebohle and contributors: 1.10 as patched for
+    macOS by Gcenx ([DXVK-macOS](https://github.com/Gcenx/DXVK-macOS)), with the non-Windows build of Joshua
+    Ashton's [dxvk-native](https://github.com/Joshua-Ashton/dxvk-native) carried over.
+  - [MoltenVK](https://github.com/KhronosGroup/MoltenVK) (Apache 2.0) by The Brenwill Workshop and the Khronos
+    Group: Vulkan on Metal.
+  - [glslang](https://github.com/KhronosGroup/glslang) (BSD-3/Apache 2.0) by the Khronos Group, for DXVK's
+    own shaders.
 - [SDL2](https://libsdl.org) (zlib), [FreeType](https://freetype.org) (FTL).
 - [Steamworks.NET](https://github.com/rlabrecque/Steamworks.NET) (MIT), whose
   interface metadata generates the Steam bridge.

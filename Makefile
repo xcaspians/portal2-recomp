@@ -271,6 +271,8 @@ P2CE_CONTENT ?= $(subst depot_440005,depot_440002,$(P2CE_ROOT))
 P2CE_TIMEOUT ?= 120
 # -O0 by default: engine.so is 170 C files; -O1 takes about 2 GB and minutes per file.
 P2CE_OPT ?= 0
+# build64 waits while the Mac's used swap is above this (macOS keeps swap after memory frees up).
+P2CE_MAX_SWAP_GB ?= 6
 # Round 28: which Vulkan features DXVK needs and MoltenVK lacks (MoltenVK built in
 # deps/moltenvk-src, DXVK's headers in deps/dxvk-src; never part of make check).
 MOLTENVK_LIB ?= deps/moltenvk-src/Package/Release/MoltenVK/dynamic/dylib/macOS
@@ -294,11 +296,23 @@ p2ce-dxvk-clear: tools/dxvk_clear_test.cpp tools/build_dxvk_macos.sh
 		$(P2CE_DXVK)/libdxvk_dxgi.dylib $(P2CE_SDL2) "-Wl,-rpath,$(CURDIR)/$(P2CE_DXVK)" \
 		"-Wl,-rpath,$(CURDIR)/$(dir $(P2CE_SDL2))" -o build/p2ce/dxvk-clear
 	SDL_VULKAN_LIBRARY="$(CURDIR)/$(P2CE_DXVK)/libMoltenVK.dylib" ./build/p2ce/dxvk-clear 1
+# The renderer path (plan rounds E and F): P2CE's shaderapidx11.so lifted,
+# DXVK (tools/build_dxvk_macos.sh) and the Mac's SDL2 as native libraries,
+# SDL's Vulkan from MoltenVK, a window instead of -textmode. Round 28 stops
+# at Panorama's first V8 call (plan round G), before the window opens.
+P2CE_DX11_SYSTEMS = $(P2CE_SYSTEMS) bin/linux64/shaderapidx11.so bin/linux64/stdshader_dx11.so
+P2CE_DX11_NATIVE = $(P2CE_NATIVE_LIBS);libdxvk_d3d11.so.0=$(CURDIR)/$(P2CE_DXVK)/libdxvk_d3d11.dylib;libdxvk_dxgi.so.0=$(CURDIR)/$(P2CE_DXVK)/libdxvk_dxgi.dylib
+P2CE_DX11_ARGS ?= -game p2ce -novid -nosound -shaderapi shaderapidx11 -windowed -w 1280 -h 720 -nominidumps -nobreakpad -nocrashdialog
+.PHONY: p2ce-launch-dx11
+p2ce-launch-dx11:
+	tools/build_dxvk_macos.sh >/dev/null
+	SDL_VULKAN_LIBRARY="$(CURDIR)/$(P2CE_DXVK)/libMoltenVK.dylib" $(MAKE) p2ce-launch \
+		P2CE_SYSTEMS="$(P2CE_DX11_SYSTEMS)" P2CE_NATIVE_LIBS="$(P2CE_DX11_NATIVE)" P2CE_ARGS="$(P2CE_DX11_ARGS)"
 .PHONY: p2ce-launch
 p2ce-launch: $(X64_RUNTIME) runtime/x64/rt64.h src/main64.c tools/run64.py
 	@if [ ! -d "$(P2CE_ROOT)/bin/linux64" ]; then echo "p2ce-launch: skipped: no P2CE depot at P2CE_ROOT=$(P2CE_ROOT)"; exit 0; fi; \
 	set -e; SYSLIB=$$(tools/fetch_debian_amd64.sh); \
-	$(PYTHON) tools/build64.py --out build/p2ce/lib --opt $(P2CE_OPT) --registry build/p2ce/registry.c \
+	$(PYTHON) tools/build64.py --out build/p2ce/lib --opt $(P2CE_OPT) --max-swap-gb $(P2CE_MAX_SWAP_GB) --registry build/p2ce/registry.c \
 		$(foreach m,$(P2CE_LAUNCH_MODULES),"$(P2CE_ROOT)/$(m)") \
 		$(foreach m,$(P2CE_SYSTEM_LIBS),"$$SYSLIB/$(m)"); \
 	$(PYTHON) tools/link64.py --out build/p2ce/dylib --exe build/p2ce/p2ce-run --main src/main64.c \
