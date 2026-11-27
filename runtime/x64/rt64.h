@@ -36,7 +36,9 @@ typedef struct CPU64 {
     uint16_t fcw, fsw;
     uint64_t mm[8];        // MMX registers, separate from st[]
     uint32_t transferred;  // set by a shim that moved rip/rsp itself (longjmp): no RET emulation
+    uint32_t abi;          // RT64_ABI_SYSV (0) or RT64_ABI_WIN64 (a thread running PE code, pe64.c)
 } CPU64;
+enum { RT64_ABI_SYSV = 0, RT64_ABI_WIN64 = 1 };
 
 #define ST(i) (c->st[(c->ftop + (i)) & 7])
 #define FPUSH(cpu, v) do { double fpush_ = (v); (cpu)->ftop = ((cpu)->ftop - 1) & 7; (cpu)->st[(cpu)->ftop] = fpush_; } while (0)
@@ -286,6 +288,18 @@ const rt64_native_sig *rt64_native_sig_of(uint64_t fn);
 size_t rt64_native_layout(const uint64_t gp[6], const uint64_t *guest_stack, const rt64_native_sig *sig, uint64_t ints[8],
                           uint8_t *stack, size_t stack_cap, uint64_t *x8);
 int rt64_is_native(uint64_t address);   // an address in a dyld-loaded (native) image
+// Windows x64 code calling native arm64 code (native64.c): the Windows
+// argument slots (rcx, rdx, r8, r9, then the stack above the shadow area) to
+// x0-x7, d0-d7 and the packed native stack. Without a signature every slot is
+// a 64-bit integer; a signature string names each slot: 'p' 64-bit, 'i' 32,
+// 'h' 16, 'b' 8 bits (signed or not: the low bytes are what counts), 'f'
+// float, 'd' double. hidden is the slot of MSVC's hidden return pointer (1
+// for a method, 0 for a function), -1 for none: it goes to x8, and rax
+// returns it.
+#define RT64_WIN_SIG_MAX 16
+int rt64_win_native_set_sig(uint64_t fn, const char *slots, int hidden);
+int rt64_win_native_set_vtable_sig(uint64_t object, int slot, const char *slots, int hidden);
+void rt64_native_call_win(CPU64 *c, uint64_t fn);
 void rt64_syscall(CPU64 *c);                        // the SYSCALL instruction (posix64.c)
 RT64_ALWAYS_INLINE uint64_t rt64_get_rflags(CPU64 *c, const FL64 *f) {
     return f->cf | ((uint64_t)parity64(f->pf) << 2) | (f->af << 4) | (f->zf << 6) | (f->sf << 7) | ((uint64_t)c->df << 10)

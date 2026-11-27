@@ -89,6 +89,7 @@ uint64_t rt64_win_thread(CPU64 *c, uint64_t stack_low, uint64_t stack_high) {
     tebs[teb_count++] = teb;
     pthread_mutex_unlock(&pe_lock);
     c->gs_base = teb;
+    c->abi = RT64_ABI_WIN64;        // native calls from this thread take the Windows convention
     return teb;
 }
 

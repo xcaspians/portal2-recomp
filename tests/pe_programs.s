@@ -159,6 +159,53 @@ pe_jumper:
     call qword ptr [rip + __imp_longjmp]
     ud2
 
+# Calls into native arm64 code (function pointers in rcx): Windows slots to
+# arm64 registers. mix(1, 2.0, 3, 4.0f) mixes integer and float slots;
+# sum10 has six stack slots; make3(&out, 7) returns a structure through
+# MSVC's hidden pointer.
+.globl pe_native_mix
+pe_native_mix:
+    sub rsp, 40
+    mov rax, rcx
+    mov ecx, 1
+    movsd xmm1, qword ptr [rip + .Ltwo]
+    mov r8d, 3
+    movss xmm3, dword ptr [rip + .Lfour]
+    call rax
+    add rsp, 40
+    ret
+.globl pe_native_sum10
+pe_native_sum10:
+    sub rsp, 88
+    mov rax, rcx
+    mov qword ptr [rsp + 0x20], 5
+    mov qword ptr [rsp + 0x28], 6
+    mov qword ptr [rsp + 0x30], 7
+    mov qword ptr [rsp + 0x38], 8
+    mov qword ptr [rsp + 0x40], 9
+    mov qword ptr [rsp + 0x48], 10
+    mov ecx, 1
+    mov edx, 2
+    mov r8d, 3
+    mov r9d, 4
+    call rax
+    add rsp, 88
+    ret
+.globl pe_native_make3
+pe_native_make3:
+    sub rsp, 40
+    mov rax, rcx
+    mov rcx, rdx
+    mov edx, 7
+    call rax
+    add rsp, 40
+    ret
+    .p2align 3
+.Ltwo:
+    .double 2.0
+.Lfour:
+    .float 4.0
+
 # Imports through the IAT: by name, with five arguments, by ordinal.
 .globl pe_import_twice
 pe_import_twice:

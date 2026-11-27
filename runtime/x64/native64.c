@@ -18,6 +18,7 @@
 // x86-64). Floating-point arguments past the eighth aren't covered.
 #include "rt64.h"
 #include <dlfcn.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -129,6 +130,70 @@ void rt64_native_call(CPU64 *c, uint64_t fn) {
     c->r[RAX] = sig && sig->hidden_return ? gp[0] : out[0];
     c->r[RDX] = out[1];
     c->xmm[0] = rt64_xq(out[2]); c->xmm[1] = rt64_xq(out[3]);
+#else
+    (void)fn;
+    rt64_trap(c, c->rip, "native calls need an arm64 host");
+#endif
+}
+
+// ---- Windows x64 callers (PE modules) ----
+static struct { uint64_t fn; char slots[RT64_WIN_SIG_MAX + 1]; int hidden; } win_sigs[256];
+static int win_sig_count;
+static pthread_mutex_t win_sig_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int rt64_win_native_set_sig(uint64_t fn, const char *slots, int hidden) {
+    if (!fn || strlen(slots) > RT64_WIN_SIG_MAX) return 0;
+    pthread_mutex_lock(&win_sig_lock);
+    int i = 0;
+    while (i < win_sig_count && win_sigs[i].fn != fn) ++i;
+    if (i == win_sig_count) {
+        if (win_sig_count == (int)(sizeof win_sigs / sizeof *win_sigs)) { pthread_mutex_unlock(&win_sig_lock); return 0; }
+        win_sig_count++;
+    }
+    win_sigs[i].fn = fn;
+    snprintf(win_sigs[i].slots, sizeof win_sigs[i].slots, "%s", slots);
+    win_sigs[i].hidden = hidden;
+    pthread_mutex_unlock(&win_sig_lock);
+    return 1;
+}
+
+int rt64_win_native_set_vtable_sig(uint64_t object, int slot, const char *slots, int hidden) {
+    if (!object || slot < 0) return 0;
+    uint64_t vtable = *(const uint64_t *)(uintptr_t)object;
+    return vtable && rt64_win_native_set_sig(((const uint64_t *)(uintptr_t)vtable)[slot], slots, hidden);
+}
+
+void rt64_native_call_win(CPU64 *c, uint64_t fn) {
+#if defined(__aarch64__)
+    char slots[RT64_WIN_SIG_MAX + 1] = "pppppppppppp";      // no signature: 12 64-bit slots
+    int hidden = -1;
+    pthread_mutex_lock(&win_sig_lock);
+    for (int i = 0; i < win_sig_count; ++i)
+        if (win_sigs[i].fn == fn) { memcpy(slots, win_sigs[i].slots, sizeof slots); hidden = win_sigs[i].hidden; break; }
+    pthread_mutex_unlock(&win_sig_lock);
+    uint64_t ints[8] = {0}, fps[8] = {0}, x8 = 0, out[4];
+    uint8_t stack[RT64_WIN_SIG_MAX * 8 + 16] __attribute__((aligned(16))) = {0};
+    size_t at = 0;
+    int ni = 0, nf = 0;
+    static const int regs[4] = {RCX, RDX, R8, R9};
+    for (int i = 0; slots[i]; ++i) {
+        char kind = slots[i];
+        // Slot i: a register for the first four, else [rsp + 8 + 8 * i] (return address, then shadow area).
+        uint64_t v = i < 4 ? (kind == 'f' || kind == 'd' ? c->xmm[i].q[0] : c->r[regs[i]]) : R64(c->r[RSP] + 8 + 8 * (uint64_t)i);
+        if (i == hidden) { x8 = v; continue; }
+        unsigned size = kind == 'i' || kind == 'f' ? 4 : kind == 'h' ? 2 : kind == 'b' ? 1 : 8;
+        if (kind == 'f' || kind == 'd') {
+            if (nf < 8) { fps[nf++] = kind == 'f' ? (v & 0xffffffffu) : v; continue; }
+        } else if (ni < 8) { ints[ni++] = v; continue; }
+        // Past the registers: packed by natural size (Apple arm64).
+        at = (at + size - 1) & ~(size_t)(size - 1);
+        if (at + size > sizeof stack - 16) break;
+        memcpy(stack + at, &v, size);
+        at += size;
+    }
+    native_trampoline(ints, (const double *)fps, fn, out, stack, (at + 15) & ~(size_t)15, x8);
+    c->r[RAX] = hidden >= 0 ? x8 : out[0];
+    c->xmm[0] = rt64_xq(out[2]);
 #else
     (void)fn;
     rt64_trap(c, c->rip, "native calls need an arm64 host");

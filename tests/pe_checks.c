@@ -45,6 +45,15 @@ static const RT64Shim shims[] = {
 static const RT64Data data[] = {{NULL, NULL}};
 RT64_SHIMS(shims, data)
 
+// Native arm64 functions the PE program calls through pointers.
+static double native_mix(int64_t a, double b, int32_t c, float d) { return (double)a + b * 10 + c * 100 + d * 1000; }
+static int64_t native_sum10(int64_t a, int64_t b, int64_t c, int64_t d, int64_t e, int64_t f, int64_t g, int64_t h,
+                            int64_t i, int64_t j) {
+    return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h + 9 * i + 10 * j;
+}
+typedef struct { int64_t a, b, c; } Three;
+static Three native_make3(int64_t k) { return (Three){k, 2 * k, 3 * k}; }
+
 static uint64_t fn(const char *name) {
     char full[96];
     snprintf(full, sizeof full, "pefix.dll!%s", name);
@@ -89,6 +98,14 @@ int main(void) {
     CHECK(call(c, "pe_bnd", 1, (const uint64_t[]){0}) == 0 && call(c, "pe_bnd", 1, (const uint64_t[]){5}) == 1,
           "BND-prefixed branches and returns");
     CHECK(call(c, "pe_setjmp", 1, (const uint64_t[]){5}) == 5, "longjmp back to the call after an MSVC _setjmp");
+    rt64_win_native_set_sig((uintptr_t)native_mix, "pdif", -1);
+    call(c, "pe_native_mix", 1, (const uint64_t[]){(uintptr_t)native_mix});
+    CHECK(c->xmm[0].g[0] == 4321.0, "native call with integer and float slots: %g", c->xmm[0].g[0]);
+    CHECK(call(c, "pe_native_sum10", 1, (const uint64_t[]){(uintptr_t)native_sum10}) == 385, "native call, six stack slots");
+    rt64_win_native_set_sig((uintptr_t)native_make3, "pp", 0);
+    Three three = {0, 0, 0};
+    uint64_t got = call(c, "pe_native_make3", 2, (const uint64_t[]){(uintptr_t)native_make3, (uintptr_t)&three});
+    CHECK(got == (uintptr_t)&three && three.a == 7 && three.b == 14 && three.c == 21, "structure through the hidden pointer");
     CHECK(call(c, "pe_import_twice", 1, (const uint64_t[]){21}) == 42, "import by name");
     CHECK(call(c, "pe_import_sum5", 0, NULL) == 54321, "import with a stack argument");
     CHECK(call(c, "pe_import_ordinal", 0, NULL) == 7, "import by ordinal");
