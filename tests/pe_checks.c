@@ -68,13 +68,13 @@ typedef struct { uint64_t fn; int wrong; uint64_t hits; } SigWorker;
 static void *sig_worker(void *arg) {
     SigWorker *w = arg;
     static __thread CPU64 cpu;
-    uint64_t before = rt64_win_native_cache_hits();
+    uint64_t before = rt64_win_native_cache_hits(&cpu);
     for (int i = 0; i < 20000; ++i) {
         cpu.r[RCX] = 1; cpu.xmm[1].g[0] = 2.0; cpu.r[R8] = 3; cpu.xmm[3].q[0] = 0; cpu.xmm[3].f[0] = 4.0f;
         rt64_native_call_win(&cpu, w->fn);
         if (cpu.xmm[0].g[0] != 4321.0) w->wrong++;
     }
-    w->hits = rt64_win_native_cache_hits() - before;
+    w->hits = rt64_win_native_cache_hits(&cpu) - before;
     atomic_fetch_add(&sig_threads_done, 1);
     return NULL;
 }
@@ -141,9 +141,18 @@ int main(void) {
     call(c, "pe_native_mix", 1, (const uint64_t[]){(uintptr_t)native_mix});
     CHECK(c->xmm[0].g[0] == 4321.0, "native call with integer and float slots: %g", c->xmm[0].g[0]);
     {   // The signature lookup is cached per thread: the same call again hits, with the same answer.
-        uint64_t hits = rt64_win_native_cache_hits();
+        uint64_t hits = rt64_win_native_cache_hits(c);
         call(c, "pe_native_mix", 1, (const uint64_t[]){(uintptr_t)native_mix});
-        CHECK(c->xmm[0].g[0] == 4321.0 && rt64_win_native_cache_hits() > hits, "native signature from the thread's cache");
+        CHECK(c->xmm[0].g[0] == 4321.0 && rt64_win_native_cache_hits(c) > hits, "native signature from the thread's cache");
+        // A native target reached through rt64_dispatch is remembered in the dispatch cache too:
+        // the second call hits it (no module walk) and gives the same answer.
+        uint64_t d_hits, d_misses, d_hits2, d_misses2;
+        rt64_dispatch_stats(c, &d_hits, &d_misses);
+        call(c, "pe_native_mix", 1, (const uint64_t[]){(uintptr_t)native_mix});
+        rt64_dispatch_stats(c, &d_hits2, &d_misses2);
+        CHECK(c->xmm[0].g[0] == 4321.0 && d_hits2 > d_hits && d_misses2 == d_misses,
+              "native target from the dispatch cache (hits %llu -> %llu, misses %llu -> %llu)", (unsigned long long)d_hits,
+              (unsigned long long)d_hits2, (unsigned long long)d_misses, (unsigned long long)d_misses2);
         SigWorker workers[4];
         pthread_t threads[4];
         for (int i = 0; i < 4; ++i) { workers[i] = (SigWorker){(uintptr_t)native_mix, 0, 0}; pthread_create(&threads[i], NULL, sig_worker, &workers[i]); }

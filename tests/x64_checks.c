@@ -199,9 +199,9 @@ int main(void) {
     {   // The dispatch cache (loader64.c): a function reached through a pointer before the second
         // module was loaded still dispatches to itself after, and both modules' functions do.
         uint64_t hits, misses, hits2, misses2;
-        rt64_dispatch_stats(&hits, &misses);
+        rt64_dispatch_stats(&cpu, &hits, &misses);
         EXPECT(CALL("x64_callptr", 0, 21) == 42 && CALL("x64_callptr", 1, 12) == 144);
-        rt64_dispatch_stats(&hits2, &misses2);
+        rt64_dispatch_stats(&cpu, &hits2, &misses2);
         EXPECT(hits2 > hits);                              // x64_callptr's targets were cached earlier
     }
     EXPECT(CALL0("x64b_add_via_first") == 36);           // import resolved to the first module's export
