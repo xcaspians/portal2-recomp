@@ -90,7 +90,7 @@ int main(void) {
 
     EXPECT(CALL("x64_fact", 20) == 2432902008176640000ull);
 
-    // A tail jump into another function whose entry reads the flags (round 04, Skyrim's camera snap).
+    // A tail jump into another function whose entry reads the flags (MSVC's shared tails).
     EXPECT(CALL("x64_tail_flags", 1, 2) == 1);
     EXPECT(CALL("x64_tail_flags", 2, 2) == 2);
     EXPECT(CALL("x64_tail_flags", 3, 2) == 3);

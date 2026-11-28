@@ -325,7 +325,7 @@ x64_tail:
 
 # A conditional jump that leaves the function for another function's entry
 # (a tail jump), whose first instruction reads the caller's flags: MSVC
-# shares tails this way (Skyrim's fast atan2, round 04's camera snap). The
+# shares tails this way (a fast atan2, for one). The
 # flags must reach the other function. x64_tail_flags(a, b): 1 if a < b,
 # 2 if a == b, 3 if a > b (unsigned); x64_tail_flags_f(&x, &y) the same for
 # floats through comiss.
