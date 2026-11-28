@@ -154,7 +154,9 @@ class DeveloperModeWindowTest(unittest.TestCase):
         self.assertIn('if !d.ready {   // Developer Mode, pairing or a restart first', swift)
         self.assertIn('waitForDevice(d.udid, then: games)', swift)
         self.assertIn('if let d = list.first(where: { $0.udid == udid }), d.ready {', swift)   # then carries on
-        self.assertIn('if waitingFor == nil, selected == nil', swift)  # the device keeps its place while it restarts
+        # The device keeps its place while it restarts (and, round 31, while an install on it is unfinished).
+        self.assertIn('let keep = waitingFor != nil || (queue.map { !$0.finished && $0.device == selected } ?? false)', swift)
+        self.assertIn('if !keep, selected == nil', swift)
 
 
 class BaseGameTest(unittest.TestCase):

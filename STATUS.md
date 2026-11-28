@@ -245,6 +245,16 @@ forcing buffer usage, `gl_bufmode`, an order file of hot functions
 
 ## History
 
+- **27 Nov. 2026** (fork, round 31, v0.5.2): installer reliability. Every
+  tool the installer starts runs under `tools/installer_runs.py` (its own
+  process group, a record of who holds it, gone with the installer even on
+  Force Quit); the next launch stops what an older one left going. Device
+  copies go in parts through `tools/device_copy.py`, wait out a lock or a
+  dropped connection and resume from a journal; the multi-game queue
+  (`installer/JobQueue.swift`) is saved, so Retry carries on from the game
+  that stopped. Sauce shows a setting-up screen instead of black while a game
+  starts (`runtime/ios/loading_ios.m`), and the installer's **Update Sauce**
+  rebuilds the latest release over the installed one.
 - **27 Nov. 2026** (fork, round 29): one game table for the Natif Installer.
   `tools/games.py` installer entries feed setup.sh, the Steam scan, the device
   planner and both installer tabs (`games.json` in the app). Left 4 Dead 2

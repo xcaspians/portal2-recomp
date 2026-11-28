@@ -44,8 +44,8 @@ class PackagingTests(unittest.TestCase):
         self.assertNotRegex(SCRIPT, r'--password\s')
         self.assertIn('--keychain-profile "$PROFILE"', SCRIPT)
 
-    def test_both_swift_files_are_compiled(self):
-        self.assertIn('installer/Installer.swift installer/Devices.swift', SCRIPT)
+    def test_every_swift_file_is_compiled(self):
+        self.assertIn('installer/*.swift -o "$OUT/installer-$arch"', SCRIPT)   # Installer, Devices, JobQueue
 
     def test_version_is_shown(self):
         self.assertIn('P2SourceVersion', SCRIPT)

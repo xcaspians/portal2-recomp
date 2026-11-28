@@ -142,7 +142,8 @@ def main():
     plist = (ROOT / 'ios/Info.plist.in').read_text()
     for key, value in dict(EXECUTABLE=game['ios_executable'], IDENTIFIER=bundle_id(game=game['name']),
                            NAME=games.app_name(config) if game.get('ios_guests') else game['ios_name'],
-                           GAME=game['name'], PLATFORM=target['plist'], FORK_VERSION=fork_version()).items():
+                           GAME=game['name'], PLATFORM=target['plist'], FORK_VERSION=fork_version(),
+                           SAUCE_VERSION=sauce_version(), BUNDLE_VERSION=bundle_version(sauce_version())).items():
         plist = plist.replace(f'@{key}@', value)
     (app / 'Info.plist').write_text(plist)
     # Page du jeu dans l'app Réglages d'iOS (lue par runtime/ios/settings.c).
@@ -311,6 +312,24 @@ def fork_version(root=ROOT):
     if not commit: return FORK_VERSION
     dirty = git('status', '--porcelain', '--untracked-files=no')
     return f'{FORK_VERSION} ({commit}{"+" if dirty else ""})'
+
+
+def sauce_version(root=ROOT):
+    """The release Sauce is built from: SOURCE_VERSION (the installer's source, or Update
+    Sauce's download), else git describe ("v0.5.2", "v0.5.2-3-gabc1234"), else "".
+    The installer's Update Sauce compares it with the latest release (round 31)."""
+    marked = Path(root) / 'SOURCE_VERSION'
+    if marked.is_file():
+        return marked.read_text().strip()
+    r = subprocess.run(['git', '-C', str(root), 'describe', '--tags', '--always'], capture_output=True, text=True)
+    return r.stdout.strip() if r.returncode == 0 else ''
+
+
+def bundle_version(version):
+    """CFBundleShortVersionString: the release's numbers ("0.5.2"); 0.1 before any release."""
+    import re
+    m = re.match(r'v?(\d+(?:\.\d+){0,2})', version or '')
+    return m.group(1) if m else '0.1'
 
 
 def launch_args(game, config, host=None):

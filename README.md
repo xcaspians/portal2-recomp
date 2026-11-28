@@ -71,6 +71,12 @@ You must own each game on Steam. Left 4 Dead 2 builds never connect to Valve's o
 4. Plug in your iPad or iPhone and unlock it.
 5. Press **Install**. The first time takes a while: building Sauce on your Mac (half an hour or more), then
    copying 5–14 GB per game. Your saves are backed up to the Mac before anything on the device is replaced.
+   A cable is faster and more reliable than Wi-Fi for the big copies. If the device locks or drops off the
+   connection, the copy waits and carries on where it stopped; quitting the installer stops everything it
+   started, and **Retry** later picks up from the game that stopped.
+6. Later, **Update Sauce** (next to the version on the device and the latest release) builds the newest
+   Sauce on your Mac and installs it over the old one: saves, settings and games stay. If the build fails,
+   the Sauce on the device is left as it was.
 
 **Getting the Sauce app itself** happens in one of two ways:
 - **Your own Apple ID** (a free one works): the installer builds Sauce on your Mac and signs it through

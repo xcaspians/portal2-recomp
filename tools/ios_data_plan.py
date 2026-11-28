@@ -80,7 +80,7 @@ def device_files(report):
     out = {}
     for item in ((report or {}).get('result') or {}).get('files') or []:
         meta = item.get('metadata') if isinstance(item.get('metadata'), dict) else {}
-        if 'dir' in str(meta.get('type', item.get('type', ''))).lower():
+        if (item.get('resources') or {}).get('isDirectory') or 'dir' in str(meta.get('type', item.get('type', ''))).lower():
             continue
         path = str(item.get('relativePath') or item.get('path') or item.get('name') or '').rstrip('/')
         size = meta.get('size', item.get('size', item.get('fileSize')))

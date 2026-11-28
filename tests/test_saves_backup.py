@@ -44,7 +44,9 @@ esac
 
 
 def listing(*names, kind='directory'):
-    return {'result': {'files': [{'relativePath': n, 'metadata': {'type': kind}} for n in names]}}
+    # devicectl's own shape (Xcode 26/27): a folder is resources.isDirectory, metadata has no type.
+    return {'result': {'files': [{'relativePath': n, 'name': n, 'metadata': {'size': 64 if kind == 'directory' else 1234},
+                                  'resources': {'isDirectory': kind == 'directory'}} for n in names]}}
 
 
 class SavesBackupTests(unittest.TestCase):

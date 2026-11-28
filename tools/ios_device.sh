@@ -75,6 +75,9 @@ wait_unlocked() {  # 0 once the device reports no passcode needed (up to a minut
   done
   rm -f "$state"; return 1
 }
+copy_journal() {  # what tools/device_copy.py already sent to this device's app (removed once complete)
+  echo "$IOS_DIR/copy-journal-$(printf %s "$DEVICE-$APP_ID-$DATA_ROOT" | tr -c 'A-Za-z0-9.-' _).json"
+}
 env_json() {  # VAR=valeur... -> {"VAR":"valeur",...}
   python3 -c 'import json,sys; print(json.dumps(dict(a.split("=",1) for a in sys.argv[1:])))' "$@"
 }
@@ -148,11 +151,10 @@ data)
     then todo+=("${pairs[i]}" "${pairs[i+1]}"); fi
   done
   mark_data incomplete
-  n=$(( ${#todo[@]} / 2 ))
-  for ((i = 0; i < ${#todo[@]}; i += 2)); do
-    echo "copy $(( i / 2 + 1 ))/$n ${todo[i+1]}"
-    copy_to "$APP_ID" "${todo[i]}" "${todo[i+1]}" >/dev/null </dev/null
-  done
+  # In parts, waiting out a lock or a dropped connection, resumed from the
+  # journal after a stop (tools/device_copy.py, round 31).
+  for ((i = 0; i < ${#todo[@]}; i += 2)); do printf '%s\t%s\n' "${todo[i]}" "${todo[i+1]}"; done |
+    python3 tools/device_copy.py --device "$DEVICE" --app "$APP_ID" --journal "$(copy_journal)"
   mark_data complete
   ;;
 manifest)
@@ -196,7 +198,10 @@ for f in r.get("files") or []:
          --json-output "$inner" >/dev/null 2>&1 </dev/null && python3 -c '
 import json, sys
 files = (json.load(open(sys.argv[1])).get("result") or {}).get("files") or []
-sys.exit(0 if any((e.get("metadata") or {}).get("type", "file") != "directory" for e in files) else 1)' "$inner"; then
+# devicectl marks folders with resources.isDirectory (older listings: metadata.type).
+def folder(e):
+    return bool((e.get("resources") or {}).get("isDirectory")) or "dir" in str((e.get("metadata") or {}).get("type", "")).lower()
+sys.exit(0 if any(not folder(e) for e in files) else 1)' "$inner"; then
       rm -f "$inner"; echo "couldn't back up Documents/$f: stopping before anything is replaced"; exit 1
     fi
     rm -f "$inner"; echo "nothing to back up in $f (empty)"
@@ -284,14 +289,11 @@ mel-data-push)
   fi
   need_space "$total" || exit 1
   mark_data incomplete
-  n=$(awk -F'\t' '$1 == "copy"' <<< "$out" | wc -l | tr -d ' '); i=0
-  while IFS=$'\t' read -r op from to size; do   # </dev/null : devicectl ne doit pas lire la liste
+  while IFS=$'\t' read -r op from to size; do
     [ "$op" = copy ] || continue
-    i=$((i + 1))
     [ -z "$ONLY" ] || python3 -c 'import sys; sys.path.insert(0, "tools"); import device_updates as u; sys.exit(0 if u.keep(sys.argv[1], sys.argv[2].split()) else 1)' "$to" "$ONLY" || continue
-    echo "copy $i/$n $to"
-    copy_to "$APP_ID" "$from" "$to" >/dev/null </dev/null
-  done <<< "$out"
+    printf '%s\t%s\n' "$from" "$to"
+  done <<< "$out" | python3 tools/device_copy.py --device "$DEVICE" --app "$APP_ID" --journal "$(copy_journal)"
   if [ $full = 0 ]; then   # the app reads Portal 2's archives from now on (ios/main_ios.c)
     m=$(mktemp); echo slim > "$m"; copy_to "$APP_ID" "$m" "$DATA_ROOT/.p2-slim" >/dev/null; rm -f "$m"
   fi

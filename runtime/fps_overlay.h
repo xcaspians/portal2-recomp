@@ -8,6 +8,7 @@ void fps_overlay_toggle(void);
 // Cadence mesurée (images par seconde sur la dernière demi-seconde), mise à
 // jour par fps_overlay_tick ; lisible d'un autre thread.
 double fps_overlay_value(void);
+unsigned long fps_overlay_presented(void);   // frames presented since launch (either renderer)
 // Un texte en rectangles : origine (x, y), scale pixels par pixel de glyphe
 // (police 5×7, avance de 6) ; une rangée de pixels allumés contigus = un
 // rectangle. Chiffres, « . / », lettres (sans distinction de casse) ; rend
