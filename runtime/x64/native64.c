@@ -192,14 +192,14 @@ int rt64_win_native_set_override(uint64_t fn, rt64_shim shim) {
 // call into DXVK (every Direct3D call) takes no mutex and scans nothing once seen.
 typedef struct { uint64_t fn, generation; rt64_shim override; int hidden; char slots[RT64_WIN_SIG_MAX + 1]; } WinLookup;
 #define WIN_LOOKUP_CACHE 512
-static __thread WinLookup *win_cache;
-static __thread uint64_t win_cache_hits;
-uint64_t rt64_win_native_cache_hits(void) { return win_cache_hits; }
-static const WinLookup *win_lookup(uint64_t fn, WinLookup *scratch) {
+typedef struct { uint64_t hits; WinLookup e[WIN_LOOKUP_CACHE]; } WinCache;    // c->caches[1]
+uint64_t rt64_win_native_cache_hits(const CPU64 *c) { return c->caches[1] ? ((const WinCache *)c->caches[1])->hits : 0; }
+static const WinLookup *win_lookup(CPU64 *c, uint64_t fn, WinLookup *scratch) {
     uint64_t generation = atomic_load_explicit(&win_sig_generation, memory_order_acquire);
-    if (!win_cache) win_cache = calloc(WIN_LOOKUP_CACHE, sizeof *win_cache);
-    WinLookup *e = win_cache ? &win_cache[(fn >> 4 ^ fn >> 14) & (WIN_LOOKUP_CACHE - 1)] : scratch;
-    if (e->fn == fn && e->generation == generation) { win_cache_hits++; return e; }
+    WinCache *cache = c->caches[1];
+    if (!cache) cache = c->caches[1] = calloc(1, sizeof *cache);
+    WinLookup *e = cache ? &cache->e[(fn >> 4 ^ fn >> 14) & (WIN_LOOKUP_CACHE - 1)] : scratch;
+    if (cache && e->fn == fn && e->generation == generation) { cache->hits++; return e; }
     WinLookup fresh = {fn, generation, NULL, -1, "pppppppppppp"};      // no signature: 12 64-bit slots
     pthread_mutex_lock(&win_sig_lock);
     for (int i = 0; i < win_override_count; ++i) if (win_overrides[i].fn == fn) fresh.override = win_overrides[i].shim;
@@ -214,14 +214,14 @@ static const WinLookup *win_lookup(uint64_t fn, WinLookup *scratch) {
 
 void rt64_native_call_win(CPU64 *c, uint64_t fn) {
     WinLookup scratch;
-    const WinLookup *found = win_lookup(fn, &scratch);
+    const WinLookup *found = win_lookup(c, fn, &scratch);
     if (found->override) { found->override(c); return; }
 #if defined(__aarch64__)
     char slots[RT64_WIN_SIG_MAX + 1];
     memcpy(slots, found->slots, sizeof slots);
     int hidden = found->hidden;
     uint64_t ints[8] = {0}, fps[8] = {0}, x8 = 0, out[4];
-    uint8_t stack[RT64_WIN_SIG_MAX * 8 + 16] __attribute__((aligned(16))) = {0};
+    uint8_t stack[RT64_WIN_SIG_MAX * 8 + 16] __attribute__((aligned(16)));   // only its first `at` bytes are passed
     size_t at = 0;
     int ni = 0, nf = 0;
     static const int regs[4] = {RCX, RDX, R8, R9};
