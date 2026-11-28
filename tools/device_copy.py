@@ -74,7 +74,9 @@ def parts(src, dest, limit=PART_BYTES):
         return [(str(p), dest, p.stat().st_size)]
     if not p.is_dir():
         return []
-    size = size_and_stamp(p)[0]
+    size, _newest, count = size_and_stamp(p)
+    if count == 0:
+        return []   # devicectl refuses an empty folder (error 7000), and the game needs none (Portal's portal/bin)
     if size <= limit:
         return [(str(p), dest, size)]
     out = []

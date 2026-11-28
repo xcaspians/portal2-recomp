@@ -53,6 +53,9 @@ if cmd == 'device copy to':
             dst.write_bytes(src.read_bytes()[: max(1, src.stat().st_size // 2)])
         print('ERROR: The device is no longer connected (com.apple.dt.CoreDeviceError error 4).', file=sys.stderr)
         sys.exit(1)
+    if src.is_dir() and not any(p.is_file() for p in src.rglob('*')):   # as the real devicectl does
+        print(f'ERROR: Failed to retrieve the file node for {opt("--destination")} (com.apple.dt.CoreDeviceError error 7000 (0x1B58))', file=sys.stderr)
+        sys.exit(1)
     dst.parent.mkdir(parents=True, exist_ok=True)
     if src.is_dir():
         shutil.copytree(src, dst, dirs_exist_ok=True)
@@ -100,6 +103,7 @@ class DeviceCopyTests(unittest.TestCase):
             f = self.game / f'left4dead2/pak01_00{i}.vpk'
             f.parent.mkdir(parents=True, exist_ok=True)
             f.write_bytes(bytes([65 + i]) * 30)
+        (self.game / 'left4dead2/bin').mkdir()   # empty, like Portal's portal/bin (devicectl refuses those)
         (self.game / 'platform/cfg').mkdir(parents=True)
         (self.game / 'platform/cfg/config.cfg').write_text('bind w +forward\n')
         self.journal = self.tmp / 'journal.json'
