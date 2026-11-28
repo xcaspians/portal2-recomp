@@ -183,6 +183,7 @@ final class Installer: ObservableObject {
     @Published var warnings: [String] = []
     @Published var showLog = false
     @Published var puzzleMaker = false   // the user's wish; buildsMapCompilers says whether it applies
+    private var askedForTools = false    // Apple's installer started once this launch
     private var process: Process?
     private var timer: Timer?
     private var queue: [Game] = []       // games still to build in this run
@@ -222,6 +223,12 @@ final class Installer: ObservableObject {
             let found = allGames.map { ($0, $0.findGame(libraries: libs), $0.findLinux()) }
             await MainActor.run {
                 self.tools = t
+                // No command line tools: Apple's installer first, by itself, before anything needs them
+                // (python3 and git are theirs). The window explains, and carries on when they're in.
+                if !t, !self.askedForTools, ProcessInfo.processInfo.environment["P2_NO_TOOLS_PROMPT"] == nil {
+                    self.askedForTools = true
+                    self.installTools()
+                }
                 for (game, g, l) in found {
                     let s = self.state(game)
                     if s.game == nil || !game.isGameFolder(s.game!) || game.dataIssue(s.game!) != nil { self.states[game.id]?.game = g }
@@ -295,10 +302,12 @@ final class Installer: ObservableObject {
 
     private func runSetup(game: Game, gameDir: URL, linux: URL) {
         let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/bash")
         runHasMapCompilers = buildsMapCompilers(game)
-        p.arguments = [sourceDir.appendingPathComponent("setup.sh").path, "--game", game.id]
-            + (runHasMapCompilers ? ["--puzzle-maker"] : []) + [gameDir.path, linux.path]
+        // Through tools/installer_runs.py: its own process group, gone with the installer (round 31).
+        (p.executableURL, p.arguments) = supervised(URL(fileURLWithPath: "/bin/bash"),
+            [sourceDir.appendingPathComponent("setup.sh").path, "--game", game.id]
+            + (runHasMapCompilers ? ["--puzzle-maker"] : []) + [gameDir.path, linux.path],
+            label: "\(game.title): building for the Mac (setup.sh)", game: game.id)
         p.currentDirectoryURL = sourceDir
         // A Finder app gets a bare PATH: toolEnvironment adds Rust's and Homebrew's
         // (setup.sh adds the installer's own tools, tools/build_tools.py env).
@@ -392,6 +401,12 @@ final class Installer: ObservableObject {
     }
 
     func open(_ game: Game) { NSWorkspace.shared.open(game.installedApp) }
+
+    /// Quit: installer_runs.py stops the build (Session.stopEverything); the window says so if it stays.
+    func stopForQuit() {
+        queue = []
+        if phase == .installing { phase = .failed("Stopped when the installer quit. Build again to carry on: it only rebuilds what changed.") }
+    }
 }
 
 /// Splits setup.sh's output into lines. FileHandle calls its readability
@@ -426,10 +441,42 @@ func installerError(_ message: String) -> NSError {
     NSError(domain: "installer", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
 }
 
+/// The release this Mac's source is from (SOURCE_VERSION: tools/build_installer.sh, or Update Sauce).
+nonisolated func sourceVersion() -> String? {
+    (try? String(contentsOf: sourceDir.appendingPathComponent("SOURCE_VERSION"), encoding: .utf8))?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
 nonisolated func unpackSource() throws {
     guard let archive = Bundle.main.url(forResource: "source", withExtension: "tar.gz") else {
+        // A bare binary (tests): the source already there is the one to use.
+        if ProcessInfo.processInfo.environment["P2_TEST_SOURCE"] != nil,
+           FileManager.default.fileExists(atPath: sourceDir.appendingPathComponent(ownerMarker).path) { return }
         throw installerError("source.tar.gz is missing from the app")
     }
+    // Update Sauce brought a newer release's source: this older installer doesn't take it back.
+    if let current = sourceVersion(), InstallerUpdate.isNewer(current, than: installerVersion) { return }
+    _ = try installSource(from: archive, version: nil, keepPrevious: false)
+}
+
+let keptItems = ["build", "deps", "config/local.json"]
+
+/// Moves what survives a source change (generated files and the local configuration) between two sources.
+nonisolated func carryItems(_ items: [String], from: URL, to: URL) throws {
+    let fm = FileManager.default
+    for item in items where fm.fileExists(atPath: from.appendingPathComponent(item).path) {
+        let dest = to.appendingPathComponent(item)
+        try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? fm.removeItem(at: dest)
+        try fm.moveItem(at: from.appendingPathComponent(item), to: dest)
+    }
+}
+
+/// The source in `archive` (strip: leading folders, as in GitHub's tag archives) becomes this Mac's,
+/// build/, deps/ and the config carried over. keepPrevious: the old source (without those) is
+/// returned instead of removed, for restoreSource.
+@discardableResult
+nonisolated func installSource(from archive: URL, strip: Int = 0, version: String?, keepPrevious: Bool) throws -> URL? {
     let fm = FileManager.default
     let marker = sourceDir.appendingPathComponent(ownerMarker)
     if fm.fileExists(atPath: sourceDir.path), !fm.fileExists(atPath: marker.path),
@@ -439,37 +486,27 @@ nonisolated func unpackSource() throws {
     let staging = sourceDir.deletingLastPathComponent().appendingPathComponent(".\(sourceDir.lastPathComponent).staging")
     try? fm.removeItem(at: staging)
     try fm.createDirectory(at: staging, withIntermediateDirectories: true)
-    let r = run("/usr/bin/tar", ["-xzf", archive.path, "-C", staging.path])
-    guard r.status == 0 else {
+    let r = run("/usr/bin/tar", ["-xzf", archive.path, "-C", staging.path] + (strip > 0 ? ["--strip-components", "\(strip)"] : []))
+    guard r.status == 0, fm.fileExists(atPath: staging.appendingPathComponent("setup.sh").path) else {
         try? fm.removeItem(at: staging)
         throw installerError("could not unpack the source (tar exit \(r.status))")
     }
     // tar copies the downloaded app's quarantine onto every file it extracts.
     run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", staging.path])
     fm.createFile(atPath: staging.appendingPathComponent(ownerMarker).path, contents: nil)
-    // What survives: generated files and the local configuration (the
-    // snapshot has none of them).
-    let kept = ["build", "deps", "config/local.json"]
-    func carry(_ items: [String], from: URL, to: URL) throws {
-        for item in items where fm.fileExists(atPath: from.appendingPathComponent(item).path) {
-            let dest = to.appendingPathComponent(item)
-            try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? fm.removeItem(at: dest)
-            try fm.moveItem(at: from.appendingPathComponent(item), to: dest)
-        }
-    }
-    let old = sourceDir.deletingLastPathComponent().appendingPathComponent(".\(sourceDir.lastPathComponent).old")
+    if let version { try? Data((version + "\n").utf8).write(to: staging.appendingPathComponent("SOURCE_VERSION")) }
+    let old = sourceDir.deletingLastPathComponent().appendingPathComponent(".\(sourceDir.lastPathComponent).\(keepPrevious ? "previous" : "old")")
     try? fm.removeItem(at: old)
     let hadOld = fm.fileExists(atPath: sourceDir.path)
     if hadOld { try fm.moveItem(at: sourceDir, to: old) }
     do {
         try fm.moveItem(at: staging, to: sourceDir)
-        if hadOld { try carry(kept, from: old, to: sourceDir) }
+        if hadOld { try carryItems(keptItems, from: old, to: sourceDir) }
     } catch {
         // Put the old source back, with whatever had already been carried over.
         if hadOld {
             if fm.fileExists(atPath: sourceDir.path) {
-                try? carry(kept, from: sourceDir, to: old)
+                try? carryItems(keptItems, from: sourceDir, to: old)
                 try? fm.removeItem(at: sourceDir)
             }
             try? fm.moveItem(at: old, to: sourceDir)
@@ -477,7 +514,18 @@ nonisolated func unpackSource() throws {
         try? fm.removeItem(at: staging)
         throw error
     }
+    if keepPrevious { return hadOld ? old : nil }
     try? fm.removeItem(at: old)
+    return nil
+}
+
+/// Update Sauce failed: the previous source comes back, with build/, deps/ and the config.
+nonisolated func restoreSource(_ previous: URL) throws {
+    let fm = FileManager.default
+    guard fm.fileExists(atPath: previous.path) else { return }
+    try carryItems(keptItems, from: sourceDir, to: previous)
+    try fm.removeItem(at: sourceDir)
+    try fm.moveItem(at: previous, to: sourceDir)
 }
 
 // The installer's version (tools/build_installer.sh: git describe), shown in the window.
@@ -743,6 +791,23 @@ struct RootView: View {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Cmd+Q with a build going asks first; quitting stops everything the installer started (round 31:
+    /// it used to leave setup.sh, ninja and devicectl copies running with no window).
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            if let busy = Session.busy {
+                let alert = NSAlert()
+                alert.messageText = "A build is running. Stop it and quit?"
+                alert.informativeText = "\(busy) Quitting stops it. Next time, Retry carries on from where it stopped, and the saves on your device are safe."
+                alert.addButton(withTitle: "Stop and Quit")
+                alert.addButton(withTitle: "Keep Running")
+                guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+            }
+            Session.stopEverything()
+            return .terminateNow
+        }
+    }
 }
 
 struct InstallerApp: App {
@@ -753,6 +818,7 @@ struct InstallerApp: App {
     var body: some Scene {
         WindowGroup(windowTitle) {
             RootView(model: model, hub: hub, update: update).onAppear {
+                Session.hub = hub; Session.model = model
                 model.startWatching(); hub.start(); update.check()
             }
         }
@@ -812,15 +878,54 @@ func snapshot(to path: String, state: String) {
                                        data: installed ? ["portal2": true] : [:], apps: nil,
                                        updates: installed ? ["portal2": ["Documents/prep"]] : nil, problem: nil)
         if state == "devices-running" {
-            hub.jobs = ["portal2": Job(state: .done("Done. Open Sauce on the iPad."), fraction: 1, text: ""),
-                        "hl2": Job(state: .running, fraction: 0.42, text: "Copy Half-Life 2 (about 10 GB) (2 of 3)")]
+            var q = InstallQueue(device: "A", deviceName: "iPad", games: [("portal2", "Portal 2"), ("hl2", "Half-Life 2"), ("l4d2", "Left 4 Dead 2")])
+            q.begin("portal2"); q.finish("portal2", .ok, doneText: "Done. Open Sauce on the iPad.")
+            q.begin("hl2"); q.jobs["hl2"]?.fraction = 0.42; q.jobs["hl2"]?.text = "Copy Half-Life 2 (about 10 GB) (2 of 3)"
+            hub.queue = q
             hub.running = true
         }
         if state == "devices-failed" {
-            hub.jobs = ["portal2": Job(state: .failed("The iPad is locked: unlock it and press Retry."), fraction: 0.3, text: "")]
+            var q = InstallQueue(device: "A", deviceName: "iPad", games: [("portal2", "Portal 2")])
+            q.begin("portal2"); q.finish("portal2", InstallOutcome(problem: plainError("device is locked", kind: "iPad"), deviceProblem: true), doneText: "")
+            hub.queue = q
         }
         hub.expiry = Date().addingTimeInterval(3 * 86400)
         hub.toolsChecked = true
+        // Round 31's screens: a copy paused by a lock or a drop, an install waiting on a leftover or
+        // on another window, a quit mid-install reopened, and Update Sauce.
+        if ["devices-locked", "devices-dropped", "devices-leftover", "devices-other", "devices-reopened"].contains(state) {
+            hub.list[0] = DeviceInfo(udid: "A", name: "My iPhone", model: "iPhone 18 Pro", kind: "iPhone", link: "Wi-Fi", ready: true, problem: nil)
+            var q = InstallQueue(device: "A", deviceName: "iPhone", games: [("portal2", "Portal 2"), ("hl2", "Half-Life 2"), ("l4d2", "Left 4 Dead 2")])
+            q.begin("portal2"); q.finish("portal2", .ok, doneText: "Done. Open Sauce on the iPhone.")
+            switch state {
+            case "devices-locked", "devices-dropped":
+                q.begin("hl2"); q.jobs["hl2"]?.fraction = 0.55
+                q.jobs["hl2"]?.text = state == "devices-locked"
+                    ? "Your iPhone locked. Unlock it to carry on (with iPhone Mirroring, unlock the iPhone itself). The copy picks up where it stopped."
+                    : "The iPhone dropped off the connection. Plug it in with a cable, or bring it near the Mac and unlock it: the copy carries on by itself."
+                hub.running = true
+            case "devices-leftover":
+                q.jobs["hl2"]?.state = .waiting("Waiting for the earlier run's build to stop (see below)")
+                hub.leftover = "Waiting for a build left over from an earlier run (Left 4 Dead 2: data on the iPhone, started 4:12 PM). No installer window is attached to it any more, so it would never finish here."
+                hub.running = true
+            case "devices-other":
+                q.jobs["hl2"]?.state = .waiting("Waiting for the last install to finish (see below)")
+                hub.activity = "Waiting for the last install to finish (Left 4 Dead 2: data on the iPhone, started 4:12 PM): another Natif Installer window is running it. This one starts by itself when it's done."
+                hub.running = true
+            default:   // reopened after a quit mid-install
+                q.begin("hl2"); q.jobs["hl2"]?.fraction = 0.4
+                q = q.restored()
+            }
+            hub.queue = q
+            hub.status["A"]?.sauce_version = "0.5.1"
+            hub.sauceLatest = "v0.5.2"
+        }
+        if state == "devices-update" {
+            hub.status["A"]?.sauce_version = "0.5.1"
+            hub.sauceLatest = "v0.5.2"
+            hub.hasSigningAccount = true
+            hub.updateJob = Job(state: .running, fraction: 0.35, text: "Building Sauce v0.5.2 (a while: half an hour or more if a lot changed)")
+        }
         if state == "devices-devmode" {   // a fresh iPad: Developer Mode off, Install pressed, waiting
             hub.list = [DeviceInfo(udid: "A", name: "My iPad", model: "iPad Air", kind: "iPad", link: "USB", ready: false,
                                    problem: "Developer Mode is off: turn it on once, then the install carries on by itself.",
@@ -854,6 +959,74 @@ func snapshot(to path: String, state: String) {
     try? png.write(to: URL(fileURLWithPath: path))
 }
 
+/// install:SECONDS presses Install on every ready game of the (fake) device, waits, then quits
+/// as Stop and Quit does; reopen starts like a fresh launch and reports what the window shows.
+/// P2_AUTOTEST_REPORT: where the JSON report goes.
+@MainActor
+func autotest(_ mode: String) async {
+    let hub = DeviceHub(), model = Installer()
+    Session.hub = hub; Session.model = model
+    func report(_ extra: [String: Any] = [:]) {
+        var jobs: [String: [String: String]] = [:]
+        for (id, job) in hub.jobs {
+            let (kind, text): (String, String) = {
+                switch job.state {
+                case .waiting(let m): return ("waiting", m)
+                case .running: return ("running", job.text)
+                case .done(let m): return ("done", m)
+                case .failed(let m): return ("failed", m)
+                case .stopped(let m): return ("stopped", m)
+                }
+            }()
+            jobs[id] = ["state": kind, "text": text]
+        }
+        var out: [String: Any] = ["jobs": jobs, "activity": hub.activity ?? "", "leftover": hub.leftover ?? "",
+                                  "notice": hub.notice ?? "", "retry": hub.queue?.retryRow ?? "", "log": hub.log]
+        out.merge(extra) { a, _ in a }
+        if let path = ProcessInfo.processInfo.environment["P2_AUTOTEST_REPORT"],
+           let data = try? JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: URL(fileURLWithPath: path))
+        }
+    }
+    hub.restoreQueue()
+    await hub.cleanLeftovers()
+    await hub.refreshDevices(withStatus: false)
+    if mode.hasPrefix("install") {
+        let here = URL(fileURLWithPath: NSTemporaryDirectory())
+        hub.library = Dictionary(uniqueKeysWithValues: allGames.map { ($0.id, LibraryEntry(folder: here, linux: here)) })
+        hub.toolsChecked = true
+        hub.picks = Set(allGames.filter { $0.needs == nil }.prefix(3).map(\.id))
+        hub.install()
+        let seconds = Double(mode.split(separator: ":").last ?? "5") ?? 5
+        try? await Task.sleep(nanoseconds: UInt64(seconds * 1e9))
+        let busy = Session.busy ?? ""
+        Session.stopEverything()   // what Stop and Quit does
+        report(["busy_at_quit": busy])
+        exit(0)
+    }
+    if mode == "update" {   // Update Sauce on the fake device, to P2_SAUCE_LATEST from P2_SAUCE_ARCHIVE
+        hub.checkLatestSauce()
+        let here = URL(fileURLWithPath: NSTemporaryDirectory())
+        hub.library = Dictionary(uniqueKeysWithValues: allGames.map { ($0.id, LibraryEntry(folder: here, linux: here)) })
+        hub.hasXcode = true; hub.hasSigningAccount = true; hub.toolsChecked = true
+        if let d = hub.device { await hub.readStatus(d) }
+        let could = hub.canUpdateSauce
+        hub.updateSauce()
+        while hub.updateJob?.state == .running || hub.running { try? await Task.sleep(nanoseconds: 200_000_000) }
+        var state = "", text = ""
+        switch hub.updateJob?.state {
+        case .done(let m)?: (state, text) = ("done", m)
+        case .failed(let m)?: (state, text) = ("failed", m)
+        default: state = "none"
+        }
+        report(["could_update": could, "update_state": state, "update_text": text])
+        exit(0)
+    }
+    try? await Task.sleep(nanoseconds: 1_000_000_000)
+    report()
+    exit(0)
+}
+
 @main
 enum Main {
     static func main() {
@@ -875,6 +1048,15 @@ enum Main {
                 p = Installer.progress(after: line, from: p, mapCompilers: true)
                 print(String(format: "%.3f", p), line, "(map compilers)")
             }
+            return
+        }
+        // tests/test_installer_quit.py: the hub without a window, quit or force-quit mid-install, reopened.
+        if let i = args.firstIndex(of: "--autotest"), i + 1 < args.count {
+            let mode = args[i + 1]
+            let app = NSApplication.shared
+            app.setActivationPolicy(.prohibited)
+            Task { @MainActor in await autotest(mode) }
+            app.run()
             return
         }
         if args.contains("--unpack") {   // tests: unpack into sourceDir and exit

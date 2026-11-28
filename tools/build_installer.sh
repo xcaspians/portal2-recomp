@@ -63,12 +63,18 @@ rm -rf "$APP" && mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 SLICES=()
 for arch in arm64 x86_64; do
     swiftc -O -parse-as-library -swift-version 5 -target $arch-apple-macos13.0 \
-        installer/Installer.swift installer/Devices.swift -o "$OUT/installer-$arch"
+        installer/*.swift -o "$OUT/installer-$arch"
     SLICES+=("$OUT/installer-$arch")
 done
 lipo -create "${SLICES[@]}" -output "$APP/Contents/MacOS/installer"
 rm -f "${SLICES[@]}"
-git archive --format=tar.gz -o "$APP/Contents/Resources/source.tar.gz" HEAD
+# SOURCE_VERSION: the release this source is (Update Sauce compares it; an older installer
+# never puts its own older source back over a newer one).
+git archive --format=tar.gz --add-virtual-file="SOURCE_VERSION:$VERSION
+" -o "$APP/Contents/Resources/source.tar.gz" HEAD
+# Its own copy of the process supervisor (round 31): it runs before the source is unpacked,
+# to stop what an earlier run left going, whatever version that source is.
+cp tools/installer_runs.py "$APP/Contents/Resources/installer_runs.py"
 # The games both tabs offer: tools/games.py's table, as the app reads it (Game in installer/Installer.swift).
 python3 tools/games.py --installer-json >"$APP/Contents/Resources/games.json"
 cat >"$APP/Contents/Info.plist" <<EOF

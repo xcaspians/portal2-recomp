@@ -25,6 +25,7 @@
 #include "env_ios.h"
 #include "game_ios.h"
 #include "game_picker_ios.h"
+#include "loading_ios.h"
 #include "metal_ios.h"
 #include "nearby_ios.h"
 #include "settings.h"
@@ -145,6 +146,9 @@ int main(int argc, char **argv) {
         if (!rt_select_game_code(chosen)) return 3;
     }
 #endif
+    // Never a black screen while the game starts (round 31, runtime/ios/loading_ios.m): it stays
+    // until the engine draws, through a first start's setting up too.
+    rt_ios_loading_show(rt_ios_current_game()->name, rt_ios_current_game()->title);
     // Défauts de cet appareil (ios/device_defaults.txt) : au premier lancement
     // seulement, et jamais sur un réglage que le joueur a choisi.
     char device[512];

@@ -20,6 +20,7 @@
 static atomic_int enabled = -1;
 static uint64_t last_ticks, frames;
 static _Atomic double shown_fps;   // écrite par le thread du rendu, lue aussi par la surcouche iOS
+static atomic_ulong presented;     // every frame since launch (Sauce's setting-up screen waits for the first ones)
 
 void fps_overlay_toggle(void) {
     if (atomic_load(&enabled) < 0) atomic_store(&enabled, 0);
@@ -58,6 +59,7 @@ int fps_overlay_tick(void) {
     if (!base.denom) mach_timebase_info(&base);
     uint64_t now = mach_absolute_time();
     ++frames;
+    atomic_fetch_add(&presented, 1);
     if (!last_ticks) last_ticks = now;
     double elapsed = (double)(now - last_ticks) * base.numer / base.denom / 1e9;
     if (elapsed >= 0.5) { atomic_store(&shown_fps, (double)frames / elapsed); frames = 0; last_ticks = now; }
@@ -65,6 +67,8 @@ int fps_overlay_tick(void) {
 }
 
 double fps_overlay_value(void) { return atomic_load(&shown_fps); }
+
+unsigned long fps_overlay_presented(void) { return atomic_load(&presented); }
 
 // Texte en rectangles (origine en haut à gauche, y vers le bas) : une rangée de
 // pixels allumés contigus d'un glyphe = un rectangle. Commun aux deux rendus

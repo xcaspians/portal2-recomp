@@ -246,15 +246,26 @@ def plan(game, status, built, need_bytes, only=None, backup=None):
     return steps, None
 
 
+def sauce_version(apps):
+    """Sauce's version on the device (CFBundleShortVersionString, tools/build_ios.py bundle_version:
+    "0.5.2"; "0.1" before round 31), from devicectl's app list, or None."""
+    for a in apps:
+        if a.get('bundleIdentifier') == bundle_id(game='portal2'):
+            return a.get('version') or a.get('bundleVersion') or None
+    return None
+
+
 def status(udid):
     """{app_installed (the Portal app), apps: {portal2, hl2, l4d2}, free_bytes, data: {game: bool}, problem}"""
     apps, result = devicectl_json('device', 'info', 'apps', '--device', udid)
     if apps is None:
         return {'problem': plain_error(result.stderr + result.stdout)}
-    ids = {a.get('bundleIdentifier') for a in (apps.get('result') or {}).get('apps') or []}
+    listed = (apps.get('result') or {}).get('apps') or []
+    ids = {a.get('bundleIdentifier') for a in listed}
     on = {g: bundle_id(game=g) in ids for g in ('portal2', *OWN_APP)}
     installed = on['portal2']
-    out = {'app_installed': installed, 'apps': on, 'free_bytes': None, 'data': {}, 'problem': None}
+    out = {'app_installed': installed, 'apps': on, 'free_bytes': None, 'data': {}, 'problem': None,
+           'sauce_version': sauce_version(listed)}
     env = device_env(udid)
     for game in OWN_APP:
         if on[game]:

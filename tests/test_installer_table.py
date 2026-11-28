@@ -133,7 +133,7 @@ class SwiftReadsTheTable(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             binary, table = Path(tmp) / 'installer', Path(tmp) / 'table.json'
             subprocess.run(['swiftc', '-parse-as-library', '-swift-version', '5',
-                            str(ROOT / 'installer/Installer.swift'), str(ROOT / 'installer/Devices.swift'),
+                            *sorted(str(p) for p in (ROOT / 'installer').glob('*.swift')),
                             '-o', str(binary)], check=True, capture_output=True)
             table.write_text(json.dumps([games.installer_entry(n) for n in EXPECTED]))
             out = subprocess.run([str(binary), '--games'], capture_output=True, text=True, check=True,

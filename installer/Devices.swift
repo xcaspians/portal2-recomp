@@ -80,6 +80,7 @@ struct DeviceStatus: Decodable, Equatable {
     var apps: [String: Bool]?
     var updates: [String: [String]?]?
     var problem: String?
+    var sauce_version: String? = nil   // CFBundleShortVersionString of Sauce on the device (tools/devices.py status)
     func hasUpdate(_ game: String) -> Bool { (updates?[game] ?? nil).map { !$0.isEmpty } ?? false }
 }
 struct PlanStep: Decodable { let label: String; let command: [String] }
@@ -122,13 +123,18 @@ let backupRoot = home.appendingPathComponent("Library/Application Support/Natif 
 /// A tool's last line as a sentence for the window (tools/devices.py plain_error, plus setup.sh's words).
 func plainError(_ text: String, kind: String) -> String {
     let t = text.lowercased()
-    if t.contains("locked") || t.contains("passcode") { return "The \(kind) is locked: unlock it and press Retry." }
+    // tools/device_copy.py's own sentences are already what to show.
+    if t.contains("it picks up where it stopped") { return text }
+    if t.contains("didn't answer within") {
+        return "The \(kind) didn't answer for a few minutes. Unplug it and plug it back in (or bring it near the Mac), unlock it, then press Retry."
+    }
+    if t.contains("locked") || t.contains("passcode") { return "Your \(kind) locked. Unlock it, then press Retry (it also carries on by itself once it's unlocked and back)." }
     if t.contains("trust") || t.contains("pair") { return "The \(kind) doesn't trust this Mac yet: plug it in, unlock it, tap Trust, then press Retry." }
     if t.contains("developer mode") { return "Developer Mode is off on the \(kind): on it, Settings → Privacy & Security → Developer Mode → On → Restart, then unlock it and tap Turn On. Then press Retry." }
     if t.contains("not enough space") || t.contains("no space") { return text }
     if t.contains("timed out") || t.contains("not connected") || t.contains("unavailable") || t.contains("stopped answering")
         || t.contains("no longer valid") || t.contains("connection") {
-        return "The \(kind) stopped answering: plug it in or bring it near the Mac, unlocked, then press Retry."
+        return "The \(kind) stopped answering. Plug it in with a cable (faster and more reliable than Wi-Fi), unlock it, and it carries on by itself, or press Retry."
     }
     if t.contains("apple development certificate") || t.contains("could not create a profile") {
         return "Xcode couldn't sign Sauce with your Apple ID. Open Xcode > Settings > Accounts, check you're signed in, then press Retry."
@@ -137,8 +143,99 @@ func plainError(_ text: String, kind: String) -> String {
     return "\(text) (press Retry, or open the details below)"
 }
 
-enum JobState: Equatable { case waiting, running, done(String), failed(String) }
-struct Job: Equatable { var state = JobState.waiting; var fraction = 0.0; var text = "" }
+/// A failure that comes from the device (gone, locked, not answering): the install carries on when it's back.
+func isDeviceProblem(_ sentence: String) -> Bool {
+    let t = sentence.lowercased()
+    return ["stopped answering", "locked", "didn't come back", "dropped off", "kept failing", "didn't answer", "isn't connected"]
+        .contains { t.contains($0) }
+}
+
+// MARK: - Runs (tools/installer_runs.py): every tool in its own process group, gone with the installer
+
+let supportDir = home.appendingPathComponent("Library/Application Support/Natif Installer")
+let runsDir = supportDir.appendingPathComponent("runs")
+let queueFile = supportDir.appendingPathComponent("install-queue.json")
+let devicesLogFile = home.appendingPathComponent("Library/Logs/NatifInstaller-devices.log")
+/// The app's own copy (Resources, tools/build_installer.sh), so it works before the source is unpacked
+/// and even with an older source; a development run uses the checkout's.
+let runsScript: String = Bundle.main.path(forResource: "installer_runs", ofType: "py")
+    ?? repoDir.appendingPathComponent("tools/installer_runs.py").path
+let myPid = Int(ProcessInfo.processInfo.processIdentifier)
+
+/// The command line of `tool args` through installer_runs.py run: a record of who holds it, a timeout.
+func supervised(_ tool: URL, _ args: [String], label: String, game: String? = nil, timeout: Int = 0) -> (URL, [String]) {
+    var a = [runsScript, "run", "--state", runsDir.path, "--label", label]
+    if let game { a += ["--game", game] }
+    if timeout > 0 { a += ["--timeout", String(timeout)] }
+    return (URL(fileURLWithPath: "/usr/bin/python3"), a + ["--", tool.path] + args)
+}
+
+/// One of installer_runs.py's runs, as `list` and `clean` print them.
+struct RunInfo: Decodable, Equatable {
+    let pid: Int
+    let label: String?
+    let game: String?
+    let started: Double?
+    let owner: Int?
+    let owner_alive: Bool?
+    var stopped: Bool? = nil
+    var what: String {
+        let l = (label ?? "").isEmpty ? "a build" : label!
+        guard let started else { return l }
+        return "\(l), started \(clock(Date(timeIntervalSince1970: started)))"
+    }
+}
+
+func clock(_ date: Date) -> String {
+    let f = DateFormatter(); f.dateStyle = Calendar.current.isDateInToday(date) ? .none : .short; f.timeStyle = .short
+    return f.string(from: date)
+}
+
+/// installer_runs.py list|clean|stop, waited for (never on the main thread for long: off it).
+nonisolated func runsTool(_ args: [String]) async -> [RunInfo] {
+    guard hasCommandLineTools() else { return [] }   // python3 is the command line tools' (its shim opens a prompt)
+    return await withCheckedContinuation { done in
+        DispatchQueue.global().async {
+            let r = run("/usr/bin/python3", [runsScript] + args + ["--state", runsDir.path])
+            done.resume(returning: (try? JSONDecoder().decode([RunInfo].self, from: Data(r.output.utf8))) ?? [])
+        }
+    }
+}
+
+/// Quit: every run of this installer stopped, children and all (both tabs).
+func stopAllRuns() {
+    guard hasCommandLineTools() else { return }
+    _ = run("/usr/bin/python3", [runsScript, "stop", "--state", runsDir.path, "--owner", String(myPid)])
+}
+
+/// The window's models, for the quit (AppDelegate) and the headless tests.
+@MainActor
+enum Session {
+    static weak var hub: DeviceHub?
+    static weak var model: Installer?
+    /// What is running, in words (the quit question), or nil.
+    static var busy: String? {
+        if let hub, hub.running || hub.settingUp?.state == .running || hub.updateJob?.state == .running {
+            if let q = hub.queue, let id = q.running { return "\(q.titles[id] ?? id) is being installed on the \(q.deviceName)." }
+            if hub.updateJob?.state == .running { return "Sauce is being updated." }
+            return hub.settingUp?.state == .running ? "The build tools are being set up." : "An install is going."
+        }
+        if let model, model.phase == .installing { return "A Mac game is being built." }
+        return nil
+    }
+    /// Everything this installer started stops, and the queue says so for the next launch.
+    static func stopEverything() {
+        hub?.stopForQuit()
+        model?.stopForQuit()
+        stopAllRuns()
+    }
+}
+
+/// Sauce's version as the release names it ("v0.5.2"), compared with InstallerUpdate.isNewer.
+func sauceIsNewer(_ latest: String, than installed: String?) -> Bool {
+    guard let installed, !installed.isEmpty, installed != "0.1" else { return true }   // before round 31: no version
+    return InstallerUpdate.isNewer(latest, than: installed)
+}
 
 @MainActor
 final class DeviceHub: ObservableObject {
@@ -149,7 +246,7 @@ final class DeviceHub: ObservableObject {
     @Published var status: [String: DeviceStatus] = [:]
     @Published var picks: Set<String> = []
     @Published var userPicked = false
-    @Published var jobs: [String: Job] = [:]
+    @Published var queue: InstallQueue?   // the last Install, saved (install-queue.json)
     @Published var running = false
     @Published var searching = false
     @Published var log: [String] = []
@@ -161,16 +258,30 @@ final class DeviceHub: ObservableObject {
     @Published var settingUp: Job?        // the "Setting up tools" run, while it goes and after a failure
     @Published var waitingFor: String?    // Install pressed before the device was ready (Developer Mode, pairing, restart)
     @Published var pairing = false
+    @Published var activity: String?      // what the install is doing or waiting for right now, in words
+    @Published var leftover: String?      // a build of an earlier run in the way: Stop it and start again
+    @Published var notice: String?        // what the launch cleaned up
+    @Published var sauceLatest: String?   // the latest release's tag on GitHub ("v0.5.2")
+    @Published var updateJob: Job?        // Update Sauce
     private var process: Process?
     private var timer: Timer?
     private var unpacked = false
+    private var stopRequested = false
+    private var leftoverStop = false
+    private var autoResumes = 0
 
+    var jobs: [String: Job] { queue?.jobs ?? [:] }
     var device: DeviceInfo? { list.first { $0.udid == selected } }
     var deviceStatus: DeviceStatus? { selected.flatMap { status[$0] } }
     var sauceOnDevice: Bool { deviceStatus?.app_installed == true }
     var canBuildSauce: Bool { hasXcode && hasSigningAccount && isAppleSilicon }
     var missingTools: [ToolCheck] { toolChecks.filter { !$0.ok } }
     var toolsReady: Bool { toolsChecked && missingTools.isEmpty }
+    var canUpdateSauce: Bool {
+        guard let latest = sauceLatest, sauceOnDevice, device?.ready == true, !running, canBuildSauce,
+              entry(gameNamed("portal2") ?? allGames[0]).ready else { return false }
+        return sauceIsNewer(latest, than: deviceStatus?.sauce_version)
+    }
 
     func entry(_ game: Game) -> LibraryEntry { library[game.id] ?? LibraryEntry() }
     func onDevice(_ game: Game) -> Bool { deviceStatus?.data?[game.id] == true }
@@ -185,17 +296,75 @@ final class DeviceHub: ObservableObject {
         return "This won't fit: the games need about \(gigabytes(needBytes)) plus 1 GB to spare, and the \(device?.kindName ?? "device") has \(gigabytes(free)) free. Untick a game or free some space (Settings > General > Storage)."
     }
 
+    /// Every line the window shows in its details, also in ~/Library/Logs/NatifInstaller-devices.log.
+    func note(_ line: String) {
+        log.append(line)
+        if log.count > 3000 { log.removeFirst(log.count - 3000) }
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let data = Data("\(f.string(from: Date())) \(line)\n".utf8)
+        try? FileManager.default.createDirectory(at: devicesLogFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let h = try? FileHandle(forWritingTo: devicesLogFile) { _ = try? h.seekToEnd(); h.write(data); try? h.close() }
+        else { try? data.write(to: devicesLogFile) }
+    }
+
+    /// The window says what it waits for, and the log has it too.
+    private func doing(_ text: String?) {
+        if let text, text != activity { note("… \(text)") }
+        activity = text
+    }
+
     // MARK: Watching
 
     func start() {
-        rescan()
-        Task { await refreshDevices(withStatus: false) }
+        restoreQueue()
+        Task {
+            await cleanLeftovers()   // before anything unpacks the source under a leftover's feet
+            rescan()
+            await refreshDevices(withStatus: false)
+        }
+        checkLatestSauce()
         timer = Timer.scheduledTimer(withTimeInterval: 6, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self, !self.running else { return }
                 if allGames.contains(where: { !self.entry($0).ready }) || !self.hasSigningAccount || !self.toolsReady { self.rescan() }
+                await self.resumeWhenBack()
             }
         }
+    }
+
+    /// The device of a paused install came back (cable or Wi-Fi): carry on by itself.
+    private func resumeWhenBack() async {
+        guard let q = queue, q.pausedForDevice, !stopRequested, waitingFor == nil, autoResumes < 5 else { return }
+        await refreshDevices(withStatus: false)
+        guard !running, let d = list.first(where: { $0.udid == q.device }), d.ready else { return }
+        autoResumes += 1
+        note("The \(d.kindName) is back (\(d.link)): carrying on where it stopped.")
+        selected = d.udid
+        retry()
+    }
+
+    /// The last Install, as an installer that is gone left it (quit, crash, Force Quit).
+    func restoreQueue() {
+        guard let saved = InstallQueue.load(from: queueFile), !saved.finished else { return }
+        let q = saved.running != nil || saved.next != nil ? saved.restored() : saved
+        queue = q
+        q.save(to: queueFile)
+        picks.formUnion(q.order); userPicked = true
+        selected = selected ?? q.device
+        if saved.running != nil || saved.next != nil {
+            note("The last install stopped when the installer quit (\(q.order.compactMap { q.titles[$0] }.joined(separator: ", "))): press Retry to carry on from there.")
+        }
+    }
+
+    func saveQueue() { queue?.save(to: queueFile) }
+
+    /// A build that an earlier run left going (Cmd+Q in v0.5.1, a crash, Force Quit), stopped at launch.
+    func cleanLeftovers() async {
+        let stopped = await runsTool(["clean", "--repo", sourceDir.path])
+        guard !stopped.isEmpty else { return }
+        let what = stopped.map(\.what).joined(separator: "; ")
+        notice = "Stopped what an earlier run had left going in the background (\(what)). Nothing is waiting on it now."
+        note(notice!)
     }
 
     func rescan() {
@@ -217,7 +386,8 @@ final class DeviceHub: ObservableObject {
                 if !self.userPicked {   // everything ready starts ticked, until the user changes it
                     self.picks = Set(allGames.filter { found[$0.id]?.ready == true }.map(\.id))
                 }
-                self.picks = self.picks.filter { found[$0]?.ready == true }
+                // A game of the last install keeps its row (its Retry) even while Steam rescans.
+                self.picks = self.picks.filter { found[$0]?.ready == true || self.queue?.order.contains($0) == true }
             }
         }
     }
@@ -233,23 +403,35 @@ final class DeviceHub: ObservableObject {
         }
     }
 
-    private func devicesTool(_ args: [String]) async -> Data {
-        await withCheckedContinuation { done in
+    /// tools/devices.py, through installer_runs.py: a timeout, and its complaints in the log.
+    private func devicesTool(_ args: [String], label: String, timeout: Int) async -> Data {
+        guard hasCommandLineTools() else { return Data() }
+        let (exe, argv) = supervised(URL(fileURLWithPath: "/usr/bin/python3"),
+                                     [repoDir.appendingPathComponent("tools/devices.py").path] + args, label: label, timeout: timeout)
+        let (data, errors) = await withCheckedContinuation { (done: CheckedContinuation<(Data, String), Never>) in
             DispatchQueue.global().async {
                 let p = Process()
-                p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-                p.arguments = [repoDir.appendingPathComponent("tools/devices.py").path] + args
+                p.executableURL = exe
+                p.arguments = argv
                 p.currentDirectoryURL = repoDir
                 p.environment = toolEnvironment()
-                let pipe = Pipe()
-                p.standardOutput = pipe
-                p.standardError = FileHandle.nullDevice
-                try? p.run()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let out = Pipe(), err = Pipe()
+                p.standardOutput = out
+                p.standardError = err
+                var errData = Data()
+                let group = DispatchGroup()
+                group.enter()
+                DispatchQueue.global().async { errData = err.fileHandleForReading.readDataToEndOfFile(); group.leave() }
+                do { try p.run() } catch { done.resume(returning: (Data(), "error: could not start devices.py")); return }
+                let data = out.fileHandleForReading.readDataToEndOfFile()
                 p.waitUntilExit()
-                done.resume(returning: data)
+                group.wait()
+                done.resume(returning: (data, String(decoding: errData, as: UTF8.self)))
             }
         }
+        for line in errors.split(separator: "\n") where !line.isEmpty { note(String(line)) }
+        if errors.contains("didn't answer within") { lastError = errors.split(separator: "\n").last.map(String.init) }
+        return data
     }
 
     /// withStatus reads the chosen device's free space and games, which opens
@@ -258,8 +440,10 @@ final class DeviceHub: ObservableObject {
         guard ensureSource() else { return }
         searching = true
         defer { searching = false }
-        list = (try? JSONDecoder().decode([DeviceInfo].self, from: await devicesTool(["list"]))) ?? []
-        if waitingFor == nil, selected == nil || !list.contains(where: { $0.udid == selected }) {
+        list = (try? JSONDecoder().decode([DeviceInfo].self, from: await devicesTool(["list"], label: "Looking for iPads and iPhones", timeout: 90))) ?? []
+        // The device of an install that isn't finished stays chosen while it's away (Wi-Fi drop, unplugged).
+        let keep = waitingFor != nil || (queue.map { !$0.finished && $0.device == selected } ?? false)
+        if !keep, selected == nil || !list.contains(where: { $0.udid == selected }) {
             selected = list.first(where: { $0.ready })?.udid ?? list.first?.udid
         }
         if withStatus, let d = device, d.ready { await readStatus(d) }
@@ -271,15 +455,15 @@ final class DeviceHub: ObservableObject {
     }
 
     func readStatus(_ d: DeviceInfo) async {
-        status[d.udid] = try? JSONDecoder().decode(DeviceStatus.self,
-                                                   from: await devicesTool(["status", "--device", d.udid, "--updates"]))
+        let data = await devicesTool(["status", "--device", d.udid, "--updates"], label: "Reading what's on the \(d.kindName)", timeout: 240)
+        if let st = try? JSONDecoder().decode(DeviceStatus.self, from: data) { status[d.udid] = st }
     }
 
     /// The tools live in the installer's copy of the source (unpacked once per launch).
     private func ensureSource() -> Bool {
         if unpacked || ProcessInfo.processInfo.environment["P2_REPO"] != nil { return true }
         do { try unpackSource(); unpacked = true; return true } catch {
-            log.append("error: could not unpack the source: \(error.localizedDescription)")
+            note("error: could not unpack the source: \(error.localizedDescription)")
             return false
         }
     }
@@ -294,8 +478,9 @@ final class DeviceHub: ObservableObject {
         return await withCheckedContinuation { done in
             DispatchQueue.global().async {
                 let p = Process()
-                p.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-                p.arguments = [repoDir.appendingPathComponent("tools/build_tools.py").path, "check", "--json"]
+                (p.executableURL, p.arguments) = supervised(URL(fileURLWithPath: "/usr/bin/python3"),
+                                                            [repoDir.appendingPathComponent("tools/build_tools.py").path, "check", "--json"],
+                                                            label: "Checking the build tools", timeout: 120)
                 p.currentDirectoryURL = repoDir
                 p.environment = toolEnvironment()
                 let pipe = Pipe()
@@ -322,7 +507,8 @@ final class DeviceHub: ObservableObject {
         guard !missingTools.filter({ $0.action == "install" }).isEmpty else { return missingTools.isEmpty }
         settingUp = Job(state: .running, fraction: 0, text: "Starting")
         let ok = await launch(URL(fileURLWithPath: "/usr/bin/python3"),
-                              [repoDir.appendingPathComponent("tools/build_tools.py").path, "install"], device: "") { line in
+                              [repoDir.appendingPathComponent("tools/build_tools.py").path, "install"], device: "",
+                              label: "Setting up the build tools") { line in
             if line.hasPrefix("==> ") { self.settingUp?.text = String(line.dropFirst(4)) }
             if line.hasPrefix("progress "), let f = line.dropFirst(9).split(separator: " ").first?.split(separator: "/"),
                f.count == 2, let a = Double(f[0]), let b = Double(f[1]), b > 0 { self.settingUp?.fraction = a / b }
@@ -348,15 +534,16 @@ final class DeviceHub: ObservableObject {
         Task { await toolsThenPerform(games) }
     }
 
-    private func toolsThenPerform(_ games: [Game]) async {
+    private func toolsThenPerform(_ games: [Game], fresh: Bool = true) async {
         // The tools first, all at once: never one missing tool per failed build.
         if !(await setUpTools()) {
-            for g in games {
-                jobs[g.id] = Job(state: .failed("The tools aren't all set up yet: see step 1 above."), fraction: 0, text: "")
-            }
+            queue = InstallQueue(device: device?.udid ?? "", deviceName: device?.kindName ?? "device",
+                                 games: games.map { ($0.id, $0.title) })
+            for g in games { queue?.jobs[g.id]?.state = .failed("The tools aren't all set up yet: see step 1 above.") }
+            saveQueue()
             return
         }
-        perform(games: games)
+        perform(games: games, fresh: fresh)
     }
 
     /// Watches the device through the steps on its screen (pairing, Developer
@@ -381,85 +568,162 @@ final class DeviceHub: ObservableObject {
         }
     }
 
-    func stopWaiting() { waitingFor = nil }
+    func stopWaiting() { waitingFor = nil; stopRequested = true }
 
     /// devicectl's pairing: the device shows "Trust This Computer?" (it must be unlocked).
     func pair(_ d: DeviceInfo) {
         pairing = true
         Task {
             _ = await launch(URL(fileURLWithPath: "/usr/bin/xcrun"), ["devicectl", "manage", "pair", "--device", d.udid],
-                             device: "") { _ in }
+                             device: "", label: "Pairing the \(d.kindName)") { _ in }
             pairing = false
             await refreshDevices(withStatus: false)
         }
     }
-    func retry(_ game: Game) { perform(games: [game]) }
 
-    private func perform(games: [Game]) {
-        guard let d = device, !games.isEmpty, !running else { return }
+    /// Retry: from the first failed or stopped game; the done ones stay done, and each copy resumes.
+    func retry() {
+        guard let q = queue, !running else { return }
+        guard let d = list.first(where: { $0.udid == q.device }), d.ready else {
+            // Not here (yet): it carries on by itself when it's back.
+            for id in q.order where q.jobs[id]?.state.canRetry == true { queue?.jobs[id]?.deviceProblem = true }
+            saveQueue()
+            doing("The \(q.deviceName) isn't connected right now: plug it in with a cable, or bring it near the Mac and unlock it. The install carries on by itself when it's back.")
+            Task { await refreshDevices(withStatus: false); await resumeWhenBack() }
+            return
+        }
+        selected = d.udid
+        Task { await toolsThenPerform([], fresh: false) }
+    }
+
+    private func perform(games: [Game], fresh: Bool = true) {
+        guard !running else { return }
+        if fresh || queue == nil {
+            guard let d = device, !games.isEmpty else { return }
+            queue = InstallQueue(device: d.udid, deviceName: d.kindName, games: games.map { ($0.id, $0.title) })
+            autoResumes = 0
+        } else {
+            queue?.retry()
+        }
+        guard let q = queue, let d = list.first(where: { $0.udid == q.device }) else { return }
+        saveQueue()
         running = true
-        for g in games { jobs[g.id] = Job() }
+        stopRequested = false
         Task {
-            defer { running = false; process = nil }
+            defer { running = false; process = nil; doing(nil); saveQueue() }
             guard ensureSource() else {
-                for g in games { jobs[g.id]?.state = .failed("The installer couldn't unpack its own files. Reinstall it from the DMG.") }
+                for id in q.order { queue?.jobs[id]?.state = .failed("The installer couldn't unpack its own files. Reinstall it from the DMG.") }
                 return
             }
-            if status[d.udid] == nil { await readStatus(d) }
-            let backup = backupRoot.appendingPathComponent("\(d.name ?? d.udid)/\(Self.stamp())")
-            for g in games {
-                jobs[g.id]?.state = .running
-                if let failure = await installOne(g, on: d, backup: backup) {
-                    jobs[g.id]?.state = .failed(failure)
-                } else {
-                    jobs[g.id]?.state = .done("Done. Open \(deviceAppName) on the \(d.kindName).")
-                    jobs[g.id]?.fraction = 1
-                }
+            guard await clearTheWay() else { return }
+            if status[d.udid] == nil {
+                doing("Reading what's on the \(d.kindName) before the first game (up to a minute over Wi-Fi)")
                 await readStatus(d)
+                doing(nil)
             }
+            let backup = backupRoot.appendingPathComponent("\(d.name ?? d.udid)/\(Self.stamp())")
+            await runQueue({ self.queue }, { self.queue = $0; self.saveQueue() },
+                           doneText: "Done. Open \(deviceAppName) on the \(d.kindName).", stop: { self.stopRequested }) { id in
+                guard let g = gameNamed(id) else { return InstallOutcome(problem: "This installer doesn't know \(id).") }
+                self.note("==> \(g.title) on the \(d.kindName) (\(d.link))")
+                let outcome = await self.installOne(g, on: d, backup: backup)
+                if let problem = outcome.problem { self.note("error: \(g.title): \(problem)") }
+                await self.readStatus(d)
+                return outcome
+            }
+            if queue?.finished == true { autoResumes = 0 }
         }
     }
+
+    /// Nothing of an earlier run in the way: another installer's install (waited for, with why),
+    /// or a leftover with no window (the user stops it: Stop it and start again). False when stopped.
+    private func clearTheWay() async -> Bool {
+        while true {
+            let others = await runsTool(["list", "--repo", sourceDir.path]).filter { $0.owner != myPid }
+            if others.isEmpty { leftover = nil; doing(nil); return true }
+            if stopRequested { leftover = nil; doing(nil); return false }
+            if let live = others.first(where: { $0.owner_alive == true }) {
+                leftover = nil
+                doing("Waiting for the last install to finish (\(live.what)): another Natif Installer window is running it. This one starts by itself when it's done.")
+            } else {
+                let o = others[0]
+                if leftover == nil { note("A build from an earlier run is still going (\(o.what), pid \(o.pid)) and no window is attached to it.") }
+                leftover = "Waiting for a build left over from an earlier run (\(o.what)). No installer window is attached to it any more, so it would never finish here."
+                doing(nil)
+                if leftoverStop {
+                    leftoverStop = false
+                    doing("Stopping the leftover build")
+                    let stopped = await runsTool(["clean", "--repo", sourceDir.path])
+                    note("Stopped: \(stopped.map(\.what).joined(separator: "; "))")
+                    continue
+                }
+            }
+            if let id = queue?.next {
+                queue?.jobs[id]?.state = .waiting(leftover != nil ? "Waiting for the earlier run's build to stop (see below)"
+                                                  : "Waiting for the last install to finish (see below)")
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+    }
+
+    /// "Stop it and start again": the leftover is stopped, then this install carries on.
+    func stopLeftover() { leftoverStop = true }
 
     static func stamp() -> String {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH.mm"
         return f.string(from: Date())
     }
 
-    /// nil when it worked, else the sentence to show.
-    private func installOne(_ g: Game, on d: DeviceInfo, backup: URL) async -> String? {
+    private func outcome(_ sentence: String) -> InstallOutcome {
+        InstallOutcome(problem: sentence, deviceProblem: isDeviceProblem(sentence))
+    }
+
+    private func setText(_ id: String, _ text: String) { queue?.jobs[id]?.text = text }
+
+    private func installOne(_ g: Game, on d: DeviceInfo, backup: URL) async -> InstallOutcome {
         guard let entry = library[g.id], let folder = entry.folder, let linux = entry.linux else {
-            return "\(g.title) isn't complete in Steam yet: \(library[g.id]?.installed == true ? "the Linux files are missing" : "install it in Steam first")."
+            return InstallOutcome(problem: "\(g.title) isn't complete in Steam yet: \(library[g.id]?.installed == true ? "the Linux files are missing" : "install it in Steam first").")
         }
         // 1. Built into this Mac's Sauce? If not, build it (setup.sh --ios: Xcode signs with the user's account).
+        setText(g.id, "Planning the copy (reading what's on the \(d.kindName))")
         var plan = await planFor(g, on: d, backup: backup)
         if let problem = plan?.problem, problem.contains("isn't built") || problem.contains("isn't in this Mac's") {
-            guard canBuildSauce else { return buildBlocker() }
-            jobs[g.id]?.text = "Backing up the saves on the \(d.kindName) first"
-            if sauceOnDevice, !(await step(["saves-backup", backup.path], device: d.udid, game: g)) {
-                return plainError(lastLine, kind: d.kindName)
+            guard canBuildSauce else { return InstallOutcome(problem: buildBlocker()) }
+            setText(g.id, "Backing up the saves on the \(d.kindName) first")
+            if sauceOnDevice, !(await step(["saves-backup", backup.path], device: d, game: g)) {
+                return outcome(plainError(lastError ?? lastLine, kind: d.kindName))
             }
-            let ok = await setup(g, folder: folder, linux: linux, device: d, job: g)
-            if !ok { return plainError(lastError ?? lastLine, kind: d.kindName) }
+            let ok = await setup(g, folder: folder, linux: linux, device: d) { f, text in
+                self.queue?.jobs[g.id]?.fraction = f * 0.9
+                if let text { self.setText(g.id, text) }
+            }
+            if !ok { return outcome(plainError(lastError ?? lastLine, kind: d.kindName)) }
             await readStatus(d)
             scheduleExpiryReminder()
+            setText(g.id, "Planning the copy")
             plan = await planFor(g, on: d, backup: backup)
         }
-        guard let plan else { return "The copy couldn't be planned. Check that the \(d.kindName) is unlocked, then press Retry." }
+        guard let plan else {
+            return outcome(lastError?.contains("didn't answer within") == true
+                           ? plainError(lastError!, kind: d.kindName)
+                           : "The copy couldn't be planned: the \(d.kindName) didn't answer. Plug it in, unlock it, then press Retry.")
+        }
         if let problem = plan.problem {
-            return problem.hasSuffix("is up to date on the device.") ? nil : problem
+            return problem.hasSuffix("is up to date on the device.") ? .ok : outcome(problem)
         }
         for (i, s) in plan.steps.enumerated() {
-            jobs[g.id]?.text = "\(s.label) (\(i + 1) of \(plan.steps.count))"
-            let ok = await step(s.command, device: d.udid, game: g, share: (Double(i), Double(plan.steps.count)))
-            if !ok { return plainError(lastLine, kind: d.kindName) }
+            setText(g.id, "\(s.label) (\(i + 1) of \(plan.steps.count))")
+            let ok = await step(s.command, device: d, game: g, share: (Double(i), Double(plan.steps.count)))
+            if !ok { return outcome(plainError(lastError ?? lastLine, kind: d.kindName)) }
         }
-        return nil
+        return .ok
     }
 
     private func planFor(_ g: Game, on d: DeviceInfo, backup: URL) async -> DownloadPlan? {
         var args = ["plan", "--device", d.udid, "--game", g.id, "--backup", backup.path]
         if status[d.udid]?.hasUpdate(g.id) == true { args.append("--update") }
-        return try? JSONDecoder().decode(DownloadPlan.self, from: await devicesTool(args))
+        lastError = nil
+        return try? JSONDecoder().decode(DownloadPlan.self, from: await devicesTool(args, label: "\(g.title): planning the copy", timeout: 300))
     }
 
     func buildBlocker() -> String {
@@ -471,42 +735,48 @@ final class DeviceHub: ObservableObject {
     private var lastLine = ""
     private var lastError: String?
 
-    /// One tools/ios_device.sh step; "copy i/n" lines move the game's bar inside its share.
-    private func step(_ words: [String], device: String, game: Game, share: (Double, Double) = (0, 1)) async -> Bool {
-        await launch(repoDir.appendingPathComponent("tools/ios_device.sh"), words, device: device) { line in
+    /// One tools/ios_device.sh step; "copy i/n" lines move the game's bar inside its share,
+    /// "status: …" lines (tools/device_copy.py: locked, dropped, trying again) show under the game.
+    private func step(_ words: [String], device d: DeviceInfo, game: Game, share: (Double, Double) = (0, 1)) async -> Bool {
+        await launch(repoDir.appendingPathComponent("tools/ios_device.sh"), words, device: d.udid,
+                     label: "\(game.title): \(words.first ?? "") on the \(d.kindName)", game: game.id, kind: d.kindName) { line in
             if line.hasPrefix("copy "), let frac = line.dropFirst(5).split(separator: " ").first?.split(separator: "/"),
                frac.count == 2, let a = Double(frac[0]), let b = Double(frac[1]), b > 0 {
-                self.jobs[game.id]?.fraction = (share.0 + (a - 1) / b) / share.1
+                self.queue?.jobs[game.id]?.fraction = (share.0 + (a - 1) / b) / share.1
             }
+            if line.hasPrefix("status: ") { self.setText(game.id, String(line.dropFirst(8))) }
         }
     }
 
     /// setup.sh --ios for one game, with the device chosen (it builds, signs, installs, copies).
     /// A game that runs on another's files on the device (needs: Mel on Portal 2)
     /// is built for the Mac first, then that game's iPhone build takes it in.
-    private func setup(_ game: Game, folder: URL, linux: URL, device d: DeviceInfo, job: Game) async -> Bool {
+    private func setup(_ game: Game, folder: URL, linux: URL, device d: DeviceInfo,
+                       progress: @escaping @MainActor (Double, String?) -> Void) async -> Bool {
         var p = 0.0
         let ok = await launch(URL(fileURLWithPath: "/bin/bash"),
-                              [sourceDir.appendingPathComponent("setup.sh").path, "--game", game.id] + (game.needs == nil ? ["--ios"] : [])
-                                  + [folder.path, linux.path], device: d.udid) { line in
+                              [repoDir.appendingPathComponent("setup.sh").path, "--game", game.id] + (game.needs == nil ? ["--ios"] : [])
+                                  + [folder.path, linux.path], device: d.udid, label: "\(game.title): building Sauce (setup.sh)",
+                              game: game.id, kind: d.kindName) { line in
             p = Installer.progress(after: line, from: p)
-            self.jobs[job.id]?.fraction = p * 0.9
-            if line.hasPrefix("==> ") { self.jobs[job.id]?.text = String(line.dropFirst(4)) }
+            progress(p, line.hasPrefix("==> ") ? String(line.dropFirst(4)) : nil)
         }
         if ok, let base = game.needs.flatMap(gameNamed), let e = library[base.id], let f = e.folder, let l = e.linux {
-            return await setup(base, folder: f, linux: l, device: d, job: job)
+            return await setup(base, folder: f, linux: l, device: d, progress: progress)
         }
         return ok
     }
 
-    private func launch(_ tool: URL, _ args: [String], device: String, onLine: @escaping @MainActor (String) -> Void) async -> Bool {
+    private func launch(_ tool: URL, _ args: [String], device: String, label: String, game: String? = nil, kind: String? = nil,
+                        onLine: @escaping @MainActor (String) -> Void) async -> Bool {
         lastLine = ""; lastError = nil
         return await withCheckedContinuation { done in
             let p = Process()
-            p.executableURL = tool
-            p.arguments = args
+            (p.executableURL, p.arguments) = supervised(tool, args, label: label, game: game)
             p.currentDirectoryURL = repoDir
-            p.environment = toolEnvironment(device: device.isEmpty ? nil : device)
+            var env = toolEnvironment(device: device.isEmpty ? nil : device)
+            if let kind { env["P2_DEVICE_KIND"] = kind }
+            p.environment = env
             let pipe = Pipe()
             p.standardOutput = pipe
             p.standardError = pipe
@@ -519,10 +789,9 @@ final class DeviceHub: ObservableObject {
                     for line in lines where !line.isEmpty {
                         self.lastLine = line
                         if line.hasPrefix("error:") { self.lastError = String(line.dropFirst(7)) }
-                        self.log.append(line)
+                        self.note(line)
                         onLine(line)
                     }
-                    if self.log.count > 3000 { self.log.removeFirst(self.log.count - 3000) }
                 }
             }
             p.terminationHandler = { p in
@@ -533,13 +802,132 @@ final class DeviceHub: ObservableObject {
         }
     }
 
-    func cancel() { process?.interrupt() }
+    /// Stop: the running step (its whole process group) and the rest of the queue.
+    func cancel() {
+        stopRequested = true
+        queue?.stopAll("Stopped. Press Retry to carry on from here.")
+        saveQueue()
+        process?.interrupt()
+    }
+
+    /// Quit: the queue says what stopped (for the next launch); installer_runs.py stops the processes.
+    func stopForQuit() {
+        stopRequested = true
+        waitingFor = nil
+        queue?.stopAll()
+        saveQueue()
+        if updateJob?.state == .running { updateJob = Job(state: .stopped("Stopped when the installer quit.")) }
+    }
 
     // MARK: Refresh Sauce (a free Apple ID's 7 days)
 
     func refreshSauce() {
         guard let p2 = allGames.first(where: { $0.id == "portal2" }) else { return }
         perform(games: [p2])   // with Sauce built: a new profile, the same build re-signed, reinstalled; data kept
+    }
+
+    // MARK: Update Sauce (the latest release's code, rebuilt here, installed over the old one)
+
+    /// The latest release's tag (P2_SAUCE_LATEST for tests).
+    func checkLatestSauce() {
+        if let fixed = ProcessInfo.processInfo.environment["P2_SAUCE_LATEST"] { sauceLatest = fixed.isEmpty ? nil : fixed; return }
+        Task.detached {
+            guard let (data, _) = try? await URLSession.shared.data(from: InstallerUpdate.api),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tag = json["tag_name"] as? String else { return }
+            await MainActor.run { self.sauceLatest = tag }
+        }
+    }
+
+    /// The latest release's source replaces this Mac's (build/, deps/ and the config kept), setup.sh
+    /// rebuilds Sauce and installs it only once it built (saves, settings and games stay on the
+    /// device: an app install keeps its data), then the usual Update copies what the new code
+    /// changed. A failed download or build puts the previous source and build back: the device
+    /// still has the Sauce that worked.
+    func updateSauce() {
+        guard canUpdateSauce, let tag = sauceLatest, let d = device, let p2 = gameNamed("portal2"),
+              let e = library["portal2"], let folder = e.folder, let linux = e.linux else { return }
+        running = true
+        stopRequested = false
+        updateJob = Job(state: .running, fraction: 0, text: "Downloading Sauce \(tag)")
+        note("==> Update Sauce to \(tag) on the \(d.kindName)")
+        Task {
+            let result = await performUpdate(tag: tag, device: d, p2: p2, folder: folder, linux: linux)
+            running = false
+            if stopRequested { return }
+            if let failure = result {
+                updateJob = Job(state: .failed(failure), fraction: updateJob?.fraction ?? 0)
+                note("error: \(failure)")
+                return
+            }
+            updateJob = Job(state: .done("Sauce \(tag) is on the \(d.kindName). Saves, settings and games are as they were."), fraction: 1)
+            await readStatus(d)
+            let stale = allGames.filter { deviceStatus?.hasUpdate($0.id) == true }
+            if !stale.isEmpty {   // what the new code changed in the games' files (prep): copied as an Update
+                note("The new version changed some game files: updating \(stale.map(\.title).joined(separator: ", ")).")
+                perform(games: stale)
+            }
+        }
+    }
+
+    /// nil when Sauce `tag` is on the device, else what to show (the device untouched).
+    private func performUpdate(tag: String, device d: DeviceInfo, p2: Game, folder: URL, linux: URL) async -> String? {
+        let unchanged = "Sauce on the \(d.kindName) wasn't touched: it still works as before."
+        guard ensureSource() else { return "The installer couldn't unpack its own files. \(unchanged)" }
+        // 1. The release's source, downloaded and checked.
+        let archive = FileManager.default.temporaryDirectory.appendingPathComponent("sauce-\(tag).tar.gz")
+        do {
+            try? FileManager.default.removeItem(at: archive)
+            if let local = ProcessInfo.processInfo.environment["P2_SAUCE_ARCHIVE"] {   // tests
+                try FileManager.default.copyItem(at: URL(fileURLWithPath: local), to: archive)
+            } else {
+                let url = URL(string: "https://github.com/xcaspians/portal2-recomp/archive/refs/tags/\(tag).tar.gz")!
+                let (file, response) = try await URLSession.shared.download(from: url)
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                    throw installerError("HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+                }
+                try FileManager.default.moveItem(at: file, to: archive)
+            }
+        } catch {
+            return "Couldn't download Sauce \(tag) from GitHub (\(error.localizedDescription)). Check the internet connection, then press Update Sauce again. \(unchanged)"
+        }
+        defer { try? FileManager.default.removeItem(at: archive) }
+        updateJob?.fraction = 0.05
+        updateJob?.text = "Unpacking Sauce \(tag)"
+        let previous: URL?
+        do { previous = try installSource(from: archive, strip: 1, version: tag, keepPrevious: true) } catch {
+            return "Sauce \(tag) couldn't be unpacked (\(error.localizedDescription)). \(unchanged)"
+        }
+        // The Sauce build that works, kept beside the new one until the new one is in.
+        let app = repoDir.appendingPathComponent("build/ios/device/Portal2.app")
+        let keptApp = app.deletingLastPathComponent().appendingPathComponent("Portal2.app.before-update")
+        try? FileManager.default.removeItem(at: keptApp)
+        let hadApp = (try? FileManager.default.copyItem(at: app, to: keptApp)) != nil
+        func putBack() {
+            if let previous { try? restoreSource(previous) }
+            if hadApp { try? FileManager.default.removeItem(at: app); try? FileManager.default.moveItem(at: keptApp, to: app) }
+        }
+        // 2. Saves first, then the build; setup.sh installs on the device only after it built.
+        updateJob?.text = "Backing up the saves on the \(d.kindName) first"
+        let backup = backupRoot.appendingPathComponent("\(d.name ?? d.udid)/\(Self.stamp())")
+        if !(await step(["saves-backup", backup.path], device: d, game: p2)) {
+            putBack()
+            return "\(plainError(lastError ?? lastLine, kind: d.kindName)) \(unchanged)"
+        }
+        updateJob?.text = "Building Sauce \(tag) (a while: half an hour or more if a lot changed)"
+        let built = await setup(p2, folder: folder, linux: linux, device: d) { f, text in
+            self.updateJob?.fraction = 0.1 + f * 0.85
+            if let text { self.updateJob?.text = text }
+        }
+        if !built {
+            let why = lastError ?? lastLine
+            putBack()
+            return "Sauce \(tag) didn't build (\(why.isEmpty ? "see the details below" : why)). Nothing new was installed: \(unchanged) The previous version is back on this Mac too."
+        }
+        if let previous { try? FileManager.default.removeItem(at: previous) }
+        try? FileManager.default.removeItem(at: keptApp)
+        scheduleExpiryReminder()
+        return nil
     }
 
     func scheduleExpiryReminder() {
@@ -747,6 +1135,7 @@ struct DeviceFlowView: View {
     }
 
     @ViewBuilder var sauceInstalled: some View {
+        sauceVersions
         HStack {
             Text("\(deviceAppName) is on it.").foregroundStyle(.green)
             if let expiry = hub.expiry, expiry.timeIntervalSinceNow < 30 * 86400 {
@@ -760,6 +1149,40 @@ struct DeviceFlowView: View {
         }
     }
 
+    /// Sauce on the device next to the latest release, and Update Sauce when there's something newer.
+    @ViewBuilder var sauceVersions: some View {
+        let installed = hub.deviceStatus?.sauce_version
+        let shown = installed.map { $0 == "0.1" ? "an earlier build" : "v\($0)" } ?? "unknown"
+        HStack(alignment: .firstTextBaseline) {
+            Text("On the \(hub.device?.kindName ?? "device"): Sauce \(shown) · Latest: \(hub.sauceLatest ?? "checking…")")
+                .font(.caption)
+            Spacer()
+            Button("Update Sauce") { hub.updateSauce() }
+                .disabled(!hub.canUpdateSauce)
+                .help(hub.canUpdateSauce ? "Builds the latest Sauce on this Mac and installs it over the old one. Saves, settings and games stay."
+                      : "Sauce on the device is the latest, or it can't be built here yet.")
+        }
+        if let job = hub.updateJob {
+            VStack(alignment: .leading, spacing: 2) {
+                ProgressView(value: job.fraction)
+                switch job.state {
+                case .running: Text(job.text).font(.caption).lineLimit(2)
+                case .done(let m): Text(m).font(.caption).foregroundStyle(.green)
+                case .failed(let m), .stopped(let m): Text(m).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                case .waiting(let m): Text(m).font(.caption)
+                }
+            }
+        }
+    }
+
+    /// A running game's line: tools/device_copy.py's waits stand out (locked, dropped, trying again).
+    func runningText(_ text: String) -> some View {
+        let t = text.lowercased()
+        let paused = t.contains("locked") || t.contains("dropped") || t.contains("hiccupped")
+        return Text(text).font(.caption).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(paused ? Color.orange : Color.secondary)
+    }
+
     @ViewBuilder var installSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             let chosen = allGames.filter { hub.picks.contains($0.id) }
@@ -771,23 +1194,38 @@ struct DeviceFlowView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let warning = hub.spaceWarning { Text(warning).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
-            ForEach(chosen) { g in
-                if let job = hub.jobs[g.id] {
+            if hub.device?.link == "Wi-Fi", hub.needBytes > 2_000_000_000 {
+                Label("Plugging in is faster and more reliable for this one: about \(gigabytes(hub.needBytes)) to copy, and Wi-Fi drops when the \(hub.device?.kindName ?? "device") locks or naps.",
+                      systemImage: "cable.connector")
+                    .foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+            if let notice = hub.notice { Text(notice).font(.caption).fixedSize(horizontal: false, vertical: true) }
+            // The last install's games, in its order: a failed or stopped one always keeps its Retry.
+            ForEach(hub.queue?.order ?? [], id: \.self) { id in
+                if let job = hub.jobs[id] {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text(g.title).foregroundStyle(.primary)
+                            Text(hub.queue?.titles[id] ?? id).foregroundStyle(.primary)
                             Spacer()
-                            if case .failed = job.state { Button("Retry") { hub.retry(g) }.disabled(hub.running) }
+                            if hub.queue?.retryRow == id { Button("Retry") { hub.retry() }.disabled(hub.running) }
                         }
                         ProgressView(value: job.fraction)
                         switch job.state {
-                        case .waiting: Text("Waiting").font(.caption)
-                        case .running: Text(job.text).font(.caption).lineLimit(1)
+                        case .waiting(let m): Text(m).font(.caption)
+                        case .running: runningText(job.text)
                         case .done(let m): Text(m).font(.caption).foregroundStyle(.green)
                         case .failed(let m): Text(m).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                        case .stopped(let m): Text(m).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
+            }
+            if let activity = hub.activity {
+                Text(activity).foregroundStyle(.blue).fixedSize(horizontal: false, vertical: true)
+            }
+            if let leftover = hub.leftover {
+                Text(leftover).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                Button("Stop it and start again") { hub.stopLeftover() }
             }
             if let udid = hub.waitingFor {
                 let name = hub.list.first { $0.udid == udid }?.kindName ?? "device"
