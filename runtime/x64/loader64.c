@@ -465,9 +465,9 @@ uint64_t rt64_dynamic_import(const char *name) {
     return i < RT64_DYNAMIC_MAX ? dynamic_base + RT64_IMPORT_STRIDE * i : 0;
 }
 
-// Dispatch cache (round 04 of Skyrim, docs in sauce-private's SKYRIM_PERFORMANCE.md): an
+// Dispatch cache: an
 // indirect call into lifted code walked the modules and binary-searched the module's
-// functions (151,000 for SkyrimSE.exe) every time. Each thread keeps a direct-mapped table
+// functions (over 150,000 in a large game's executable) every time. Each thread keeps a direct-mapped table
 // from target address to lifted function, filled only with functions the search found.
 // Such an answer never changes: modules are never unloaded (dlclose keeps them, as
 // RTLD_NODELETE), a module registered later is mapped elsewhere, and a function's address

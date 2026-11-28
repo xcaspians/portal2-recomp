@@ -3,3 +3,11 @@ build/
 __pycache__/
 config/local.json
 deps/
+# Private games stay in sauce-private, never here (tests/test_no_private_games.py).
+docs/*SKYRIM*
+docs/*Skyrim*
+docs/*skyrim*
+Prompts/*skyrim*
+Prompts/*Skyrim*
+Prompts/*SKYRIM*
+*skyrim-setup*

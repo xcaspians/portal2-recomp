@@ -174,7 +174,7 @@ build/x64/second.c: build/x64/libx64second.so tools/elfprep64.py tools/lift64.py
 build/x64-check: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c build/x64/second.c tests/x64_checks.c
 	$(CC) $(X64_CFLAGS) -Iruntime $(X64_RUNTIME) build/x64/fixture.c build/x64/second.c tests/x64_checks.c $(X64_LIBS) -o $@
 # The same programs with RT64_TSO: shared memory through acquire loads and
-# release stores (x86's ordering on arm64), as Skyrim's build uses.
+# release stores (x86's ordering on arm64), for games whose threads share memory.
 build/x64-check-tso: $(X64_RUNTIME) runtime/x64/rt64.h build/x64/fixture.c build/x64/second.c tests/x64_checks.c
 	$(CC) $(X64_CFLAGS) -DRT64_TSO -mcpu=apple-m1 -Iruntime $(X64_RUNTIME) build/x64/fixture.c build/x64/second.c tests/x64_checks.c $(X64_LIBS) -o $@
 # PE32+ (Windows x86-64) front end: tests/pe_programs.s assembled for

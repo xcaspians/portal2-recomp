@@ -250,7 +250,7 @@ void rt64_native_call_win(CPU64 *c, uint64_t fn) {
 }
 
 // Every indirect transfer that isn't lifted code asks this (rt64_dispatch): for a game calling
-// a native library's methods each frame (Skyrim into DXVK), dladdr's symbol search was a
+// a native library's methods each frame (a Direct3D 11 game into DXVK), dladdr's symbol search was a
 // visible part of the frame. Addresses found native are remembered in a small direct-mapped
 // table (native images stay loaded: nothing here unloads them); others are asked each time.
 static _Atomic uint64_t native_seen[4096];

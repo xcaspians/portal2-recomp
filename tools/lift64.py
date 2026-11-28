@@ -1284,7 +1284,7 @@ def lift_function(entry, mod, stats=None, keep_flags=None):
             if insn and insn[1] != 'call' and insn[1] != 'ret' and SAVE_F in done[pc]:
                 # A jump that leaves for another function (a tail jump, direct
                 # or through rt64_dispatch): that function may read these flags
-                # first (MSVC shares tails: Skyrim's fast atan2). Keep the save.
+                # first (MSVC shares tails: a fast atan2, for one). Keep the save.
                 done[pc] = done[pc].replace(LOAD_F, '')
                 continue
             done[pc] = done[pc].replace(SAVE_F, '').replace(LOAD_F, '')
